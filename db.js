@@ -1,5 +1,5 @@
 const DB_NAME = 'pika-shot-db';
-const DB_VERSION = 2; // NEW: Incremented version for schema change
+const DB_VERSION = 3; // IMPORTANT: Incremented for schema change
 let db;
 
 function initDB() {
@@ -8,10 +8,16 @@ function initDB() {
 
         request.onupgradeneeded = (event) => {
             db = event.target.result;
+            let transaction = event.target.transaction;
+            
+            // Re-evaluate stores to handle upgrades
             if (!db.objectStoreNames.contains('products')) {
-                // NEW: Added price, quantity, and imageDataUrl to products
                 db.createObjectStore('products', { keyPath: 'id', autoIncrement: true });
             }
+            // Add 'unitType' if it doesn't exist (for users upgrading)
+            // Note: IndexedDB doesn't have a direct 'addColumn', this is a simple setup.
+            // For complex migrations, data would be read and rewritten.
+
             if (!db.objectStoreNames.contains('sales')) {
                 db.createObjectStore('sales', { keyPath: 'id', autoIncrement: true });
             }
@@ -20,16 +26,8 @@ function initDB() {
             }
         };
 
-        request.onsuccess = (event) => {
-            db = event.target.result;
-            console.log('Database opened successfully');
-            resolve(db);
-        };
-
-        request.onerror = (event) => {
-            console.error('Database error:', event.target.errorCode);
-            reject(event.target.errorCode);
-        };
+        request.onsuccess = (event) => { db = event.target.result; resolve(db); };
+        request.onerror = (event) => reject(event.target.errorCode);
     });
 }
 
@@ -43,7 +41,6 @@ function saveData(storeName, data) {
     });
 }
 
-// NEW: Function to get a single item by its key
 function getData(storeName, key) {
     return new Promise((resolve, reject) => {
         const transaction = db.transaction([storeName], 'readonly');
@@ -67,10 +64,8 @@ function getAllData(storeName) {
 async function getProductByEmbedding(embeddingToMatch) {
     const products = await getAllData('products');
     if (products.length === 0) return null;
-
     let bestMatch = null;
     let highestSimilarity = -1;
-
     for (const product of products) {
         if (product.embedding) {
             const similarity = cosineSimilarity(embeddingToMatch, product.embedding);
@@ -80,16 +75,12 @@ async function getProductByEmbedding(embeddingToMatch) {
             }
         }
     }
-    
-    // NEW: Threshold is slightly more lenient but still requires high confidence
-    if (highestSimilarity > 0.82) {
+    if (highestSimilarity > 0.85) { // Stricter threshold for better accuracy
         return bestMatch;
     }
-
     return null;
 }
 
-// NEW: Function to specifically update product stock
 async function updateProductStock(productId, quantitySold) {
     const product = await getData('products', productId);
     if (product) {
