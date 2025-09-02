@@ -3,6 +3,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // --- DOM ELEMENTS ---
         elements: {
             // ... (most elements are the same)
+            appHeader: document.getElementById('app-header'), // FIXED: Added reference to the header
             backBtn: document.getElementById('back-btn'), // New back button
             welcomeName: document.getElementById('welcome-name'), // New home elements
             welcomeDate: document.getElementById('welcome-date'),
@@ -123,11 +124,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // --- (All other functions from the previous version remain the same) ---
         // For brevity, I've omitted the unchanged code. Copy the full functions for the following from the previous version:
-        // loadCameraModelInBackground, showLoader, hideLoader, loadMainApp, showView, hideModal, updateHeader, handleCameraPermission, startAddProduct, startSellScan, handlePictureTaken, handleRetakePicture, handleConfirmPicture, handleSaveProduct, handleEditProduct, handleProductFound, updateSaleTotal, handleConfirmSale, renderRecentSales, renderProducts, handleBeforeInstallPrompt, promptInstall, registerServiceWorker.
+        // loadCameraModelInBackground, showLoader, hideLoader, showView, hideModal, updateHeader, handleCameraPermission, startAddProduct, startSellScan, handlePictureTaken, handleRetakePicture, handleConfirmPicture, handleSaveProduct, handleEditProduct, handleProductFound, updateSaleTotal, handleConfirmSale, renderRecentSales, renderProducts, handleBeforeInstallPrompt, promptInstall, registerServiceWorker.
         loadCameraModelInBackground: async function() { try { this.elements.sellItemBtnText.textContent = 'Loading...'; await Camera.init(); this.state.cameraReady = true; this.elements.addNewProductBtn.classList.remove('disabled'); this.elements.sellItemBtnMain.classList.remove('disabled'); this.elements.sellItemBtnText.textContent = 'Sell Item'; console.log("Camera model ready."); } catch (error) { console.error("Failed to load camera model:", error); this.state.cameraReady = false; this.elements.sellItemBtnText.textContent = 'Offline'; } },
         showLoader: function() { this.elements.loader.style.display = 'flex'; this.elements.appContainer.style.display = 'none'; },
         hideLoader: function() { this.elements.loaderSpinner.style.display = 'none'; this.elements.loaderCheck.style.display = 'block'; setTimeout(() => { this.elements.loader.style.opacity = '0'; this.elements.appContainer.style.display = 'flex'; setTimeout(() => { this.elements.loader.style.display = 'none'; }, 500); }, 500); },
-        loadMainApp: async function() { this.elements.mainContent.style.display = 'flex'; this.elements.bottomNav.style.display = 'flex'; this.showView('home-view'); await this.updateDashboard(); await this.renderProducts(); },
+        
+        // FIXED: This function now displays the header and sets the main content area correctly.
+        loadMainApp: async function() { 
+            this.elements.appHeader.style.display = 'flex';
+            this.elements.mainContent.style.display = 'block'; // This was the cause of the distortion
+            this.elements.bottomNav.style.display = 'flex'; 
+            this.showView('home-view'); 
+            await this.updateDashboard(); 
+            await this.renderProducts(); 
+        },
+
         showView: function(viewId) { this.elements.views.forEach(view => view.classList.remove('active')); const viewToShow = document.getElementById(viewId); if (viewToShow) { viewToShow.classList.add('active'); this.state.currentView = viewId; if (!['onboarding-view', 'camera-permission-view', 'camera-view'].includes(viewId)) this.updateHeader(viewId); } },
         hideModal: function() { this.elements.modalContainer.style.display = 'none'; this.elements.modalContainer.querySelectorAll('.modal-content').forEach(m => m.style.display = 'none'); },
         updateHeader: function(viewId) { const titles = { 'home-view': 'Home', 'products-view': 'My Products' }; this.elements.headerTitle.textContent = titles[viewId] || 'pika shot'; },
