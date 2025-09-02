@@ -1,38 +1,37 @@
-// db.js
 let db;
 
 function initDB() {
     return new Promise((resolve, reject) => {
         const request = indexedDB.open('PikaShotDB', 1);
-        request.onupgradeneeded = (event) => {
-            db = event.target.result;
-            db.createObjectStore('user', { keyPath: 'id' });
-            db.createObjectStore('products', { keyPath: 'id', autoIncrement: true });
-            db.createObjectStore('sales', { keyPath: 'id', autoIncrement: true });
-        };
-        request.onsuccess = (event) => {
-            db = event.target.result;
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => {
+            db = request.result;
             resolve();
         };
-        request.onerror = (event) => reject(event.target.error);
+        request.onupgradeneeded = (e) => {
+            const db = e.target.result;
+            db.createObjectStore('users', { keyPath: 'id', autoIncrement: true });
+            const products = db.createObjectStore('products', { keyPath: 'id', autoIncrement: true });
+            const sales = db.createObjectStore('sales', { keyPath: 'id', autoIncrement: true });
+        };
     });
 }
 
 function getUser() {
     return new Promise((resolve) => {
-        const tx = db.transaction('user', 'readonly');
-        const store = tx.objectStore('user');
-        const request = store.get(1);
-        request.onsuccess = () => resolve(request.result);
+        const tx = db.transaction('users', 'readonly');
+        const store = tx.objectStore('users');
+        const request = store.getAll();
+        request.onsuccess = () => resolve(request.result[0]);
     });
 }
 
-function saveUser(user) {
+function setUser(user) {
     return new Promise((resolve) => {
-        const tx = db.transaction('user', 'readwrite');
-        const store = tx.objectStore('user');
-        store.put({ id: 1, ...user });
-        tx.oncomplete = resolve;
+        const tx = db.transaction('users', 'readwrite');
+        const store = tx.objectStore('users');
+        const request = store.add(user);
+        request.onsuccess = resolve;
     });
 }
 
@@ -41,10 +40,7 @@ function addProduct(product) {
         const tx = db.transaction('products', 'readwrite');
         const store = tx.objectStore('products');
         const request = store.add(product);
-        request.onsuccess = () => {
-            product.id = request.result;
-            resolve(product);
-        };
+        request.onsuccess = resolve;
     });
 }
 
@@ -68,21 +64,26 @@ function getProduct(id) {
 
 function updateProduct(id, updates) {
     return new Promise((resolve) => {
-        getProduct(id).then(product => {
+        getProduct(id).then(prod => {
+            const updated = { ...prod, ...updates };
             const tx = db.transaction('products', 'readwrite');
             const store = tx.objectStore('products');
-            store.put({ ...product, ...updates });
-            tx.oncomplete = resolve;
+            const request = store.put(updated);
+            request.onsuccess = resolve;
         });
     });
+}
+
+function updateStock(id, newStock) {
+    return updateProduct(id, { stock: newStock });
 }
 
 function addSale(sale) {
     return new Promise((resolve) => {
         const tx = db.transaction('sales', 'readwrite');
         const store = tx.objectStore('sales');
-        store.add(sale);
-        tx.oncomplete = resolve;
+        const request = store.add(sale);
+        request.onsuccess = resolve;
     });
 }
 

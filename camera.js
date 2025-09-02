@@ -1,23 +1,12 @@
-// camera.js
 let stream;
-let mobilenetModel;
+let model;
 
 async function loadModel() {
-    mobilenetModel = await mobilenet.load();
-    return mobilenetModel;
+    model = await mobilenet.load();
 }
 
-async function requestCameraPermission() {
-    try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-        stream.getTracks().forEach(track => track.stop());
-    } catch (err) {
-        console.error('Camera permission denied', err);
-    }
-}
-
-async function startCamera(videoId) {
-    const video = document.getElementById(videoId);
+async function startCamera() {
+    const video = document.getElementById('video');
     stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
     video.srcObject = stream;
 }
@@ -29,25 +18,26 @@ function stopCamera() {
     }
 }
 
-function captureImage(videoId) {
-    const video = document.getElementById(videoId);
-    const canvas = document.getElementById('canvas');
+async function captureImage(stop = true) {
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas') || document.createElement('canvas');
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     canvas.getContext('2d').drawImage(video, 0, 0);
+    if (stop) stopCamera();
     return canvas.toDataURL('image/jpeg');
 }
 
 async function extractFeatures(imageData) {
     const img = new Image();
     img.src = imageData;
-    await img.decode();
+    await new Promise(r => img.onload = r);
     const tfImg = tf.browser.fromPixels(img);
-    const logits = mobilenetModel.infer(tfImg, true);
-    const features = logits.dataSync();
+    const embeddings = await model.infer(tfImg, true);
+    const features = embeddings.arraySync()[0];
     tfImg.dispose();
-    logits.dispose();
-    return Array.from(features);
+    embeddings.dispose();
+    return features;
 }
 
 function cosineSimilarity(a, b) {
@@ -60,19 +50,4 @@ function cosineSimilarity(a, b) {
         normB += b[i] * b[i];
     }
     return dot / (Math.sqrt(normA) * Math.sqrt(normB));
-}
-
-async function findMatch(imageData) {
-    const features = await extractFeatures(imageData);
-    const products = await getProducts();
-    let bestMatch = null;
-    let bestScore = 0;
-    products.forEach(p => {
-        const score = cosineSimilarity(features, p.features);
-        if (score > bestScore && score > 0.8) { // Threshold
-            bestScore = score;
-            bestMatch = p;
-        }
-    });
-    return bestMatch;
 }

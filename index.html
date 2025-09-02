@@ -3,154 +3,179 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#007bff">
     <title>Pika Shot</title>
     <link rel="manifest" href="manifest.json">
     <link rel="stylesheet" href="style.css">
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@latest"></script>
+    <script defer src="db.js"></script>
+    <script defer src="camera.js"></script>
+    <script defer src="app.js"></script>
 </head>
 <body>
-    <div id="loading-spinner" class="spinner">Loading...</div>
-
-    <!-- Onboarding -->
-    <div id="onboarding" class="view hidden">
-        <h1>Welcome to Pika Shot</h1>
-        <input type="text" id="user-name" placeholder="Your Name">
-        <input type="text" id="business-name" placeholder="Business Name">
-        <button id="onboard-next">Next</button>
-        <div id="permission-explain" class="hidden">
-            <p>We need camera access to scan products quickly. This helps you add and sell items easily without typing.</p>
-            <button id="grant-permission">Grant Camera Access</button>
-        </div>
+    <div id="loading-spinner" class="loading">
+        <div class="spinner"></div>
+        <p>Loading Pika Shot...</p>
     </div>
+    <div id="app" style="display: none;">
+        <!-- Install Button -->
+        <button id="install-btn" style="display: none;">Add to Home Screen</button>
 
-    <!-- Home -->
-    <div id="home" class="view hidden">
-        <header>
-            <h1>Pika Shot</h1>
-            <button id="install-btn" class="hidden">Add to Homescreen</button>
-        </header>
-        <section id="summary">
-            <h2>Today's Summary</h2>
-            <div class="stats">
-                <div>Total Sales: <span id="total-sales">₦0</span></div>
-                <div>Items Sold: <span id="items-sold">0</span></div>
-                <div>Low Stock Items: <span id="low-stock">0</span></div>
+        <!-- Onboarding View -->
+        <div id="onboarding" class="view">
+            <h1>Welcome to Pika Shot</h1>
+            <p>Simple sales and inventory tracking for your business.</p>
+            <input type="text" id="user-name" placeholder="Your Name">
+            <input type="text" id="business-name" placeholder="Business Name">
+            <button id="onboard-next">Next</button>
+            <div id="camera-explain" style="display: none;">
+                <p>We need access to your camera to scan products quickly. This helps you add and sell items easily.</p>
+                <button id="grant-camera">Grant Camera Access</button>
             </div>
-        </section>
-        <section id="recent-sales">
-            <h2>Recent Sales</h2>
-            <ul id="recent-sales-list"></ul>
-        </section>
-        <nav>
-            <button id="to-products"><svg>...</svg> My Products</button> <!-- Use actual SVG for inventory icon -->
-            <button id="to-sell"><svg>...</svg> Sell Item</button> <!-- Use actual SVG for sell icon -->
-        </nav>
-    </div>
-
-    <!-- My Products -->
-    <div id="my-products" class="view hidden">
-        <header>
-            <button id="back-to-home-from-products">Back</button>
-            <h1>My Products</h1>
-        </header>
-        <button id="add-product">Add New Product</button>
-        <div id="products-grid" class="grid"></div>
-    </div>
-
-    <!-- Add Product -->
-    <div id="add-product-view" class="view hidden">
-        <header>
-            <button id="cancel-add">Cancel</button>
-            <h1>Add Product</h1>
-        </header>
-        <div id="camera-container">
-            <video id="add-video" autoplay playsinline></video>
-            <div id="add-countdown"></div>
-            <button id="cancel-scan-add">Cancel</button>
         </div>
-        <div id="confirm-capture" class="hidden">
-            <img id="captured-img" src="">
-            <button id="confirm-img">Confirm</button>
-            <button id="try-again">Try Again</button>
+
+        <!-- Home View -->
+        <div id="home" class="view" style="display: none;">
+            <header>
+                <h1>Pika Shot</h1>
+            </header>
+            <div class="stats">
+                <div class="stat-card">
+                    <i class="material-icons icon">attach_money</i>
+                    <h2>Total Sales</h2>
+                    <p id="total-sales">₦0</p>
+                </div>
+                <div class="stat-card">
+                    <i class="material-icons icon">shopping_cart</i>
+                    <h2>Items Sold</h2>
+                    <p id="items-sold">0</p>
+                </div>
+            </div>
+            <div class="actions">
+                <button id="to-products">
+                    <i class="material-icons">inventory_2</i>
+                    My Products
+                </button>
+                <button id="to-sell">
+                    <i class="material-icons">point_of_sale</i>
+                    Sell Item
+                </button>
+            </div>
+            <div id="recent-sales">
+                <h3>Recent Sales</h3>
+                <ul id="sales-list"></ul>
+            </div>
         </div>
-        <div id="product-form" class="hidden">
-            <input type="text" id="product-name" placeholder="Product Name">
-            <input type="number" id="product-price" placeholder="Price (₦)">
-            <input type="number" id="product-stock" placeholder="Stock Quantity">
-            <input type="text" id="product-unit" placeholder="Unit Type (e.g., sachets)">
-            <button id="save-product">Save</button>
+
+        <!-- My Products View -->
+        <div id="products" class="view" style="display: none;">
+            <header>
+                <button id="back-to-home"><i class="material-icons">arrow_back</i> Back</button>
+                <h1>My Products</h1>
+            </header>
+            <div id="product-grid" class="grid"></div>
+            <button id="add-product">
+                <i class="material-icons">add_circle</i>
+                Add New Product
+            </button>
+        </div>
+
+        <!-- Add Product View -->
+        <div id="add-product" class="view" style="display: none;">
+            <header>
+                <button id="cancel-add"><i class="material-icons">arrow_back</i> Cancel</button>
+                <h1>Add Product</h1>
+            </header>
+            <form id="add-form">
+                <img id="add-image" src="" alt="Product Image">
+                <input type="text" id="add-name" placeholder="Product Name" required>
+                <input type="number" id="add-price" placeholder="Price (₦)" required>
+                <input type="number" id="add-stock" placeholder="Stock Quantity" required>
+                <input type="text" id="add-unit" placeholder="Unit Type (e.g., sachets)" required>
+                <button type="submit"><i class="material-icons">save</i> Save Product</button>
+            </form>
+        </div>
+
+        <!-- Edit Product Modal -->
+        <div id="edit-modal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <h2>Edit Product</h2>
+                <form id="edit-form">
+                    <img id="edit-image" src="" alt="Product Image">
+                    <input type="text" id="edit-name" placeholder="Product Name" required>
+                    <input type="number" id="edit-price" placeholder="Price (₦)" required>
+                    <input type="number" id="edit-stock" placeholder="Stock Quantity" required>
+                    <input type="text" id="edit-unit" placeholder="Unit Type" required>
+                    <input type="hidden" id="edit-id">
+                    <button type="submit"><i class="material-icons">update</i> Update</button>
+                    <button type="button" id="close-edit"><i class="material-icons">cancel</i> Cancel</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Camera View (shared for add and sell) -->
+        <div id="camera-view" class="view" style="display: none;">
+            <header>
+                <button id="cancel-scan"><i class="material-icons">cancel</i> Cancel</button>
+                <h1>Scanning...</h1>
+            </header>
+            <div class="camera-container">
+                <video id="video" autoplay playsinline></video>
+                <div id="scan-overlay"></div>
+            </div>
+            <p id="scan-message">Align product within the frame</p>
+        </div>
+
+        <!-- Confirm Image View (for add) -->
+        <div id="confirm-image" class="view" style="display: none;">
+            <header>
+                <h1>Confirm Image</h1>
+            </header>
+            <img id="confirm-img" src="" alt="Captured Image">
+            <button id="confirm-yes"><i class="material-icons">check</i> Confirm</button>
+            <button id="confirm-no"><i class="material-icons">refresh</i> Try Again</button>
+        </div>
+
+        <!-- Sell Confirmation Modal -->
+        <div id="sell-modal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <h2>Sell Product</h2>
+                <img id="sell-image" src="" alt="Product">
+                <p id="sell-name"></p>
+                <p>Price: ₦<span id="sell-price"></span></p>
+                <input type="number" id="sell-quantity" min="1" placeholder="Quantity" required>
+                <p>Total: ₦<span id="sell-total">0</span></p>
+                <button id="confirm-sale"><i class="material-icons">check</i> Confirm Sale</button>
+                <button id="close-sell"><i class="material-icons">cancel</i> Cancel</button>
+                <input type="hidden" id="sell-id">
+            </div>
+        </div>
+
+        <!-- Not Found Notification -->
+        <div id="not-found-toast" class="toast" style="display: none;">
+            Product not found. Adding new...
+        </div>
+
+        <!-- Incoming Notification Toast -->
+        <div id="incoming-toast" class="toast" style="display: none;">
+            Incoming Purchase from Tolu! <button id="view-incoming">View Items</button>
+        </div>
+
+        <!-- Incoming Modal -->
+        <div id="incoming-modal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <h2>Incoming Purchase</h2>
+                <ul>
+                    <li>Item 1: 10 units</li>
+                    <li>Item 2: 5 units</li>
+                </ul>
+                <button id="accept-incoming"><i class="material-icons">check</i> Accept</button>
+                <button id="decline-incoming"><i class="material-icons">cancel</i> Decline</button>
+            </div>
         </div>
     </div>
-
-    <!-- Edit Product -->
-    <div id="edit-product-view" class="view hidden">
-        <header>
-            <button id="back-to-products-from-edit">Back</button>
-            <h1>Edit Product</h1>
-        </header>
-        <img id="edit-img" src="">
-        <input type="text" id="edit-name" placeholder="Product Name">
-        <input type="number" id="edit-price" placeholder="Price (₦)">
-        <input type="number" id="edit-stock" placeholder="Stock Quantity">
-        <input type="text" id="edit-unit" placeholder="Unit Type">
-        <button id="update-product">Update</button>
-    </div>
-
-    <!-- Sell Item -->
-    <div id="sell-view" class="view hidden">
-        <header>
-            <button id="cancel-sell">Cancel</button>
-            <h1>Sell Item</h1>
-        </header>
-        <div id="sell-camera-container">
-            <video id="sell-video" autoplay playsinline></video>
-            <div id="sell-timer">Scanning...</div>
-            <button id="cancel-scan-sell">Cancel</button>
-        </div>
-        <div id="sell-confirm" class="hidden">
-            <img id="sell-img" src="">
-            <p id="sell-name"></p>
-            <p>Price: ₦<span id="sell-price"></span></p>
-            <input type="number" id="sell-quantity" placeholder="Quantity" min="1">
-            <p>Total: ₦<span id="sell-total">0</span></p>
-            <button id="confirm-sale">Confirm Sale</button>
-        </div>
-        <div id="not-found" class="hidden">
-            <p>Product not found. Add it now?</p>
-            <img id="not-found-img" src="">
-            <!-- Form same as add -->
-            <input type="text" id="not-found-name" placeholder="Product Name">
-            <input type="number" id="not-found-price" placeholder="Price (₦)">
-            <input type="number" id="not-found-stock" placeholder="Stock Quantity">
-            <input type="text" id="not-found-unit" placeholder="Unit Type">
-            <button id="save-not-found">Save and Sell</button>
-        </div>
-    </div>
-
-    <!-- Toast Notification -->
-    <div id="toast" class="hidden">Incoming Purchase from Tolu! <button id="view-items">View Items</button></div>
-
-    <!-- Communal Modal -->
-    <div id="communal-modal" class="modal hidden">
-        <h2>Incoming Items</h2>
-        <ul>
-            <li>Item 1: 10 units</li>
-            <li>Item 2: 5 units</li>
-        </ul>
-        <button id="accept-communal">Accept</button>
-        <button id="decline-communal">Decline</button>
-    </div>
-
-    <canvas id="canvas" style="display:none;"></canvas>
-
-    <script src="db.js"></script>
-    <script src="camera.js"></script>
-    <script src="app.js"></script>
-    <script>
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/serviceworker.js');
-        }
-    </script>
 </body>
 </html>
