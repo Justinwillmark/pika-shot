@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>pika shot</title>
+    <meta name="theme-color" content="#4a90e2"/>
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.11.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.0/dist/mobilenet.min.js"></script>
+</head>
+<body>
+
+    <div id="page-onboarding" class="page">
+        <div class="onboarding-content">
+            <h1>Welcome to pika shot 📸</h1>
+            <p>The fastest way to track your sales.</p>
+            <div class="form-group">
+                <label for="user-name">Your Name</label>
+                <input type="text" id="user-name" placeholder="e.g., Tunde">
+            </div>
+            <div class="form-group">
+                <label for="business-name">Your Business Name</label>
+                <input type="text" id="business-name" placeholder="e.g., Tunde's Store">
+            </div>
+            <button id="finish-onboarding-btn" class="btn-primary">Get Started</button>
+        </div>
+    </div>
+
+    <div id="page-dashboard" class="page">
+        <header>
+            <h1 id="dashboard-business-name">My Store</h1>
+            <div class="sales-summary">
+                <p>Today's Sales</p>
+                <h2 id="total-sales">₦0</h2>
+            </div>
+        </header>
+        <main>
+            <div id="sales-list">
+                <p class="empty-state">No sales recorded yet today.</p>
+            </div>
+        </main>
+        <footer>
+            <button id="record-sale-btn" class="btn-primary">⚡ Sell Item</button>
+            <button id="manage-products-btn">📦 My Products</button>
+        </footer>
+    </div>
+
+    <div id="page-products" class="page">
+        <header>
+            <button class="back-btn" data-target="page-dashboard">←</button>
+            <h1>My Products</h1>
+        </header>
+        <main>
+            <div id="product-list">
+                </div>
+        </main>
+        <footer>
+            <button id="add-product-btn" class="btn-primary">➕ Add New Product</button>
+        </footer>
+    </div>
+
+    <div id="page-camera" class="page">
+        <video id="camera-view" autoplay playsinline></video>
+        <div id="camera-overlay">
+            <div id="camera-box" class="camera-box"></div>
+            <p id="camera-instruction">Point camera at product</p>
+            <div id="scan-feedback" class="hidden"></div>
+        </div>
+        <button id="cancel-camera-btn" class="btn-secondary">Cancel</button>
+    </div>
+
+    <div class="modal-backdrop hidden">
+        <div id="modal-add-product" class="modal">
+            <h3>New Product Details</h3>
+            <img id="product-capture-preview" src="" alt="Product Preview">
+            <div class="form-group">
+                <label for="product-name">Product Name</label>
+                <input type="text" id="product-name" placeholder="e.g., Indomie Noodles">
+            </div>
+            <div class="form-group-row">
+                <div class="form-group">
+                    <label for="product-price">Price (₦)</label>
+                    <input type="number" id="product-price" placeholder="250">
+                </div>
+                <div class="form-group">
+                    <label for="product-quantity">Stock</label>
+                    <input type="number" id="product-quantity" placeholder="50">
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button id="save-product-btn" class="btn-primary">Save Product</button>
+                <button class="btn-secondary modal-cancel-btn">Cancel</button>
+            </div>
+        </div>
+
+        <div id="modal-sale-confirm" class="modal">
+            <h3 id="sale-item-name">Product Name</h3>
+            <img id="sale-item-image" src="" alt="Product Image">
+            <div class="form-group">
+                <label for="sale-quantity">How many are you selling?</label>
+                <input type="number" id="sale-quantity" value="1" min="1">
+            </div>
+            <p class="sale-total">Total: <span id="sale-total-price">₦0</span></p>
+            <div class="modal-actions">
+                <button id="confirm-sale-btn" class="btn-primary">Confirm Sale</button>
+                <button class="btn-secondary modal-cancel-btn">Cancel</button>
+            </div>
+        </div>
+
+        <div id="log-request-toast" class="toast hidden">
+            <p>Incoming Purchase from Tolu!</p>
+            <button id="view-log-request-btn">View Items</button>
+        </div>
+
+        <div id="modal-log-request" class="modal">
+            <h3>Purchase from Tolu</h3>
+            <p>Total: ₦30,000</p>
+            <ul class="log-request-list">
+                <li>Indomie Noodles (2 cartons)</li>
+                <li>Coca-Cola 50cl (1 crate)</li>
+                <li>Golden Morn 500g (10 packs)</li>
+            </ul>
+            <div class="modal-actions">
+                <button id="accept-log-btn" class="btn-primary">Accept & Record</button>
+                <button class="btn-secondary modal-cancel-btn">Decline</button>
+            </div>
+        </div>
+    </div>
+    
+    <script src="db.js"></script>
+    <script src="camera.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
