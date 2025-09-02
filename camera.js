@@ -7,7 +7,7 @@ const Camera = {
     try {
       this.model = await mobilenet.load({version: 2, alpha: 0.5});
       this.isModelReady = true;
-      console.log('MobileNet model loaded.');
+      console.log('MobileNet model loaded (version 2, alpha 0.5).');
     } catch (error) {
       console.error('Error loading model:', error);
       this.isModelReady = false;
@@ -15,36 +15,38 @@ const Camera = {
   },
 
   async startCamera(videoElement) {
-    if (this.videoStream) this.stopCamera();
-
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error("Camera API not available on this browser.");
+    if (this.videoStream) {
+        this.stopCamera();
     }
-    
-    try {
-      const constraints = {
-        video: {
-          facingMode: 'environment',
-          width: { ideal: 640 },
-          height: { ideal: 480 }
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      try {
+        const constraints = {
+          video: {
+            facingMode: 'environment',
+            width: { ideal: 640 },
+            height: { ideal: 480 }
+          }
+        };
+        this.videoStream = await navigator.mediaDevices.getUserMedia(constraints);
+        videoElement.srcObject = this.videoStream;
+        return new Promise(resolve => {
+            videoElement.onloadedmetadata = () => {
+                videoElement.play();
+                resolve(true);
+            };
+        });
+      } catch (err) {
+        console.error("Error accessing camera:", err);
+        // Provide more helpful error messages
+        if(err.name === "NotAllowedError") {
+            alert("Camera permission was denied. Please enable it in your browser settings to continue.");
+        } else {
+            alert("Could not access the camera. It might be in use by another app or not available.");
         }
-      };
-      this.videoStream = await navigator.mediaDevices.getUserMedia(constraints);
-      videoElement.srcObject = this.videoStream;
-      await new Promise(resolve => {
-          videoElement.onloadedmetadata = () => {
-              videoElement.play();
-              resolve();
-          };
-      });
-    } catch (err) {
-      console.error("Error accessing camera:", err);
-      if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
-        throw new Error("Camera permission denied. Please enable it in your browser settings.");
-      } else {
-        throw new Error("Could not access camera. It may be in use.");
+        return false;
       }
     }
+    return false;
   },
 
   stopCamera() {
@@ -67,11 +69,15 @@ const Camera = {
       console.error("Model not loaded yet.");
       return null;
     }
-    return tf.tidy(() => {
-        const tensor = tf.browser.fromPixels(imageElementOrCanvas).toFloat().div(tf.scalar(255.0)).expandDims();
-        const embedding = this.model.infer(tensor, true);
-        return embedding.dataSync();
-    });
+    try {
+      const tensor = tf.browser.fromPixels(imageElementOrCanvas).toFloat().div(tf.scalar(255.0)).expandDims();
+      const embedding = this.model.infer(tensor, true);
+      tensor.dispose();
+      return embedding.dataSync();
+    } catch (error) {
+      console.error('Error getting embedding:', error);
+      return null;
+    }
   },
 
   _cosineSimilarity(vecA, vecB) {
@@ -85,14 +91,17 @@ const Camera = {
       }
       magnitudeA = Math.sqrt(magnitudeA);
       magnitudeB = Math.sqrt(magnitudeB);
-      return (magnitudeA && magnitudeB) ? dotProduct / (magnitudeA * magnitudeB) : 0;
+      if (magnitudeA && magnitudeB) {
+          return dotProduct / (magnitudeA * magnitudeB);
+      }
+      return 0;
   },
 
   async findBestMatch(embeddingToMatch, allProducts) {
     if (!embeddingToMatch || allProducts.length === 0) return null;
 
     let bestMatch = { product: null, score: 0.0 };
-    const SIMILARITY_THRESHOLD = 0.93; // Stricter threshold for higher accuracy
+    const SIMILARITY_THRESHOLD = 0.92; // Stricter threshold for higher accuracy
 
     for (const product of allProducts) {
       if (product.embedding && product.stock > 0) { // Only match items in stock
@@ -104,6 +113,7 @@ const Camera = {
     }
     
     if (bestMatch.score > SIMILARITY_THRESHOLD) {
+      console.log(`Found match: ${bestMatch.product.name} with score ${bestMatch.score}`);
       return bestMatch.product;
     }
     return null;

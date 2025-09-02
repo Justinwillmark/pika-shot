@@ -4,8 +4,8 @@
   "description": "Fast sales and inventory tracking for Nigerian retailers.",
   "start_url": "/index.html",
   "display": "standalone",
-  "background_color": "#F9FAFB",
-  "theme_color": "#4338CA",
+  "background_color": "#F8F9FE",
+  "theme_color": "#4A6CFD",
   "orientation": "portrait-primary",
   "icons": [
     {
