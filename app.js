@@ -73,8 +73,8 @@ document.addEventListener('DOMContentLoaded', () => {
         init() {
             this.registerServiceWorker();
             DB.init().then(() => {
-                this.checkOnboarding();
                 this.bindEvents();
+                this.checkOnboarding();
                 // Simulate communal bookkeeping
                 setTimeout(() => this.showCommunalBookingToast(), 15000);
             });
@@ -140,21 +140,30 @@ document.addEventListener('DOMContentLoaded', () => {
         
         async checkOnboarding() {
             const userInfo = await DB.getUserInfo();
+            this.elements.loader.classList.add('hidden');
+            this.elements.appContainer.classList.remove('hidden');
+
             if (userInfo) {
-                this.elements.welcomeMessage.textContent = `Welcome, ${userInfo.name}!`;
-                this.elements.businessNameHeader.textContent = userInfo.businessName;
-                this.elements.loader.classList.add('hidden');
-                this.elements.appContainer.classList.remove('hidden');
-                this.elements.mainApp.classList.remove('hidden');
-                this.elements.onboardingView.classList.remove('active-view');
-                this.navigateTo('home-view');
-                this.refreshDashboard();
-                this.renderProducts();
+                this._launchApp(userInfo);
             } else {
-                this.elements.loader.classList.add('hidden');
-                this.elements.appContainer.classList.remove('hidden');
                 this.showView('onboarding-view');
             }
+        },
+
+        async _launchApp(userInfo) {
+            this.elements.welcomeMessage.textContent = `Welcome, ${userInfo.name}!`;
+            this.elements.businessNameHeader.textContent = userInfo.businessName;
+
+            // Hide all potential onboarding views
+            this.elements.onboardingView.classList.remove('active-view');
+            this.elements.cameraPermissionView.classList.remove('active-view');
+            
+            // Show the main application interface
+            this.elements.mainApp.classList.remove('hidden');
+            
+            this.navigateTo('home-view');
+            this.refreshDashboard();
+            this.renderProducts();
         },
 
         async finishOnboarding() {
@@ -164,7 +173,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.showToast("Please enter your name and business name.");
                 return;
             }
-            await DB.setUserInfo({ name, businessName });
+            await DB.setUserInfo({ id: 'user', name, businessName });
             this.showView('camera-permission-view');
         },
 
@@ -173,7 +182,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: true });
                 // Immediately stop the stream; we only wanted to trigger the permission prompt.
                 stream.getTracks().forEach(track => track.stop());
-                this.checkOnboarding();
+                
+                // Now that permission is granted, complete the onboarding by launching the app
+                const userInfo = await DB.getUserInfo();
+                this._launchApp(userInfo);
+
             } catch (error) {
                 alert("Camera access is required to scan products. Please enable it in your browser settings.");
             }
@@ -182,10 +195,8 @@ document.addEventListener('DOMContentLoaded', () => {
         showView(viewId) {
             this.elements.views.forEach(view => {
                 view.classList.remove('active-view');
-                if (view.id === viewId) {
-                    view.classList.add('active-view');
-                }
             });
+            document.getElementById(viewId).classList.add('active-view');
         },
         
         navigateTo(viewId) {
@@ -226,20 +237,19 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             this.elements.mainApp.classList.remove('hidden');
             this.elements.cameraView.classList.remove('active-view');
+            // Default back to the home view after any cancellation
+            this.navigateTo('home-view');
         },
 
         handleCapture(imageData) {
             this.capturedImageData = imageData;
             this.elements.capturedImagePreview.src = this.capturedImageData;
             
-            // If scanning to sell and no match was found
             if (this.currentScanMode === 'sell') {
                 this.showToast("Product not found. Let's add it!");
-                this.currentScanMode = 'add'; // Switch mode to add
-                // No need to show confirm modal, go straight to details
+                this.currentScanMode = 'add'; 
                 this.showModal('product-details-modal');
             } else {
-                 // Regular 'add' flow
                 this.showModal('confirm-capture-modal');
             }
         },
@@ -261,20 +271,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 imageData: this.capturedImageData,
             };
 
-            if (!product.name || !product.price || !product.stock || !product.unit) {
-                this.showToast("Please fill all fields.");
+            if (!product.name || isNaN(product.price) || isNaN(product.stock) || !product.unit) {
+                this.showToast("Please fill all fields correctly.");
                 return;
             }
 
             await DB.saveProduct(product);
             this.showToast(this.editingProductId ? 'Product Updated!' : 'Product Added!');
             
-            // Reset state
             this.editingProductId = null;
             this.capturedImageData = null;
             document.getElementById('product-form').reset();
             this.hideModal('product-details-modal');
-            this.stopScan(); // Important: fully stop camera flow
+            this.stopScan(); 
             this.navigateTo('products-view');
             this.renderProducts();
         },
@@ -314,7 +323,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!product) return;
             
             this.editingProductId = product.id;
-            this.capturedImageData = product.imageData; // Important for saving
+            this.capturedImageData = product.imageData;
             
             this.elements.modalTitle.textContent = "Edit Product";
             document.getElementById('product-id').value = product.id;
@@ -348,6 +357,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const quantitySold = parseInt(this.elements.sellQuantityInput.value);
             const product = await DB.getProduct(productId);
 
+            if (quantitySold <= 0) {
+                this.showToast("Quantity must be at least 1.");
+                return;
+            }
             if (quantitySold > product.stock) {
                 this.showToast("Not enough stock!");
                 return;
@@ -356,7 +369,6 @@ document.addEventListener('DOMContentLoaded', () => {
             product.stock -= quantitySold;
             await DB.saveProduct(product);
             
-            // Record sale for dashboard
             this.salesData.push({ name: product.name, quantity: quantitySold, total: product.price * quantitySold });
 
             this.hideModal('sell-item-modal');
@@ -364,13 +376,11 @@ document.addEventListener('DOMContentLoaded', () => {
             this.refreshDashboard();
             this.renderProducts();
             
-            // Automatically start next scan
             this.startScan('sell');
         },
 
         cancelSale() {
             this.hideModal('sell-item-modal');
-             // Go back to the home screen after canceling a sale
             this.navigateTo('home-view');
         },
         
@@ -381,7 +391,6 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.totalSalesEl.textContent = `₦${totalSales.toLocaleString()}`;
             this.elements.itemsSoldEl.textContent = itemsSold;
 
-            // Render recent sales
             const list = this.elements.recentSalesList;
             if (this.salesData.length === 0) {
                  list.innerHTML = `<p class="empty-state">No sales recorded yet.</p>`;
