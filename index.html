@@ -3,175 +3,222 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>pika shot</title>
     <meta name="theme-color" content="#4a90e2"/>
+    <title>pika shot</title>
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="manifest.json">
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.11.0/dist/tf.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.0/dist/mobilenet.min.js"></script>
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
 </head>
 <body>
-    <!-- Loading Spinner (Fixes blank screen issue) -->
-    <div id="loading-spinner" class="spinner-container">
+
+    <div id="loading-spinner" class="spinner-overlay">
         <div class="spinner"></div>
+        <p>Loading pika shot...</p>
     </div>
 
-    <!-- Onboarding Page -->
-    <div id="page-onboarding" class="page">
-        <!-- (Content is the same, no changes needed here) -->
-        <div class="onboarding-content">
-            <h1>Welcome to pika shot 📸</h1>
-            <p>The fastest way to track your sales.</p>
-            <div class="form-group">
-                <label for="user-name">Your Name</label>
-                <input type="text" id="user-name" placeholder="e.g., Tunde">
-            </div>
-            <div class="form-group">
-                <label for="business-name">Your Business Name</label>
-                <input type="text" id="business-name" placeholder="e.g., Tunde's Store">
-            </div>
-            <button id="finish-onboarding-btn" class="btn-primary">Get Started</button>
-        </div>
-    </div>
+    <div id="app-container" class="hidden">
 
-    <!-- Main Dashboard Page -->
-    <div id="page-dashboard" class="page">
-        <header>
-            <h1 id="dashboard-business-name">My Store</h1>
-            <!-- NEW: Install App Button -->
-            <button id="install-app-btn" class="header-btn hidden" aria-label="Install App">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            </button>
-        </header>
-        <main>
-             <div class="sales-summary">
-                <p>Today's Sales</p>
-                <h2 id="total-sales">₦0</h2>
-            </div>
-            <div id="sales-list"></div>
-        </main>
-        <footer>
-            <button id="record-sale-btn" class="btn-primary">⚡ Sell Item</button>
-            <button id="manage-products-btn">📦 My Products</button>
-        </footer>
-    </div>
-
-    <!-- Product Management Page -->
-    <div id="page-products" class="page">
-        <header>
-            <button class="back-btn" data-target="page-dashboard">←</button>
-            <h1>My Products</h1>
-        </header>
-        <main><div id="product-list"></div></main>
-        <footer><button id="add-product-btn" class="btn-primary">➕ Add New Product</button></footer>
-    </div>
-
-    <!-- Camera Page -->
-    <div id="page-camera" class="page">
-        <video id="camera-view" autoplay playsinline></video>
-        <div id="camera-overlay">
-            <div id="camera-box" class="camera-box"></div>
-            <p id="camera-instruction">Point camera at product</p>
-            <div id="scan-feedback" class="hidden"></div>
-        </div>
-        <button id="cancel-camera-btn" class="btn-secondary">Cancel</button>
-    </div>
-
-    <!-- Modals -->
-    <div id="modal-backdrop" class="modal-backdrop hidden">
-        <!-- (All modals are now children of the backdrop for better control) -->
-        
-        <!-- NEW: Confirm Capture Modal -->
-        <div id="modal-confirm-capture" class="modal hidden">
-            <h3>Is this a good picture?</h3>
-            <img id="capture-preview-img" src="" alt="Captured product image">
-            <p class="modal-info">A clear picture helps the AI remember your product.</p>
-            <div class="modal-actions">
-                <button id="confirm-capture-btn" class="btn-primary">Looks Good</button>
-                <button id="retry-capture-btn" class="btn-secondary">Try Again</button>
+        <div id="onboarding-page" class="page">
+            <div class="page-content">
+                <div class="onboarding-header">
+                    <h1>Welcome to pika shot ⚡️</h1>
+                    <p>The fastest way to track your sales.</p>
+                </div>
+                <form id="onboarding-form">
+                    <div class="form-group">
+                        <label for="user-name">Your Name</label>
+                        <input type="text" id="user-name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="business-name">Business Name</label>
+                        <input type="text" id="business-name" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Get Started</button>
+                </form>
             </div>
         </div>
         
-        <!-- Add New Product Modal -->
-        <div id="modal-add-product" class="modal hidden">
-            <h3>New Product Details</h3>
-            <div class="form-group">
-                <label for="product-name">Product Name</label>
-                <input type="text" id="product-name" placeholder="e.g., Indomie Noodles">
-            </div>
-            <div class="form-group-row">
-                <div class="form-group">
-                    <label for="product-price">Price (₦)</label>
-                    <input type="number" id="product-price" placeholder="250">
-                </div>
-                <div class="form-group">
-                    <label for="product-quantity">In Stock</label>
-                    <input type="number" id="product-quantity" placeholder="50">
-                </div>
-            </div>
-            <div class="form-group"> <!-- NEW: Unit Type -->
-                <label for="product-unit">Unit Type (optional)</label>
-                <input type="text" id="product-unit" placeholder="e.g., sachets, bottles, cans">
-            </div>
-            <div class="modal-actions">
-                <button id="save-product-btn" class="btn-primary">Save Product</button>
-                <button class="btn-secondary modal-cancel-btn">Cancel</button>
+        <div id="permission-page" class="page hidden">
+            <div class="page-content text-center">
+                 <div class="permission-icon">📷</div>
+                <h2>Camera Access Needed</h2>
+                <p>pika shot uses your camera to scan products and track sales instantly. Your photos are never stored online.</p>
+                <button id="grant-permission-btn" class="btn btn-primary">Grant Access</button>
             </div>
         </div>
 
-        <!-- NEW: Edit Product Modal -->
-        <div id="modal-edit-product" class="modal hidden">
-             <h3>Edit Product</h3>
-            <div class="form-group">
-                <label for="edit-product-name">Product Name</label>
-                <input type="text" id="edit-product-name">
-            </div>
-            <div class="form-group-row">
-                <div class="form-group">
-                    <label for="edit-product-price">Price (₦)</label>
-                    <input type="number" id="edit-product-price">
+
+        <div id="main-app" class="hidden">
+            <header>
+                <h1 id="header-title">Dashboard</h1>
+                <button id="install-pwa-btn" class="install-btn hidden">Install App</button>
+            </header>
+
+            <main id="main-content">
+                <div id="home-page" class="page">
+                    <div class="dashboard-header">
+                        <h2 id="welcome-message">Welcome!</h2>
+                        <p id="business-name-display"></p>
+                    </div>
+                    <div class="dashboard-grid">
+                        <div class="stat-card">
+                            <h3>Total Sales</h3>
+                            <p id="total-sales">₦0.00</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Items Sold</h3>
+                            <p id="items-sold">0</p>
+                        </div>
+                         <div class="stat-card">
+                            <h3>Products in Stock</h3>
+                            <p id="products-in-stock">0</p>
+                        </div>
+                    </div>
+                     <div class="main-actions">
+                        <button id="sell-item-btn" class="action-btn">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M4.005 21.995V6h16v16h-16Zm1-1h14V7h-14v14Zm2-10h10v-5H7.005v5Zm0 3h10v2h-10v-2Zm-3 7h14V7H4.005v14Zm0 0V7v14Z"/></svg>
+                            <span>Sell Item</span>
+                        </button>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label for="edit-product-quantity">In Stock</label>
-                    <input type="number" id="edit-product-quantity">
+
+                <div id="products-page" class="page hidden">
+                   <div id="product-list-container">
+                       <div id="product-grid" class="product-grid">
+                           </div>
+                       <div id="empty-products-message" class="empty-state hidden">
+                           <p>You have no products yet.</p>
+                           <p>Tap 'Add New Product' to get started!</p>
+                       </div>
+                   </div>
                 </div>
-            </div>
-             <div class="form-group">
-                <label for="edit-product-unit">Unit Type</label>
-                <input type="text" id="edit-product-unit">
-            </div>
-            <div class="modal-actions">
-                <button id="save-edit-product-btn" class="btn-primary">Save Changes</button>
-                <button class="btn-secondary modal-cancel-btn">Cancel</button>
-            </div>
+            </main>
+
+            <footer>
+                <nav>
+                    <button class="nav-btn active" data-page="home-page">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M4 21V9l8-6 8 6v12h-6v-7h-4v7H4Z"/></svg>
+                        <span>Home</span>
+                    </button>
+                    <button id="add-product-footer-btn" class="nav-btn-main">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M11 13H5v-2h6V5h2v6h6v2h-6v6h-2v-6Z"/></svg>
+                    </button>
+                    <button class="nav-btn" data-page="products-page">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M6 16h2v2H6v-2Zm0-4h2v2H6v-2Zm0-4h2v2H6V8Zm4 8h8v2h-8v-2Zm0-4h8v2h-8v-2Zm0-4h8v2h-8V8ZM4 20q-.825 0-1.413-.588T2 18V6q0-.825.588-1.413T4 4h4l2 2h8q.825 0 1.413.588T22 8v10q0 .825-.588 1.413T20 20H4Zm0-2h16V8h-8.825l-2-2H4v12Zm0 0V6v12Z"/></svg>
+                        <span>Products</span>
+                    </button>
+                </nav>
+            </footer>
         </div>
 
-        <!-- Sale Confirmation Modal -->
-        <div id="modal-sale-confirm" class="modal hidden">
-            <h3 id="sale-item-name">Product Name</h3>
-            <img id="sale-item-image" src="" alt="Product Image">
-            <p id="sale-item-price" class="sale-price-display"></p>
-            <div class="form-group">
-                <label for="sale-quantity">How many are you selling?</label>
-                <input type="number" id="sale-quantity" value="1" min="1">
-            </div>
-            <p class="sale-total">Total: <span id="sale-total-price">₦0</span></p>
-            <div class="modal-actions">
-                <button id="confirm-sale-btn" class="btn-primary">Confirm Sale</button>
-                <button class="btn-secondary modal-cancel-btn">Cancel</button>
-            </div>
+    </div>
+
+    <div id="camera-view" class="camera-container hidden">
+        <video id="camera-feed" playsinline autoplay></video>
+        <div class="camera-overlay">
+            <p id="camera-status-text">Point at a product to sell...</p>
+            <div class="camera-shutter-anim"></div>
         </div>
-        
-        <!-- Log Request Toast -->
-        <div id="log-request-toast" class="toast hidden">
-            <p>Incoming Purchase from Tolu!</p>
-            <button id="view-log-request-btn">View Items</button>
+        <button id="cancel-camera-btn" class="camera-cancel-btn">Cancel</button>
+    </div>
+
+    <div id="modal-backdrop" class="hidden"></div>
+    
+    <div id="confirm-image-modal" class="modal hidden">
+        <img id="captured-image-preview" src="" alt="Captured Product">
+        <h3>Is this correct?</h3>
+        <div class="modal-actions">
+            <button id="retake-photo-btn" class="btn btn-secondary">Try Again</button>
+            <button id="confirm-photo-btn" class="btn btn-primary">Confirm</button>
         </div>
-        <div id="modal-log-request" class="modal hidden"> <!-- (Unchanged) --></div>
     </div>
     
+    <div id="product-form-modal" class="modal hidden">
+        <h2 id="product-modal-title">Add New Product</h2>
+        <form id="product-form">
+            <input type="hidden" id="product-id">
+            <img id="product-form-image" class="product-form-preview" src="" alt="Product Image">
+            <div class="form-group">
+                <label for="product-name">Product Name</label>
+                <input type="text" id="product-name" required>
+            </div>
+            <div class="form-group">
+                <label for="product-price">Price (₦)</label>
+                <input type="number" id="product-price" inputmode="decimal" required>
+            </div>
+             <div class="form-row">
+                <div class="form-group">
+                    <label for="product-stock">Stock</label>
+                    <input type="number" id="product-stock" inputmode="numeric" required>
+                </div>
+                <div class="form-group">
+                    <label for="product-unit">Unit</label>
+                    <input type="text" id="product-unit" placeholder="e.g., sachets, bottles" required>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" id="cancel-product-form-btn" class="btn btn-secondary">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save Product</button>
+            </div>
+        </form>
+    </div>
+
+    <div id="sales-modal" class="modal hidden">
+        <h2>Confirm Sale</h2>
+        <img id="sales-product-image" class="product-form-preview" src="">
+        <h3 id="sales-product-name">Product Name</h3>
+        <p>Price: ₦<span id="sales-product-price">0</span></p>
+        <div class="form-group">
+            <label for="sales-quantity">Quantity</label>
+            <div class="quantity-control">
+                <button id="decrease-qty">-</button>
+                <input type="number" id="sales-quantity" value="1" inputmode="numeric">
+                <button id="increase-qty">+</button>
+            </div>
+        </div>
+        <div class="total-price">
+            Total: <span id="sales-total-price">₦0.00</span>
+        </div>
+        <div class="modal-actions">
+            <button type="button" id="cancel-sale-btn" class="btn btn-secondary">Cancel</button>
+            <button type="button" id="confirm-sale-btn" class="btn btn-primary">Confirm Sale</button>
+        </div>
+    </div>
+    
+     <div id="toast-notification" class="toast">
+        <p id="toast-message"></p>
+        <button id="toast-action-btn" class="hidden"></button>
+    </div>
+    
+    <div id="communal-modal" class="modal hidden">
+        <h2>Incoming Purchase</h2>
+        <p>Tolu wants to log a purchase from your shop.</p>
+        <ul class="communal-item-list">
+            <li>2 x Indomie Noodles</li>
+            <li>1 x Peak Milk</li>
+            <li>5 x Tom Tom Sweets</li>
+        </ul>
+        <div class="modal-actions">
+            <button id="decline-communal-btn" class="btn btn-secondary">Decline</button>
+            <button id="accept-communal-btn" class="btn btn-primary">Accept</button>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@latest/dist/mobilenet.min.js"></script>
+
     <script src="db.js"></script>
     <script src="camera.js"></script>
     <script src="app.js"></script>
+    
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/serviceworker.js')
+                    .then(registration => console.log('ServiceWorker registration successful with scope: ', registration.scope))
+                    .catch(error => console.log('ServiceWorker registration failed: ', error));
+            });
+        }
+    </script>
 </body>
 </html>

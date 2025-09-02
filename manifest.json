@@ -1,16 +1,21 @@
 {
-    "name": "pika shot",
-    "short_name": "pika shot",
-    "start_url": "/index.html",
-    "display": "standalone",
-    "background_color": "#ffffff",
-    "theme_color": "#3498db",
-    "orientation": "portrait-primary",
-    "icons": [
-        {
-            "src": "/icons/icon-512x512.png",
-            "type": "image/png",
-            "sizes": "512x512"
-        }
-    ]
+  "name": "pika shot",
+  "short_name": "pika shot",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4f6f9",
+  "theme_color": "#4a90e2",
+  "description": "The fastest way for informal retailers to track sales and inventory.",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
 }

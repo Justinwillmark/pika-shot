@@ -1,101 +1,125 @@
-const DB_NAME = 'pika-shot-db';
-const DB_VERSION = 3; // IMPORTANT: Incremented for schema change
-let db;
+const db = (() => {
+    let dbInstance;
+    const DB_NAME = 'pikaShotDB';
+    const DB_VERSION = 1;
+    const STORES = {
+        PRODUCTS: 'products',
+        SALES: 'sales',
+        USER: 'user',
+    };
 
-function initDB() {
-    return new Promise((resolve, reject) => {
-        const request = indexedDB.open(DB_NAME, DB_VERSION);
+    async function init() {
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.open(DB_NAME, DB_VERSION);
 
-        request.onupgradeneeded = (event) => {
-            db = event.target.result;
-            let transaction = event.target.transaction;
-            
-            // Re-evaluate stores to handle upgrades
-            if (!db.objectStoreNames.contains('products')) {
-                db.createObjectStore('products', { keyPath: 'id', autoIncrement: true });
-            }
-            // Add 'unitType' if it doesn't exist (for users upgrading)
-            // Note: IndexedDB doesn't have a direct 'addColumn', this is a simple setup.
-            // For complex migrations, data would be read and rewritten.
+            request.onerror = (event) => {
+                console.error("Database error:", event.target.error);
+                reject("Database error");
+            };
 
-            if (!db.objectStoreNames.contains('sales')) {
-                db.createObjectStore('sales', { keyPath: 'id', autoIncrement: true });
-            }
-            if (!db.objectStoreNames.contains('user_profile')) {
-                db.createObjectStore('user_profile', { keyPath: 'key' });
-            }
-        };
+            request.onsuccess = (event) => {
+                dbInstance = event.target.result;
+                resolve(dbInstance);
+            };
 
-        request.onsuccess = (event) => { db = event.target.result; resolve(db); };
-        request.onerror = (event) => reject(event.target.errorCode);
-    });
-}
-
-function saveData(storeName, data) {
-    return new Promise((resolve, reject) => {
-        const transaction = db.transaction([storeName], 'readwrite');
-        const store = transaction.objectStore(storeName);
-        const request = store.put(data);
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = (err) => reject(err);
-    });
-}
-
-function getData(storeName, key) {
-    return new Promise((resolve, reject) => {
-        const transaction = db.transaction([storeName], 'readonly');
-        const store = transaction.objectStore(storeName);
-        const request = store.get(key);
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = (err) => reject(err);
-    });
-}
-
-function getAllData(storeName) {
-    return new Promise((resolve, reject) => {
-        const transaction = db.transaction([storeName], 'readonly');
-        const store = transaction.objectStore(storeName);
-        const request = store.getAll();
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = (err) => reject(err);
-    });
-}
-
-async function getProductByEmbedding(embeddingToMatch) {
-    const products = await getAllData('products');
-    if (products.length === 0) return null;
-    let bestMatch = null;
-    let highestSimilarity = -1;
-    for (const product of products) {
-        if (product.embedding) {
-            const similarity = cosineSimilarity(embeddingToMatch, product.embedding);
-            if (similarity > highestSimilarity) {
-                highestSimilarity = similarity;
-                bestMatch = product;
-            }
-        }
+            request.onupgradeneeded = (event) => {
+                const db = event.target.result;
+                if (!db.objectStoreNames.contains(STORES.PRODUCTS)) {
+                    db.createObjectStore(STORES.PRODUCTS, { keyPath: 'id', autoIncrement: true });
+                }
+                if (!db.objectStoreNames.contains(STORES.SALES)) {
+                    db.createObjectStore(STORES.SALES, { keyPath: 'id', autoIncrement: true });
+                }
+                if (!db.objectStoreNames.contains(STORES.USER)) {
+                    db.createObjectStore(STORES.USER, { keyPath: 'id' });
+                }
+            };
+        });
     }
-    if (highestSimilarity > 0.85) { // Stricter threshold for better accuracy
-        return bestMatch;
-    }
-    return null;
-}
 
-async function updateProductStock(productId, quantitySold) {
-    const product = await getData('products', productId);
-    if (product) {
-        product.quantity -= quantitySold;
-        await saveData('products', product);
+    function getStore(storeName, mode) {
+        const transaction = dbInstance.transaction(storeName, mode);
+        return transaction.objectStore(storeName);
     }
-}
 
-function cosineSimilarity(vecA, vecB) {
-    let dotProduct = 0, normA = 0, normB = 0;
-    for (let i = 0; i < vecA.length; i++) {
-        dotProduct += vecA[i] * vecB[i];
-        normA += vecA[i] * vecA[i];
-        normB += vecB[i] * vecB[i];
+    async function saveUser(user) {
+        return new Promise((resolve, reject) => {
+            const store = getStore(STORES.USER, 'readwrite');
+            const request = store.put({ id: 1, ...user });
+            request.onsuccess = () => resolve();
+            request.onerror = (e) => reject(e.target.error);
+        });
     }
-    if (normA === 0 || normB === 0) return 0;
-    return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
-}
+
+    async function getUser() {
+        return new Promise((resolve, reject) => {
+            const store = getStore(STORES.USER, 'readonly');
+            const request = store.get(1);
+            request.onsuccess = (e) => resolve(e.target.result);
+            request.onerror = (e) => reject(e.target.error);
+        });
+    }
+
+    async function saveProduct(product) {
+        return new Promise((resolve, reject) => {
+            const store = getStore(STORES.PRODUCTS, 'readwrite');
+            const request = store.add(product);
+            request.onsuccess = () => resolve();
+            request.onerror = (e) => reject(e.target.error);
+        });
+    }
+    
+    async function updateProduct(product) {
+        return new Promise((resolve, reject) => {
+            const store = getStore(STORES.PRODUCTS, 'readwrite');
+            const request = store.put(product);
+            request.onsuccess = () => resolve();
+            request.onerror = (e) => reject(e.target.error);
+        });
+    }
+
+    async function getProduct(id) {
+        return new Promise((resolve, reject) => {
+            const store = getStore(STORES.PRODUCTS, 'readonly');
+            const request = store.get(id);
+            request.onsuccess = (e) => resolve(e.target.result);
+            request.onerror = (e) => reject(e.target.error);
+        });
+    }
+
+    async function getAllProducts() {
+        return new Promise((resolve, reject) => {
+            const store = getStore(STORES.PRODUCTS, 'readonly');
+            const request = store.getAll();
+            request.onsuccess = (e) => resolve(e.target.result);
+            request.onerror = (e) => reject(e.target.error);
+        });
+    }
+    
+    async function saveSale(sale) {
+        return new Promise((resolve, reject) => {
+            const store = getStore(STORES.SALES, 'readwrite');
+            const request = store.add(sale);
+            request.onsuccess = () => resolve();
+            request.onerror = (e) => reject(e.target.error);
+        });
+    }
+    
+    async function getDashboardStats() {
+        const products = await getAllProducts();
+        const sales = await new Promise((resolve, reject) => {
+            const store = getStore(STORES.SALES, 'readonly');
+            const request = store.getAll();
+            request.onsuccess = (e) => resolve(e.target.result);
+            request.onerror = (e) => reject(e.target.error);
+        });
+
+        const totalSales = sales.reduce((sum, sale) => sum + sale.totalPrice, 0);
+        const itemsSold = sales.reduce((sum, sale) => sum + sale.quantity, 0);
+        const productsInStock = products.length;
+
+        return { totalSales, itemsSold, productsInStock };
+    }
+
+    return { init, saveUser, getUser, saveProduct, getProduct, updateProduct, getAllProducts, saveSale, getDashboardStats };
+})();
