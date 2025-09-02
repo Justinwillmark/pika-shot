@@ -21,11 +21,12 @@ const DB = {
             request.onupgradeneeded = (event) => {
                 const db = event.target.result;
                 if (!db.objectStoreNames.contains('products')) {
-                    const productStore = db.createObjectStore('products', { keyPath: 'id' });
-                    // No indexes needed for this simple case, but could be added for performance
+                    db.createObjectStore('products', { keyPath: 'id' });
                 }
                 if (!db.objectStoreNames.contains('user_info')) {
-                    db.createObjectStore('user_info', { keyPath: 'id' });
+                    // **FIX:** Changed to not use an inline keyPath. This is more robust
+                    // for a single-entry store and prevents the previous error.
+                    db.createObjectStore('user_info');
                 }
             };
         });
@@ -35,8 +36,9 @@ const DB = {
         return new Promise((resolve, reject) => {
             const transaction = this.db.transaction(['user_info'], 'readwrite');
             const store = transaction.objectStore('user_info');
-            // Use a fixed ID for the single user info object
-            const request = store.put({ id: 'user', ...info });
+            // **FIX:** We now explicitly put the info object with a fixed key 'user'.
+            // The info object itself no longer needs an 'id' property.
+            const request = store.put(info, 'user'); 
             
             request.onsuccess = () => resolve();
             request.onerror = (event) => reject("Error saving user info: " + event.target.error);

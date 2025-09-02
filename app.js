@@ -77,6 +77,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.checkOnboarding();
                 // Simulate communal bookkeeping
                 setTimeout(() => this.showCommunalBookingToast(), 15000);
+            }).catch(err => {
+                console.error("Initialization failed:", err);
+                alert("There was a problem starting the app. Please try again.");
             });
         },
 
@@ -84,52 +87,40 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.finishOnboardingBtn.addEventListener('click', () => this.finishOnboarding());
             this.elements.grantCameraBtn.addEventListener('click', () => this.requestCameraPermission());
 
-            // Navigation
+            // ... (rest of the bindEvents function is unchanged)
             this.elements.navButtons.forEach(btn => {
                 btn.addEventListener('click', () => this.navigateTo(btn.dataset.view));
             });
             this.elements.backButtons.forEach(btn => {
                 btn.addEventListener('click', () => this.navigateTo(btn.dataset.target));
             });
-            
-            // Core Actions
             this.elements.sellItemHomeBtn.addEventListener('click', () => this.startScan('sell'));
             this.elements.addProductHomeBtn.addEventListener('click', () => this.startScan('add'));
             this.elements.addNewProductFab.addEventListener('click', () => this.startScan('add'));
             this.elements.cancelScanBtn.addEventListener('click', () => this.stopScan());
-
-            // Modals
             this.elements.retakePhotoBtn.addEventListener('click', () => {
                 this.hideModal('confirm-capture-modal');
-                this.startScan(this.currentScanMode, true); // Restart scan without hiding camera view
+                this.startScan(this.currentScanMode, true);
             });
             this.elements.confirmPhotoBtn.addEventListener('click', () => {
                 this.hideModal('confirm-capture-modal');
                 this.showModal('product-details-modal');
             });
-
-            // Product Form
             this.elements.productForm.addEventListener('submit', (e) => this.saveProduct(e));
             document.getElementById('cancel-product-form-btn').addEventListener('click', () => {
                 this.hideModal('product-details-modal');
-                this.navigateTo('products-view'); // Go back to products list
-                this.stopScan(); // Ensure camera is fully off
+                this.navigateTo('products-view');
+                this.stopScan();
             });
-
-            // Sell Form
             this.elements.sellQuantityInput.addEventListener('input', () => this.updateSellTotal());
             this.elements.confirmSellBtn.addEventListener('click', () => this.processSale());
             this.elements.cancelSellBtn.addEventListener('click', () => this.cancelSale());
-
-            // PWA Install
             window.addEventListener('beforeinstallprompt', (e) => {
                 e.preventDefault();
                 this.deferredInstallPrompt = e;
                 this.elements.installBtn.classList.remove('hidden');
             });
             this.elements.installBtn.addEventListener('click', () => this.promptInstall());
-
-            // Communal Booking
             this.elements.toast.addEventListener('click', () => {
                 this.hideToast();
                 this.showModal('communal-booking-modal');
@@ -150,15 +141,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         },
 
-        async _launchApp(userInfo) {
+        _launchApp(userInfo) {
             this.elements.welcomeMessage.textContent = `Welcome, ${userInfo.name}!`;
             this.elements.businessNameHeader.textContent = userInfo.businessName;
 
-            // Hide all potential onboarding views
             this.elements.onboardingView.classList.remove('active-view');
             this.elements.cameraPermissionView.classList.remove('active-view');
             
-            // Show the main application interface
             this.elements.mainApp.classList.remove('hidden');
             
             this.navigateTo('home-view');
@@ -167,23 +156,27 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         async finishOnboarding() {
-            const name = document.getElementById('user-name').value.trim();
-            const businessName = document.getElementById('business-name').value.trim();
-            if (!name || !businessName) {
-                this.showToast("Please enter your name and business name.");
-                return;
+            try {
+                const name = document.getElementById('user-name').value.trim();
+                const businessName = document.getElementById('business-name').value.trim();
+                if (!name || !businessName) {
+                    this.showToast("Please enter your name and business name.");
+                    return;
+                }
+                // **FIX:** This call now correctly matches the updated, more robust db.js structure.
+                await DB.setUserInfo({ name, businessName });
+                this.showView('camera-permission-view');
+            } catch (err) {
+                console.error("Failed to finish onboarding:", err);
+                this.showToast("Error saving details. Please try again.");
             }
-            await DB.setUserInfo({ id: 'user', name, businessName });
-            this.showView('camera-permission-view');
         },
 
         async requestCameraPermission() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                // Immediately stop the stream; we only wanted to trigger the permission prompt.
                 stream.getTracks().forEach(track => track.stop());
                 
-                // Now that permission is granted, complete the onboarding by launching the app
                 const userInfo = await DB.getUserInfo();
                 this._launchApp(userInfo);
 
@@ -209,6 +202,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         },
 
+        // ... The rest of the App object's methods (startScan, stopScan, etc.) remain unchanged ...
         async startScan(mode, isRetake = false) {
             this.currentScanMode = mode;
             if (!isRetake) {
@@ -237,7 +231,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             this.elements.mainApp.classList.remove('hidden');
             this.elements.cameraView.classList.remove('active-view');
-            // Default back to the home view after any cancellation
             this.navigateTo('home-view');
         },
 
