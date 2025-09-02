@@ -2,230 +2,319 @@ let deferredPrompt;
 let currentView = 'home';
 let capturedImage = null;
 let isSelling = false;
-let scanTimeout;
-let currentProductId = null;
+let scanInterval;
 
 window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPrompt = e;
-    document.getElementById('install-btn').style.display = 'block';
-});
-
-document.getElementById('install-btn').addEventListener('click', () => {
-    if (deferredPrompt) {
-        deferredPrompt.prompt();
-        deferredPrompt.userChoice.then((choiceResult) => {
-            if (choiceResult.outcome === 'accepted') {
-                console.log('User accepted');
-            }
-            deferredPrompt = null;
-        });
+    const installBtn = document.getElementById('install-btn');
+    if (installBtn) {
+        installBtn.style.display = 'block';
     }
 });
+
+function setupEventListeners() {
+    document.getElementById('install-btn')?.addEventListener('click', handleInstall);
+    document.getElementById('onboard-next').addEventListener('click', handleOnboardNext);
+    document.getElementById('grant-camera').addEventListener('click', handleGrantCamera);
+    document.getElementById('cancel-scan').addEventListener('click', handleCancelScan);
+    document.getElementById('confirm-yes').addEventListener('click', () => showProductModal());
+    document.getElementById('confirm-no').addEventListener('click', () => startScanning());
+    document.getElementById('add-form').addEventListener('submit', handleSaveProduct);
+    document.getElementById('cancel-add').addEventListener('click', () => {
+        closeProductModal();
+        showView('products');
+    });
+    document.getElementById('confirm-sale').addEventListener('click', handleConfirmSale);
+    document.getElementById('close-sell').addEventListener('click', handleCloseSell);
+    document.getElementById('sell-quantity').addEventListener('input', updateSellTotal);
+    
+    // Bottom Navigation
+    document.querySelectorAll('.nav-btn').forEach(btn => {
+        btn.addEventListener('click', () => showView(btn.dataset.view));
+    });
+    document.getElementById('add-product-btn').addEventListener('click', handleAddProduct);
+    document.getElementById('sell-item-btn').addEventListener('click', handleSellItem);
+
+    // Simulated Feature Listeners
+    document.getElementById('view-incoming').addEventListener('click', showIncomingModal);
+    document.getElementById('accept-incoming').addEventListener('click', () => document.getElementById('incoming-modal').style.display = 'none');
+    document.getElementById('decline-incoming').addEventListener('click', () => document.getElementById('incoming-modal').style.display = 'none');
+}
 
 async function initApp() {
     document.getElementById('loading-spinner').style.display = 'flex';
     await initDB();
-    await loadModel(); // From camera.js
+    await loadModel();
+    setupEventListeners();
     const user = await getUser();
     document.getElementById('loading-spinner').style.display = 'none';
-    document.getElementById('app').style.display = 'block';
+    document.getElementById('app').style.display = 'flex';
+
     if (!user) {
-        showView('onboarding');
+        showView('onboarding', false); // Don't show nav during onboarding
     } else {
+        document.getElementById('greeting').textContent = `Hello, ${user.name}!`;
         showView('home');
         updateHomeStats();
         setTimeout(showIncomingNotification, 15000);
     }
 }
 
-function showView(viewId) {
-    const views = document.querySelectorAll('.view');
-    views.forEach(v => v.style.display = 'none');
-    document.getElementById(viewId).style.display = 'block';
+function showView(viewId, showNav = true) {
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.getElementById(viewId)?.classList.add('active');
+    
+    document.querySelectorAll('.nav-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.view === viewId);
+    });
+    
+    document.getElementById('bottom-nav').style.display = showNav ? 'flex' : 'none';
+    document.getElementById('sell-item-btn').style.display = showNav ? 'block' : 'none';
     currentView = viewId;
+
+    if (viewId === 'products') loadProducts();
+    if (viewId === 'home') updateHomeStats();
 }
 
-document.getElementById('onboard-next').addEventListener('click', () => {
-    const name = document.getElementById('user-name').value;
-    const business = document.getElementById('business-name').value;
-    if (name && business) {
-        document.getElementById('camera-explain').style.display = 'block';
-        document.getElementById('onboard-next').style.display = 'none';
-    }
-});
+// --- Event Handlers ---
 
-document.getElementById('grant-camera').addEventListener('click', async () => {
+function handleInstall() {
+    if (deferredPrompt) {
+        deferredPrompt.prompt();
+        deferredPrompt.userChoice.then((choiceResult) => {
+            if (choiceResult.outcome === 'accepted') {
+                console.log('User accepted the install prompt');
+                document.getElementById('install-btn').style.display = 'none';
+            }
+            deferredPrompt = null;
+        });
+    }
+}
+
+function handleOnboardNext() {
+    const name = document.getElementById('user-name').value.trim();
+    const business = document.getElementById('business-name').value.trim();
+    if (name && business) {
+        document.getElementById('onboard-step1').style.display = 'none';
+        document.getElementById('camera-explain').style.display = 'block';
+    } else {
+        alert('Please enter your name and business name.');
+    }
+}
+
+async function handleGrantCamera() {
     try {
         await startCamera(); // Test access
         stopCamera();
         const name = document.getElementById('user-name').value;
         const business = document.getElementById('business-name').value;
         await setUser({ name, business });
+        document.getElementById('greeting').textContent = `Hello, ${name}!`;
         showView('home');
         updateHomeStats();
         setTimeout(showIncomingNotification, 15000);
     } catch (err) {
-        alert('Camera access denied. App may not work fully.');
-    }
-});
-
-document.getElementById('to-products').addEventListener('click', () => {
-    showView('products');
-    loadProducts();
-});
-
-document.getElementById('back-to-home').addEventListener('click', () => {
-    showView('home');
-    updateHomeStats();
-});
-
-document.getElementById('add-product').addEventListener('click', () => {
-    isSelling = false;
-    startScanning();
-});
-
-document.getElementById('to-sell').addEventListener('click', () => {
-    isSelling = true;
-    startScanning();
-});
-
-function startScanning() {
-    showView('camera-view');
-    document.getElementById('scan-message').textContent = isSelling ? 'Scanning for product to sell...' : 'Scanning to add product...';
-    startCamera();
-    if (!isSelling) {
-        // Auto capture after 3s for add
-        setTimeout(async () => {
-            capturedImage = await captureImage();
-            stopCamera();
-            showConfirmImage(capturedImage);
-        }, 3000);
-    } else {
-        // Continuous scan for sell
-        let startTime = Date.now();
-        scanInterval = setInterval(async () => {
-            const image = await captureImage(false); // Don't stop camera
-            const features = await extractFeatures(image);
-            const products = await getProducts();
-            let bestMatch = null;
-            let bestScore = 0;
-            for (let prod of products) {
-                const score = cosineSimilarity(features, prod.features);
-                if (score > 0.8 && score > bestScore) { // Threshold
-                    bestScore = score;
-                    bestMatch = prod;
-                }
-            }
-            if (bestMatch) {
-                clearInterval(scanInterval);
-                stopCamera();
-                showSellModal(bestMatch);
-            } else if (Date.now() - startTime > 5000) {
-                clearInterval(scanInterval);
-                capturedImage = await captureImage();
-                stopCamera();
-                document.getElementById('not-found-toast').style.display = 'block';
-                setTimeout(() => {
-                    document.getElementById('not-found-toast').style.display = 'none';
-                    showAddProduct(capturedImage);
-                }, 2000);
-            }
-        }, 500);
+        console.error('Camera access error:', err);
+        alert('Camera access is required to scan products. Please enable it in your browser settings.');
     }
 }
 
-document.getElementById('cancel-scan').addEventListener('click', () => {
+function handleAddProduct() {
+    isSelling = false;
+    startScanning();
+}
+
+function handleSellItem() {
+    isSelling = true;
+    startScanning();
+}
+
+function handleCancelScan() {
     stopCamera();
+    clearInterval(scanInterval);
     if (isSelling) {
         showView('home');
     } else {
         showView('products');
     }
-    clearInterval(scanInterval);
-});
-
-function showConfirmImage(imageData) {
-    showView('confirm-image');
-    document.getElementById('confirm-img').src = imageData;
 }
 
-document.getElementById('confirm-yes').addEventListener('click', () => {
-    showAddProduct(capturedImage);
-});
-
-document.getElementById('confirm-no').addEventListener('click', () => {
-    startScanning();
-});
-
-function showAddProduct(imageData) {
-    showView('add-product');
-    document.getElementById('add-image').src = imageData;
-}
-
-document.getElementById('add-form').addEventListener('submit', async (e) => {
+async function handleSaveProduct(e) {
     e.preventDefault();
+    const id = document.getElementById('edit-id').value;
     const name = document.getElementById('add-name').value;
     const price = parseFloat(document.getElementById('add-price').value);
     const stock = parseInt(document.getElementById('add-stock').value);
     const unit = document.getElementById('add-unit').value;
-    const image = capturedImage;
-    const features = await extractFeatures(image);
-    await addProduct({ name, price, stock, unit, image, features });
+    
+    if (id) { // Editing existing product
+        await updateProduct(parseInt(id), { name, price, stock, unit });
+    } else { // Adding new product
+        const image = capturedImage;
+        const features = await extractFeatures(image);
+        await addProduct({ name, price, stock, unit, image, features });
+    }
+    
     capturedImage = null;
+    closeProductModal();
     showView('products');
-    loadProducts();
-});
+}
 
-document.getElementById('cancel-add').addEventListener('click', () => {
-    showView('products');
-});
+async function handleConfirmSale() {
+    const id = parseInt(document.getElementById('sell-id').value);
+    const qty = parseInt(document.getElementById('sell-quantity').value);
+    const prod = await getProduct(id);
+    
+    if (qty > prod.stock) {
+        alert('Not enough stock!');
+        return;
+    }
+    
+    const total = prod.price * qty;
+    await updateStock(id, prod.stock - qty);
+    await addSale({ productId: id, quantity: qty, total, date: new Date().toISOString() });
+    
+    document.getElementById('sell-modal').style.display = 'none';
+    showToast('Sale recorded!');
+    startScanning(); // Auto start next scan
+}
+
+function handleCloseSell() {
+    document.getElementById('sell-modal').style.display = 'none';
+    stopCamera();
+    clearInterval(scanInterval);
+    showView('home');
+}
+
+
+// --- Core Flows & UI Updates ---
+
+function startScanning() {
+    showView('camera-view', false);
+    document.getElementById('scan-message').textContent = isSelling ? 'Scan item to sell' : 'Scan new product to add';
+    startCamera();
+
+    if (!isSelling) {
+        // Auto-capture for adding a new product
+        setTimeout(async () => {
+            if (currentView !== 'camera-view') return; // User might have cancelled
+            capturedImage = await captureImage();
+            stopCamera();
+            showConfirmImage(capturedImage);
+        }, 3000);
+    } else {
+        // Continuous scan for selling
+        const startTime = Date.now();
+        scanInterval = setInterval(async () => {
+            const image = await captureImage(false); // Don't stop camera stream
+            if (!image) return;
+
+            const features = await extractFeatures(image);
+            const products = await getProducts();
+            const match = findBestMatch(features, products, 0.85); // Increased threshold for accuracy
+
+            if (match) {
+                clearInterval(scanInterval);
+                stopCamera();
+                showSellModal(match);
+            } else if (Date.now() - startTime > 5000) {
+                // Not found after 5 seconds
+                clearInterval(scanInterval);
+                capturedImage = await captureImage();
+                stopCamera();
+                showToast('not-found-toast', 3000);
+                setTimeout(() => showProductModal(capturedImage), 1000);
+            }
+        }, 500);
+    }
+}
+
+function findBestMatch(features, products, threshold) {
+    let bestMatch = null;
+    let bestScore = 0;
+    for (let prod of products) {
+        const score = cosineSimilarity(features, prod.features);
+        if (score > threshold && score > bestScore) {
+            bestScore = score;
+            bestMatch = prod;
+        }
+    }
+    return bestMatch;
+}
+
+function showConfirmImage(imageData) {
+    showView('confirm-image', false);
+    document.getElementById('confirm-img').src = imageData;
+}
+
+function showProductModal(imageData = null) {
+    const form = document.getElementById('add-form');
+    form.reset();
+    document.getElementById('edit-id').value = '';
+    document.getElementById('product-modal-title').textContent = 'Add New Product';
+    document.getElementById('save-product-btn').innerHTML = '<i class="material-icons">save</i> Save Product';
+
+    if (imageData) {
+        capturedImage = imageData;
+        document.getElementById('add-image').src = imageData;
+        document.getElementById('add-image').style.display = 'block';
+    } else {
+        document.getElementById('add-image').style.display = 'none';
+    }
+    
+    document.getElementById('product-modal').style.display = 'flex';
+    showView(currentView, false); // Hide main view content behind modal
+}
+
+function closeProductModal() {
+    document.getElementById('product-modal').style.display = 'none';
+}
 
 async function loadProducts() {
     const grid = document.getElementById('product-grid');
+    const emptyView = document.getElementById('empty-products');
     grid.innerHTML = '';
     const products = await getProducts();
-    products.forEach(prod => {
-        const card = document.createElement('div');
-        card.className = 'product-card';
-        card.innerHTML = `
-            <img src="${prod.image}" alt="${prod.name}">
-            <h3>${prod.name}</h3>
-            <p>₦${prod.price}</p>
-            <p>${prod.stock} ${prod.unit} left</p>
-            <button onclick="editProduct(${prod.id})"><i class="material-icons">edit</i> Edit</button>
-        `;
-        grid.appendChild(card);
-    });
+
+    if (products.length === 0) {
+        emptyView.style.display = 'block';
+        grid.style.display = 'none';
+    } else {
+        emptyView.style.display = 'none';
+        grid.style.display = 'grid';
+        products.forEach(prod => {
+            const card = document.createElement('div');
+            card.className = 'product-card';
+            card.innerHTML = `
+                <img src="${prod.image}" alt="${prod.name}">
+                <div class="product-card-info">
+                    <h3>${prod.name}</h3>
+                    <p class="price">₦${prod.price}</p>
+                    <p class="stock">${prod.stock} ${prod.unit} left</p>
+                    <button onclick="editProduct(${prod.id})"><i class="material-icons">edit</i> Edit</button>
+                </div>
+            `;
+            grid.appendChild(card);
+        });
+    }
 }
 
 window.editProduct = async (id) => {
     const prod = await getProduct(id);
     document.getElementById('edit-id').value = id;
-    document.getElementById('edit-name').value = prod.name;
-    document.getElementById('edit-price').value = prod.price;
-    document.getElementById('edit-stock').value = prod.stock;
-    document.getElementById('edit-unit').value = prod.unit;
-    document.getElementById('edit-image').src = prod.image;
-    document.getElementById('edit-modal').style.display = 'flex';
+    document.getElementById('add-name').value = prod.name;
+    document.getElementById('add-price').value = prod.price;
+    document.getElementById('add-stock').value = prod.stock;
+    document.getElementById('add-unit').value = prod.unit;
+    document.getElementById('add-image').src = prod.image;
+    document.getElementById('add-image').style.display = 'block';
+    
+    document.getElementById('product-modal-title').textContent = 'Edit Product';
+    document.getElementById('save-product-btn').innerHTML = '<i class="material-icons">update</i> Update Product';
+    
+    document.getElementById('product-modal').style.display = 'flex';
 };
-
-document.getElementById('edit-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const id = parseInt(document.getElementById('edit-id').value);
-    const name = document.getElementById('edit-name').value;
-    const price = parseFloat(document.getElementById('edit-price').value);
-    const stock = parseInt(document.getElementById('edit-stock').value);
-    const unit = document.getElementById('edit-unit').value;
-    // Image and features not updated for simplicity
-    await updateProduct(id, { name, price, stock, unit });
-    document.getElementById('edit-modal').style.display = 'none';
-    loadProducts();
-});
-
-document.getElementById('close-edit').addEventListener('click', () => {
-    document.getElementById('edit-modal').style.display = 'none';
-});
 
 function showSellModal(prod) {
     document.getElementById('sell-id').value = prod.id;
@@ -233,84 +322,71 @@ function showSellModal(prod) {
     document.getElementById('sell-name').textContent = prod.name;
     document.getElementById('sell-price').textContent = prod.price;
     document.getElementById('sell-quantity').value = 1;
-    updateSellTotal(prod.price * 1);
+    document.getElementById('sell-total').textContent = prod.price;
     document.getElementById('sell-modal').style.display = 'flex';
 }
 
-document.getElementById('sell-quantity').addEventListener('input', () => {
+async function updateSellTotal() {
     const prodId = parseInt(document.getElementById('sell-id').value);
-    getProduct(prodId).then(prod => {
-        const qty = parseInt(document.getElementById('sell-quantity').value) || 0;
-        updateSellTotal(prod.price * qty);
-    });
-});
-
-function updateSellTotal(total) {
-    document.getElementById('sell-total').textContent = total;
+    const prod = await getProduct(prodId);
+    if (!prod) return;
+    const qty = parseInt(document.getElementById('sell-quantity').value) || 0;
+    document.getElementById('sell-total').textContent = (prod.price * qty).toFixed(2);
 }
-
-document.getElementById('confirm-sale').addEventListener('click', async () => {
-    const id = parseInt(document.getElementById('sell-id').value);
-    const qty = parseInt(document.getElementById('sell-quantity').value);
-    const prod = await getProduct(id);
-    if (qty > prod.stock) {
-        alert('Not enough stock!');
-        return;
-    }
-    const total = prod.price * qty;
-    await updateStock(id, prod.stock - qty);
-    await addSale({ productId: id, quantity: qty, total, date: new Date() });
-    document.getElementById('sell-modal').style.display = 'none';
-    // Auto start next scan
-    startScanning();
-});
-
-document.getElementById('close-sell').addEventListener('click', () => {
-    document.getElementById('sell-modal').style.display = 'none';
-    showView('home');
-});
 
 async function updateHomeStats() {
     const sales = await getSales();
+    const today = new Date().toISOString().slice(0, 10);
+    
+    const todaySales = sales.filter(s => s.date.startsWith(today));
+    
     let totalSales = 0;
     let itemsSold = 0;
-    sales.forEach(s => {
+    todaySales.forEach(s => {
         totalSales += s.total;
         itemsSold += s.quantity;
     });
-    document.getElementById('total-sales').textContent = `₦${totalSales}`;
+    
+    document.getElementById('total-sales').textContent = `₦${totalSales.toLocaleString()}`;
     document.getElementById('items-sold').textContent = itemsSold;
 
     const list = document.getElementById('sales-list');
     list.innerHTML = '';
     const recent = sales.slice(-5).reverse();
+    if(recent.length === 0){
+        list.innerHTML = '<li>No sales recorded yet.</li>';
+        return;
+    }
     for (let s of recent) {
         const prod = await getProduct(s.productId);
+        if (!prod) continue;
         const li = document.createElement('li');
-        li.innerHTML = `<span>${s.quantity} x ${prod.name}</span> <span>₦${s.total}</span>`;
+        li.innerHTML = `<span>${s.quantity} x ${prod.name}</span> <span>₦${s.total.toLocaleString()}</span>`;
         list.appendChild(li);
     }
 }
 
-function showIncomingNotification() {
-    document.getElementById('incoming-toast').style.display = 'flex';
-    setTimeout(() => {
-        document.getElementById('incoming-toast').style.display = 'none';
-    }, 5000);
+
+// --- Notifications ---
+function showToast(elementId, duration = 2000) {
+    const toast = document.getElementById(elementId);
+    if(toast) {
+        toast.style.display = 'flex';
+        setTimeout(() => {
+            toast.style.display = 'none';
+        }, duration);
+    }
 }
 
-document.getElementById('view-incoming').addEventListener('click', () => {
+function showIncomingNotification() {
+    const toast = document.getElementById('incoming-toast');
+    toast.style.display = 'flex';
+}
+
+function showIncomingModal() {
     document.getElementById('incoming-toast').style.display = 'none';
     document.getElementById('incoming-modal').style.display = 'flex';
-});
+}
 
-document.getElementById('accept-incoming').addEventListener('click', () => {
-    document.getElementById('incoming-modal').style.display = 'none';
-    // Simulate accept, no action
-});
-
-document.getElementById('decline-incoming').addEventListener('click', () => {
-    document.getElementById('incoming-modal').style.display = 'none';
-});
-
+// --- App Initialization ---
 initApp();
