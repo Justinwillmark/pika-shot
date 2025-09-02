@@ -76,6 +76,7 @@ document.addEventListener('DOMContentLoaded', () => {
         currentProductForSale: null,
         deferredInstallPrompt: null,
         currentScanningMode: null, // 'add' or 'sell'
+        isModelReady: false,
     };
 
     // --- INITIALIZATION ---
@@ -83,8 +84,6 @@ document.addEventListener('DOMContentLoaded', () => {
     async function init() {
         try {
             await db.init();
-            await camera.init();
-            
             appState.currentUser = await db.getUser();
 
             if (!appState.currentUser) {
@@ -98,6 +97,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     await loadDashboard();
                     await loadProducts();
                     startCommunalSimulation();
+                    
+                    // Trigger non-blocking model load AFTER everything is visible
+                    triggerModelLoad();
                 }
             }
         } catch (error) {
@@ -109,11 +111,40 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    function triggerModelLoad() {
+        updateCameraButtonsState(false, "Preparing camera...");
+        camera.loadModel((status, message) => {
+            if (status === 'success') {
+                appState.isModelReady = true;
+                updateCameraButtonsState(true);
+                showToast("Camera intelligence is ready! ✨", null, null, 3000);
+            } else {
+                updateCameraButtonsState(false, "Download failed. Check connection.");
+                console.error("Model load failed:", message);
+            }
+        });
+    }
+
+    function updateCameraButtonsState(enabled, text = null) {
+        const sellText = ui.sellItemBtn.querySelector('span');
+        const addBtn = ui.addProductFooterBtn;
+
+        if (enabled) {
+            sellText.textContent = "Sell Item";
+            ui.sellItemBtn.disabled = false;
+            addBtn.disabled = false;
+        } else {
+            sellText.textContent = text || "Loading...";
+            ui.sellItemBtn.disabled = true;
+            addBtn.disabled = true;
+        }
+    }
+
     // --- PAGE & MODAL MANAGEMENT ---
 
     function showPage(pageId) {
-        document.body.scrollTop = 0; // For Safari
-        document.documentElement.scrollTop = 0; // For Chrome, Firefox, IE and Opera
+        document.body.scrollTop = 0;
+        document.documentElement.scrollTop = 0;
         
         if (pageId === 'main-app') {
             ui.onboardingPage.classList.add('hidden');
@@ -183,11 +214,12 @@ document.addEventListener('DOMContentLoaded', () => {
     ui.grantPermissionBtn.addEventListener('click', async () => {
         const stream = await camera.requestPermission();
         if (stream) {
-            stream.getTracks().forEach(track => track.stop()); // Stop the stream immediately
+            stream.getTracks().forEach(track => track.stop());
             showPage('main-app');
             await loadDashboard();
             await loadProducts();
             startCommunalSimulation();
+            triggerModelLoad(); // Also trigger model load here
         } else {
             alert("Camera access is required to use this app.");
         }
@@ -196,12 +228,11 @@ document.addEventListener('DOMContentLoaded', () => {
     async function checkCameraPermission() {
         try {
             const result = await navigator.permissions.query({ name: 'camera' });
-            return result.state; // 'granted', 'prompt', or 'denied'
+            return result.state;
         } catch (e) {
-            return 'prompt'; // Fallback for browsers that don't support query
+            return 'prompt';
         }
     }
-
 
     // --- DATA LOADING & RENDERING ---
 
@@ -248,8 +279,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Add Product Flow
-    ui.addProductFooterBtn.addEventListener('click', startAddProductFlow);
+    ui.addProductFooterBtn.addEventListener('click', () => {
+        if (!appState.isModelReady) {
+            showToast("Camera intelligence is still being prepared.");
+            return;
+        }
+        startAddProductFlow();
+    });
 
     async function startAddProductFlow(preCapturedBlob = null) {
         hideAllModals();
@@ -258,7 +294,6 @@ document.addEventListener('DOMContentLoaded', () => {
         ui.cameraView.classList.remove('hidden');
 
         if (preCapturedBlob) {
-            // This is from the "product not found" flow
             appState.capturedBlob = preCapturedBlob;
             const imageUrl = URL.createObjectURL(appState.capturedBlob);
             ui.capturedImagePreview.src = imageUrl;
@@ -313,10 +348,10 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         try {
-            if (id) { // Editing existing product
+            if (id) {
                 await db.updateProduct({ id, ...productData });
                 showToast("Product updated successfully!");
-            } else { // Adding new product
+            } else {
                 productData.imageDataUrl = ui.productFormImage.src;
                 productData.embedding = await camera.getEmbedding(appState.capturedBlob);
                 await db.saveProduct(productData);
@@ -332,7 +367,6 @@ document.addEventListener('DOMContentLoaded', () => {
         await loadDashboard();
     });
 
-    // Edit Product Flow
     ui.productGrid.addEventListener('click', async (e) => {
         if (e.target.classList.contains('edit-btn')) {
             const id = parseInt(e.target.dataset.id);
@@ -350,8 +384,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Sell Item Flow
-    ui.sellItemBtn.addEventListener('click', startSellItemFlow);
+    ui.sellItemBtn.addEventListener('click', () => {
+        if (!appState.isModelReady) {
+            showToast("Camera intelligence is still being prepared.");
+            return;
+        }
+        startSellItemFlow();
+    });
 
     function startSellItemFlow() {
         appState.currentScanningMode = 'sell';
@@ -377,12 +416,15 @@ document.addEventListener('DOMContentLoaded', () => {
     function onProductNotFound(lastFrameBlob) {
         camera.stop();
         ui.cameraView.classList.add('hidden');
-        showToast("Product not found. Let's add it!", "Add Now", () => {
-            startAddProductFlow(lastFrameBlob);
-        }, 6000);
+        if (lastFrameBlob) {
+            showToast("Product not found. Let's add it!", "Add Now", () => {
+                startAddProductFlow(lastFrameBlob);
+            }, 6000);
+        } else {
+             showToast("Camera could not find a product.");
+        }
     }
     
-    // Sales Modal Logic
     function updateSalesTotal() {
         const quantity = parseInt(ui.salesQuantityInput.value) || 0;
         const price = appState.currentProductForSale ? appState.currentProductForSale.price : 0;
@@ -430,7 +472,7 @@ document.addEventListener('DOMContentLoaded', () => {
             showToast("Sale recorded successfully!");
             await loadDashboard();
             if(document.getElementById('products-page').offsetParent !== null) {
-                await loadProducts(); // Reload products only if the page is visible
+                await loadProducts();
             }
         } else if (quantitySold > product.stock) {
             showToast(`Not enough stock. Only ${product.stock} available.`);
@@ -460,10 +502,10 @@ document.addEventListener('DOMContentLoaded', () => {
     function startCommunalSimulation() {
         setTimeout(() => {
             showToast("Incoming Purchase from Tolu!", "View Items", () => {
-                hideAllModals(); // ensure no other modals are open
+                hideAllModals();
                 showModal(ui.communalModal);
             });
-        }, 15000); // 15 seconds
+        }, 15000);
     }
 
     ui.acceptCommunalBtn.addEventListener('click', () => {

@@ -445,3 +445,20 @@ footer nav {
 .communal-item-list li:last-child {
     border-bottom: none;
 }
+
+
+/* Add this to the end of your style.css file */
+
+.action-btn:disabled {
+    background-color: #9dbde4;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+.nav-btn-main:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+    box-shadow: none;
+    opacity: 0.6;
+}
+

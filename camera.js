@@ -4,15 +4,29 @@ const camera = (() => {
     let mobilenetModel;
     let embeddingModel;
     let scanningInterval;
-    const SCAN_TIMEOUT = 5000; // 5 seconds
+    const SCAN_TIMEOUT = 5000;
     const SIMILARITY_THRESHOLD = 0.85;
 
-    async function init() {
-        console.log("Loading MobileNet model...");
-        mobilenetModel = await mobilenet.load();
-        const layer = mobilenetModel.infer(tf.zeros([1, 224, 224, 3]), true);
-        embeddingModel = tf.model({inputs: mobilenetModel.inputs, outputs: layer});
-        console.log("Model loaded and embedding layer extracted.");
+    let isModelReady = false;
+
+    async function loadModel(callback) {
+        if (isModelReady) {
+            if(callback) callback('success', 'Model already loaded.');
+            return;
+        }
+        try {
+            console.log("Loading MobileNet model...");
+            mobilenetModel = await mobilenet.load();
+            const layer = mobilenetModel.infer(tf.zeros([1, 224, 224, 3]), true);
+            embeddingModel = tf.model({inputs: mobilenetModel.inputs, outputs: layer});
+            isModelReady = true;
+            console.log("Model loaded successfully.");
+            if(callback) callback('success', 'Model loaded.');
+        } catch (error) {
+            console.error("Error loading model:", error);
+            isModelReady = false;
+            if(callback) callback('error', error);
+        }
     }
     
     async function requestPermission() {
@@ -33,7 +47,7 @@ const camera = (() => {
             if (!stream) return false;
         }
         videoElement.srcObject = stream;
-        videoElement.play();
+        await videoElement.play();
         return true;
     }
     
@@ -64,23 +78,31 @@ const camera = (() => {
                 const blob = await captureFrameToBlob();
                 stop();
                 resolve(blob);
-            }, 2000); // Capture after 2 seconds
+            }, 2000);
         });
     }
     
     async function getEmbedding(imageSource) {
+        if (!isModelReady) {
+            console.error("getEmbedding called before model was ready.");
+            throw new Error("Model not loaded");
+        }
         return new Promise(async (resolve, reject) => {
             const img = new Image();
-            img.src = (imageSource instanceof Blob) ? URL.createObjectURL(imageSource) : imageSource;
+            img.src = (imageSource instanceof Blob) ? URL.createObjectURL(imageSource) : imageSource.src;
             img.onload = async () => {
-                const tensor = tf.browser.fromPixels(img)
-                    .resizeNearestNeighbor([224, 224])
-                    .toFloat()
-                    .expandDims();
-                const embedding = await embeddingModel.predict(tensor).data();
-                tensor.dispose();
-                URL.revokeObjectURL(img.src);
-                resolve(Array.from(embedding));
+                try {
+                    const tensor = tf.browser.fromPixels(img)
+                        .resizeNearestNeighbor([224, 224])
+                        .toFloat()
+                        .expandDims();
+                    const embedding = await embeddingModel.predict(tensor).data();
+                    tensor.dispose();
+                    if (imageSource instanceof Blob) URL.revokeObjectURL(img.src);
+                    resolve(Array.from(embedding));
+                } catch (error) {
+                    reject(error);
+                }
             };
             img.onerror = reject;
         });
@@ -105,7 +127,7 @@ const camera = (() => {
         let highestSimilarity = -1;
 
         for (const product of allProducts) {
-            if (product.embedding) {
+            if (product.embedding && product.embedding.length > 0) {
                 const similarity = cosineSimilarity(liveEmbedding, product.embedding);
                 if (similarity > highestSimilarity) {
                     highestSimilarity = similarity;
@@ -118,7 +140,19 @@ const camera = (() => {
     }
 
     async function startScanning(onFound, onNotFound) {
-        await start();
+        if (!isModelReady) {
+            console.error("startScanning called before model was ready.");
+            stop();
+            onNotFound(null);
+            return;
+        }
+
+        const didStart = await start();
+        if (!didStart) {
+             onNotFound(null);
+             return;
+        }
+        
         const allProducts = await db.getAllProducts();
         let found = false;
         
@@ -132,17 +166,22 @@ const camera = (() => {
         }, SCAN_TIMEOUT);
 
         scanningInterval = setInterval(async () => {
-            const liveEmbedding = await getEmbedding(videoElement);
-            const match = await findClosestProduct(liveEmbedding, allProducts);
-            if (match) {
-                found = true;
-                clearInterval(scanningInterval);
-                clearTimeout(timeoutId);
-                stop();
-                onFound(match);
+            if(videoElement.readyState < 2) return; // Wait for video to be ready
+            try {
+                const liveEmbedding = await getEmbedding(videoElement);
+                const match = await findClosestProduct(liveEmbedding, allProducts);
+                if (match) {
+                    found = true;
+                    clearInterval(scanningInterval);
+                    clearTimeout(timeoutId);
+                    stop();
+                    onFound(match);
+                }
+            } catch (error) {
+                console.error("Error during scanning interval:", error);
             }
-        }, 500); // Scan every 500ms
+        }, 500);
     }
 
-    return { init, requestPermission, stop, captureImageWithAutoCapture, getEmbedding, startScanning };
+    return { loadModel, requestPermission, stop, captureImageWithAutoCapture, getEmbedding, startScanning };
 })();

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pika-shot-v1';
+const CACHE_NAME = 'pika-shot-v2';
 const ASSETS_TO_CACHE = [
     '/',
     '/index.html',
@@ -29,6 +29,7 @@ self.addEventListener('activate', event => {
             return Promise.all(
                 cacheNames.map(cacheName => {
                     if (cacheName !== CACHE_NAME) {
+                        console.log('Service Worker: Clearing old cache', cacheName);
                         return caches.delete(cacheName);
                     }
                 })
@@ -39,19 +40,37 @@ self.addEventListener('activate', event => {
 
 // Fetch event: serve from cache first, then network
 self.addEventListener('fetch', event => {
-    // We only want to cache GET requests.
     if (event.request.method !== 'GET') {
         return;
     }
-    
-    // For requests to the app itself (HTML, CSS, JS etc.), use cache-first strategy
+
+    const requestUrl = new URL(event.request.url);
+
+    // New strategy for CDN assets (TensorFlow models)
+    if (requestUrl.hostname === 'cdn.jsdelivr.net') {
+        event.respondWith(
+            caches.open(CACHE_NAME).then(cache => {
+                return cache.match(event.request).then(cachedResponse => {
+                    // Return from cache if available
+                    if (cachedResponse) {
+                        return cachedResponse;
+                    }
+                    // Otherwise, fetch from network, cache, and return
+                    return fetch(event.request).then(networkResponse => {
+                        cache.put(event.request, networkResponse.clone());
+                        return networkResponse;
+                    });
+                });
+            })
+        );
+        return;
+    }
+
+    // Original cache-first strategy for local app assets
     event.respondWith(
         caches.match(event.request)
             .then(cachedResponse => {
-                if (cachedResponse) {
-                    return cachedResponse;
-                }
-                return fetch(event.request);
+                return cachedResponse || fetch(event.request);
             })
     );
 });
