@@ -1,291 +1,448 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // A simple, robust application structure
     const App = {
-        // Centralized state
-        state: {
-            currentUser: null,
-            currentView: 'loader',
-            navigationStack: [],
-            products: [],
-            sales: [],
-            deferredInstallPrompt: null,
-        },
+        // State
+        isCameraOn: false,
+        currentScanMode: null, // 'add' or 'sell'
+        capturedImageData: null,
+        editingProductId: null,
+        deferredInstallPrompt: null,
+        salesData: [], // To hold today's sales
 
-        // DOM element cache
+        // UI Elements
         elements: {
             loader: document.getElementById('loader'),
             appContainer: document.getElementById('app-container'),
-            views: {
-                onboarding: document.getElementById('onboarding-view'),
-                permission: document.getElementById('permission-view'),
-                dashboard: document.getElementById('dashboard-view'),
-                products: document.getElementById('products-view'),
-                camera: document.getElementById('camera-view'),
-            },
-            nav: document.getElementById('bottom-nav'),
-            modalContainer: document.getElementById('modal-container'),
-            toast: document.getElementById('toast-notification'),
+            views: document.querySelectorAll('.view'),
+            onboardingView: document.getElementById('onboarding-view'),
+            cameraPermissionView: document.getElementById('camera-permission-view'),
+            mainApp: document.getElementById('main-app'),
+            homeView: document.getElementById('home-view'),
+            productsView: document.getElementById('products-view'),
+            cameraView: document.getElementById('camera-view'),
+            
+            finishOnboardingBtn: document.getElementById('finish-onboarding-btn'),
+            grantCameraBtn: document.getElementById('grant-camera-btn'),
+            
+            navButtons: document.querySelectorAll('.nav-btn'),
+            backButtons: document.querySelectorAll('.back-btn'),
+            installBtn: document.getElementById('install-btn'),
+
+            // Modals & Backdrop
+            modalBackdrop: document.getElementById('modal-backdrop'),
+            confirmCaptureModal: document.getElementById('confirm-capture-modal'),
+            productDetailsModal: document.getElementById('product-details-modal'),
+            sellItemModal: document.getElementById('sell-item-modal'),
+            communalBookingModal: document.getElementById('communal-booking-modal'),
+
+            // Home
+            welcomeMessage: document.getElementById('welcome-message'),
+            businessNameHeader: document.getElementById('business-name-header'),
+            totalSalesEl: document.getElementById('total-sales'),
+            itemsSoldEl: document.getElementById('items-sold'),
+            recentSalesList: document.getElementById('recent-sales-list'),
+            sellItemHomeBtn: document.getElementById('sell-item-home-btn'),
+            addProductHomeBtn: document.getElementById('add-product-home-btn'),
+
+            // Products
+            productList: document.getElementById('product-list'),
+            addNewProductFab: document.getElementById('add-new-product-btn-fab'),
+            productForm: document.getElementById('product-form'),
+            modalTitle: document.getElementById('modal-title'),
+
+            // Camera
+            cameraStatus: document.getElementById('camera-status'),
+            cancelScanBtn: document.getElementById('cancel-scan-btn'),
+
+            // Product capture
+            capturedImagePreview: document.getElementById('captured-image-preview'),
+            retakePhotoBtn: document.getElementById('retake-photo-btn'),
+            confirmPhotoBtn: document.getElementById('confirm-photo-btn'),
+
+            // Sell item modal
+            sellProductName: document.getElementById('sell-product-name'),
+            sellProductImage: document.getElementById('sell-product-image'),
+            sellQuantityInput: document.getElementById('sell-quantity'),
+            sellTotalPrice: document.getElementById('sell-total-price'),
+            confirmSellBtn: document.getElementById('confirm-sell-btn'),
+            cancelSellBtn: document.getElementById('cancel-sell-btn'),
+
+            // Toast
+            toast: document.getElementById('toast'),
         },
 
-        // App Initialization
-        async init() {
+        init() {
             this.registerServiceWorker();
-            this.addCoreEventListeners();
-            try {
-                await DB.init();
-                await Camera.init();
-                this.state.currentUser = await DB.getData('user', 'main_user');
-                if (this.state.currentUser) {
-                    await this.loadAppData();
-                    this.navigateTo('dashboard', true); // isInitial = true
-                } else {
-                    this.navigateTo('onboarding', true);
-                }
-            } catch (error) {
-                console.error("Initialization failed:", error);
-                this.showToast('App could not start. Please refresh.', 'error');
-            } finally {
-                this.elements.loader.classList.remove('active');
-            }
-        },
-
-        async loadAppData() {
-            this.state.products = await DB.getAllData('products');
-            this.state.sales = await DB.getAllData('sales');
-        },
-
-        // --- NAVIGATION SYSTEM ---
-        navigateTo(viewName, isInitial = false) {
-            if (this.state.currentView === viewName) return;
-
-            if (!isInitial && this.state.currentView) {
-                this.state.navigationStack.push(this.state.currentView);
-            }
-            
-            Object.values(this.elements.views).forEach(v => v.classList.remove('active'));
-            this.elements.views[viewName]?.classList.add('active');
-            this.state.currentView = viewName;
-            this.renderCurrentView();
-            this.updateNav();
-        },
-
-        navigateBack() {
-            if (this.state.navigationStack.length > 0) {
-                const previousView = this.state.navigationStack.pop();
-                
-                Object.values(this.elements.views).forEach(v => v.classList.remove('active'));
-                this.elements.views[previousView]?.classList.add('active');
-                this.state.currentView = previousView;
-
-                this.renderCurrentView();
-                this.updateNav();
-            }
-            // If stack is empty, we are at the root (dashboard), do nothing.
-        },
-        
-        // --- VIEW RENDERING ---
-        renderCurrentView() {
-            const viewName = this.state.currentView;
-            const renderMethod = `render${viewName.charAt(0).toUpperCase() + viewName.slice(1)}View`;
-            if (typeof this[renderMethod] === 'function') {
-                this[renderMethod]();
-            }
-        },
-
-        renderNav() {
-            // New, more relevant icons
-            const homeIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 16 16"><path d="M8.707 1.5a1 1 0 0 0-1.414 0L.646 8.146a.5.5 0 0 0 .708.708L8 2.207l6.646 6.647a.5.5 0 0 0 .708-.708L8.707 1.5z"/><path d="m8 3.293 6 6V13.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 13.5V9.293l6-6z"/></svg>`;
-            const productsIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 16 16"><path d="M8.186 1.113a.5.5 0 0 0-.372 0L1.846 3.5 8 5.961 14.154 3.5 8.186 1.113zM15 4.239l-6.5 2.6v7.922l6.5-2.6V4.24zM1 4.239v7.925l6.5 2.6V6.839L1 4.24zM8 10.398V14.5l-6.21-2.485A.5.5 0 0 1 1.5 11.5v-1.11l.224.089a.5.5 0 0 1 .332.66l-.448.897a.5.5 0 0 1-.894-.448l.448-.897a.5.5 0 0 1 .66-.332l.224.089v.22l5.5 2.2v-2.819l-5.5-2.2v-1.342l5.5 2.2v-2.82l-5.5-2.2v-1.34l5.5 2.2V6.5l-5.5-2.2v-1.11l5.5 2.2V3.5L8 1.039v2.461zm0 3.846V6.5L2.5 4.3v1.34l5.5 2.2zm6.5 2.6V6.5l-5.5 2.2v1.34l5.5-2.2z"/></svg>`;
-            const scanIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 16 16"><path d="M1.5 1a.5.5 0 0 0-.5.5v3a.5.5 0 0 1-1 0v-3A1.5 1.5 0 0 1 1.5 0h3a.5.5 0 0 1 0 1h-3zM11 .5a.5.5 0 0 1 .5-.5h3A1.5 1.5 0 0 1 16 1.5v3a.5.5 0 0 1-1 0v-3a.5.5 0 0 0-.5-.5h-3a.5.5 0 0 1-.5-.5zM.5 11a.5.5 0 0 1 .5.5v3a.5.5 0 0 0 .5.5h3a.5.5 0 0 1 0 1h-3A1.5 1.5 0 0 1 0 14.5v-3a.5.5 0 0 1 .5-.5zm15 0a.5.5 0 0 1 .5.5v3a1.5 1.5 0 0 1-1.5 1.5h-3a.5.5 0 0 1 0-1h3a.5.5 0 0 0 .5-.5v-3a.5.5 0 0 1 .5-.5z"/><path d="M3 4.5a.5.5 0 0 1 .5-.5h9a.5.5 0 0 1 0 1h-9a.5.5 0 0 1-.5-.5z"/></svg>`;
-            
-            this.elements.nav.innerHTML = `
-                <button class="nav-btn" data-view="dashboard">${homeIcon}</button>
-                <button class="nav-btn" data-view="products">${productsIcon}</button>
-                <button id="sell-item-btn" class="nav-btn-main">${scanIcon}</button>
-            `;
-        },
-
-        updateNav() {
-            this.elements.nav.querySelectorAll('.nav-btn').forEach(btn => {
-                btn.classList.toggle('active', btn.dataset.view === this.state.currentView);
+            DB.init().then(() => {
+                this.checkOnboarding();
+                this.bindEvents();
+                // Simulate communal bookkeeping
+                setTimeout(() => this.showCommunalBookingToast(), 15000);
             });
-            this.elements.nav.style.display = (this.state.currentView === 'onboarding' || this.state.currentView === 'permission' || this.state.currentView === 'camera') ? 'none' : 'grid';
         },
 
-        renderDashboardView() {
-            // Calculate KPIs
-            const today = new Date().toISOString().slice(0, 10);
-            const todaysSales = this.state.sales.filter(s => s.timestamp.startsWith(today));
-            const totalTodaysSales = todaysSales.reduce((sum, sale) => sum + sale.totalPrice, 0);
-            const totalStockValue = this.state.products.reduce((sum, p) => sum + (p.price * p.stock), 0);
+        bindEvents() {
+            this.elements.finishOnboardingBtn.addEventListener('click', () => this.finishOnboarding());
+            this.elements.grantCameraBtn.addEventListener('click', () => this.requestCameraPermission());
 
-            let recentSalesHTML = `<div class="empty-state"><p>No sales recorded yet today.</p></div>`;
-            if (todaysSales.length > 0) {
-                recentSalesHTML = `<ul class="recent-sales-list">` + 
-                    todaysSales.slice(-4).reverse().map(s => `
-                        <li class="recent-sales-item">
-                            <div class="sale-info">
-                                <div class="name">${this.state.products.find(p=>p.id === s.productId)?.name || 'Unknown Item'}</div>
-                                <div class="details">${s.quantity} units</div>
-                            </div>
-                            <div class="sale-amount">+₦${s.totalPrice.toLocaleString()}</div>
-                        </li>
-                    `).join('') + `</ul>`;
-            }
+            // Navigation
+            this.elements.navButtons.forEach(btn => {
+                btn.addEventListener('click', () => this.navigateTo(btn.dataset.view));
+            });
+            this.elements.backButtons.forEach(btn => {
+                btn.addEventListener('click', () => this.navigateTo(btn.dataset.target));
+            });
+            
+            // Core Actions
+            this.elements.sellItemHomeBtn.addEventListener('click', () => this.startScan('sell'));
+            this.elements.addProductHomeBtn.addEventListener('click', () => this.startScan('add'));
+            this.elements.addNewProductFab.addEventListener('click', () => this.startScan('add'));
+            this.elements.cancelScanBtn.addEventListener('click', () => this.stopScan());
 
-            this.elements.views.dashboard.innerHTML = `
-                <div class="welcome-header">
-                    <h1>Hello, ${this.state.currentUser.name}</h1>
-                    <p>Here's your shop summary.</p>
-                </div>
-                <div class="kpi-grid">
-                    <div class="kpi-card">
-                        <div class="label">Today's Sales</div>
-                        <div class="value">₦${totalTodaysSales.toLocaleString()}</div>
-                    </div>
-                    <div class="kpi-card">
-                        <div class="label">Stock Value</div>
-                        <div class="value">₦${totalStockValue.toLocaleString()}</div>
-                    </div>
-                </div>
-                <div class="action-grid">
-                    <a href="#" id="dash-sell-btn" class="action-btn">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 16 16"><path d="M1.5 1a.5.5 0 0 0-.5.5v3a.5.5 0 0 1-1 0v-3A1.5 1.5 0 0 1 1.5 0h3a.5.5 0 0 1 0 1h-3zM11 .5a.5.5 0 0 1 .5-.5h3A1.5 1.5 0 0 1 16 1.5v3a.5.5 0 0 1-1 0v-3a.5.5 0 0 0-.5-.5h-3a.5.5 0 0 1-.5-.5zM.5 11a.5.5 0 0 1 .5.5v3a.5.5 0 0 0 .5.5h3a.5.5 0 0 1 0 1h-3A1.5 1.5 0 0 1 0 14.5v-3a.5.5 0 0 1 .5-.5zm15 0a.5.5 0 0 1 .5.5v3a1.5 1.5 0 0 1-1.5 1.5h-3a.5.5 0 0 1 0-1h3a.5.5 0 0 0 .5-.5v-3a.5.5 0 0 1 .5-.5z"/><path d="M3 4.5a.5.5 0 0 1 .5-.5h9a.5.5 0 0 1 0 1h-9a.5.5 0 0 1-.5-.5z"/></svg>
-                        <div>Sell Item</div>
-                    </a>
-                    <a href="#" id="dash-add-btn" class="action-btn">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 16 16"><path d="M8.186 1.113a.5.5 0 0 0-.372 0L1.846 3.5 8 5.961 14.154 3.5 8.186 1.113zM15 4.239l-6.5 2.6v7.922l6.5-2.6V4.24zM1 4.239v7.925l6.5 2.6V6.839L1 4.24z"/></svg>
-                        <div>Add Product</div>
-                    </a>
-                </div>
-                <h2>Today's Sales</h2>
-                ${recentSalesHTML}
-                ${this.state.deferredInstallPrompt ? `<a href="#" class="add-to-homescreen-btn">Add to Homescreen</a>` : ''}
-            `;
-        },
-
-        renderProductsView() {
-            const content = this.state.products.length === 0
-                ? `<div class="empty-state"><h2>No Products Yet</h2><p>Tap the '+' button to start scanning items.</p></div>`
-                : `<div class="product-grid">` + this.state.products.map(p => {
-                    const stockLevel = p.stock <= 5 ? (p.stock === 0 ? 'out' : 'low') : '';
-                    return `
-                        <a href="#" class="product-card ${p.stock === 0 ? 'out-of-stock' : ''}" data-id="${p.id}">
-                            ${stockLevel ? `<div class="stock-badge ${stockLevel}">${stockLevel === 'low' ? 'Low Stock' : 'Sold Out'}</div>` : ''}
-                            <img src="${p.image}" class="product-image" alt="${p.name}">
-                            <div class="product-info">
-                                <h3>${p.name}</h3>
-                                <div class="details">₦${p.price} &middot; ${p.stock} left</div>
-                            </div>
-                        </a>`;
-                }).join('') + `</div>`;
-
-            this.elements.views.products.innerHTML = `
-                <div class="view-header">
-                    <button class="back-btn" id="products-back-btn">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M11.354 1.646a.5.5 0 0 1 0 .708L5.707 8l5.647 5.646a.5.5 0 0 1-.708.708l-6-6a.5.5 0 0 1 0-.708l6-6a.5.5 0 0 1 .708 0z"/></svg>
-                    </button>
-                    <h1>My Products</h1>
-                </div>
-                ${content}
-                <button id="add-product-fab" class="fab">+</button>
-            `;
-        },
-        
-        // --- EVENT HANDLERS & FLOWS ---
-        addCoreEventListeners() {
-            // Use event delegation for dynamically added content
-            document.body.addEventListener('click', e => {
-                const target = e.target;
-                const action = target.closest('[data-action]');
-                if (action) {
-                    const actionName = action.dataset.action;
-                    if (this.actions[actionName]) this.actions[actionName](e, action);
-                }
-
-                // Simplified one-off handlers
-                if (target.closest('#sell-item-btn') || target.closest('#dash-sell-btn')) { e.preventDefault(); this.startSellFlow(); }
-                if (target.closest('#add-product-fab') || target.closest('#dash-add-btn')) { e.preventDefault(); this.startAddProductFlow(); }
-                if (target.closest('.add-to-homescreen-btn')) { e.preventDefault(); this.promptInstall(); }
-                if (target.closest('#products-back-btn')) this.navigateBack();
-                if (target.closest('.product-card')) { e.preventDefault(); this.editProduct(target.closest('.product-card').dataset.id); }
-                if (target.closest('#camera-back-btn')) this.cancelCamera();
-                
-                // Nav buttons
-                const navBtn = target.closest('.nav-btn');
-                if (navBtn && navBtn.dataset.view) this.navigateTo(navBtn.dataset.view);
+            // Modals
+            this.elements.retakePhotoBtn.addEventListener('click', () => {
+                this.hideModal('confirm-capture-modal');
+                this.startScan(this.currentScanMode, true); // Restart scan without hiding camera view
+            });
+            this.elements.confirmPhotoBtn.addEventListener('click', () => {
+                this.hideModal('confirm-capture-modal');
+                this.showModal('product-details-modal');
             });
 
-            window.addEventListener('beforeinstallprompt', e => {
+            // Product Form
+            this.elements.productForm.addEventListener('submit', (e) => this.saveProduct(e));
+            document.getElementById('cancel-product-form-btn').addEventListener('click', () => {
+                this.hideModal('product-details-modal');
+                this.navigateTo('products-view'); // Go back to products list
+                this.stopScan(); // Ensure camera is fully off
+            });
+
+            // Sell Form
+            this.elements.sellQuantityInput.addEventListener('input', () => this.updateSellTotal());
+            this.elements.confirmSellBtn.addEventListener('click', () => this.processSale());
+            this.elements.cancelSellBtn.addEventListener('click', () => this.cancelSale());
+
+            // PWA Install
+            window.addEventListener('beforeinstallprompt', (e) => {
                 e.preventDefault();
-                this.state.deferredInstallPrompt = e;
-                this.renderCurrentView(); // Re-render to show install button
+                this.deferredInstallPrompt = e;
+                this.elements.installBtn.classList.remove('hidden');
             });
+            this.elements.installBtn.addEventListener('click', () => this.promptInstall());
+
+            // Communal Booking
+            this.elements.toast.addEventListener('click', () => {
+                this.hideToast();
+                this.showModal('communal-booking-modal');
+            });
+            document.getElementById('accept-booking-btn').addEventListener('click', () => this.hideModal('communal-booking-modal'));
+            document.getElementById('decline-booking-btn').addEventListener('click', () => this.hideModal('communal-booking-modal'));
         },
         
-        // ... (onboarding and permission flows are straightforward and omitted for brevity) ...
+        async checkOnboarding() {
+            const userInfo = await DB.getUserInfo();
+            if (userInfo) {
+                this.elements.welcomeMessage.textContent = `Welcome, ${userInfo.name}!`;
+                this.elements.businessNameHeader.textContent = userInfo.businessName;
+                this.elements.loader.classList.add('hidden');
+                this.elements.appContainer.classList.remove('hidden');
+                this.elements.mainApp.classList.remove('hidden');
+                this.elements.onboardingView.classList.remove('active-view');
+                this.navigateTo('home-view');
+                this.refreshDashboard();
+                this.renderProducts();
+            } else {
+                this.elements.loader.classList.add('hidden');
+                this.elements.appContainer.classList.remove('hidden');
+                this.showView('onboarding-view');
+            }
+        },
 
-        async startSellFlow() {
-            this.navigateTo('camera');
-            const video = document.getElementById('camera-feed');
-            const status = document.getElementById('camera-status');
-            const scanBox = document.getElementById('scan-box');
-
-            if (!(await Camera.startCamera(video))) {
-                this.navigateBack();
+        async finishOnboarding() {
+            const name = document.getElementById('user-name').value.trim();
+            const businessName = document.getElementById('business-name').value.trim();
+            if (!name || !businessName) {
+                this.showToast("Please enter your name and business name.");
                 return;
             }
-            
-            status.textContent = 'Scanning for product...';
-            scanBox.classList.remove('found');
-            
-            this.state.scanInterval = setInterval(async () => {
-                const match = await Camera.scanForMatch(video, this.state.products);
-                if (match) {
-                    clearInterval(this.state.scanInterval);
-                    clearTimeout(this.state.scanTimeout);
-                    status.textContent = `Found: ${match.name}`;
-                    scanBox.classList.add('found');
-                    setTimeout(() => {
-                        Camera.stopCamera();
-                        // Don't navigate back, just show modal on top
-                        this.showSellModal(match);
-                    }, 800);
-                }
-            }, 1200);
+            await DB.setUserInfo({ name, businessName });
+            this.showView('camera-permission-view');
+        },
 
-            this.state.scanTimeout = setTimeout(() => {
-                clearInterval(this.state.scanInterval);
-                Camera.stopCamera();
-                this.showToast('Product not found. Try adding it first.', 'error');
-                this.navigateBack();
-            }, 8000);
+        async requestCameraPermission() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                // Immediately stop the stream; we only wanted to trigger the permission prompt.
+                stream.getTracks().forEach(track => track.stop());
+                this.checkOnboarding();
+            } catch (error) {
+                alert("Camera access is required to scan products. Please enable it in your browser settings.");
+            }
         },
         
-        cancelCamera() {
-            if (this.state.scanInterval) clearInterval(this.state.scanInterval);
-            if (this.state.scanTimeout) clearTimeout(this.state.scanTimeout);
-            Camera.stopCamera();
-            this.navigateBack();
+        showView(viewId) {
+            this.elements.views.forEach(view => {
+                view.classList.remove('active-view');
+                if (view.id === viewId) {
+                    view.classList.add('active-view');
+                }
+            });
+        },
+        
+        navigateTo(viewId) {
+            this.showView(viewId);
+            this.elements.mainApp.classList.remove('hidden');
+            this.elements.cameraView.classList.remove('active-view');
+
+            this.elements.navButtons.forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.view === viewId);
+            });
         },
 
-        showSellModal(product) {
-            // Simplified modal rendering and logic...
-            this.elements.modalContainer.innerHTML = ``;
-            this.elements.modalContainer.classList.add('active');
-            // ... add event listeners for the sale confirmation ...
-            // On confirm, update DB, then this.hideModal(); this.navigateBack();
+        async startScan(mode, isRetake = false) {
+            this.currentScanMode = mode;
+            if (!isRetake) {
+                this.elements.mainApp.classList.add('hidden');
+                this.elements.cameraView.classList.add('active-view');
+            }
+            this.elements.cameraStatus.textContent = mode === 'add' ? 'Position product to add' : 'Scanning for product...';
+            
+            try {
+                await Camera.start(
+                    (imageData) => this.handleCapture(imageData),
+                    (matchedProduct) => this.handleProductMatch(matchedProduct)
+                );
+                this.isCameraOn = true;
+            } catch (error) {
+                console.error("Failed to start camera:", error);
+                alert("Could not start the camera. Please ensure you've granted permission.");
+                this.stopScan();
+            }
         },
 
-        // Placeholder for other methods like saveProduct, editProduct, etc.
-        // They would follow a similar pattern: perform action, update state, re-render view or navigate back.
+        stopScan() {
+            if (this.isCameraOn) {
+                Camera.stop();
+                this.isCameraOn = false;
+            }
+            this.elements.mainApp.classList.remove('hidden');
+            this.elements.cameraView.classList.remove('active-view');
+        },
+
+        handleCapture(imageData) {
+            this.capturedImageData = imageData;
+            this.elements.capturedImagePreview.src = this.capturedImageData;
+            
+            // If scanning to sell and no match was found
+            if (this.currentScanMode === 'sell') {
+                this.showToast("Product not found. Let's add it!");
+                this.currentScanMode = 'add'; // Switch mode to add
+                // No need to show confirm modal, go straight to details
+                this.showModal('product-details-modal');
+            } else {
+                 // Regular 'add' flow
+                this.showModal('confirm-capture-modal');
+            }
+        },
+
+        handleProductMatch(product) {
+            this.stopScan();
+            this.prepareSellModal(product);
+            this.showModal('sell-item-modal');
+        },
+
+        async saveProduct(event) {
+            event.preventDefault();
+            const product = {
+                id: this.editingProductId || Date.now(),
+                name: document.getElementById('product-name').value.trim(),
+                price: parseFloat(document.getElementById('product-price').value),
+                stock: parseInt(document.getElementById('product-stock').value),
+                unit: document.getElementById('product-unit').value.trim(),
+                imageData: this.capturedImageData,
+            };
+
+            if (!product.name || !product.price || !product.stock || !product.unit) {
+                this.showToast("Please fill all fields.");
+                return;
+            }
+
+            await DB.saveProduct(product);
+            this.showToast(this.editingProductId ? 'Product Updated!' : 'Product Added!');
+            
+            // Reset state
+            this.editingProductId = null;
+            this.capturedImageData = null;
+            document.getElementById('product-form').reset();
+            this.hideModal('product-details-modal');
+            this.stopScan(); // Important: fully stop camera flow
+            this.navigateTo('products-view');
+            this.renderProducts();
+        },
+        
+        async renderProducts() {
+            const products = await DB.getProducts();
+            const list = this.elements.productList;
+            list.innerHTML = '';
+            if (products.length === 0) {
+                list.innerHTML = `<p class="empty-state" style="grid-column: 1 / -1;">No products yet. Tap the '+' button to add your first product.</p>`;
+                return;
+            }
+            products.forEach(p => {
+                const card = document.createElement('div');
+                card.className = 'product-card';
+                card.innerHTML = `
+                    <img src="${p.imageData}" alt="${p.name}" class="product-card-image">
+                    <div class="product-card-info">
+                        <h3>${p.name}</h3>
+                        <p class="price">₦${p.price.toLocaleString()}</p>
+                        <p class="stock">${p.stock} ${p.unit} left</p>
+                    </div>
+                    <div class="product-card-actions">
+                        <button class="edit-product-btn" data-id="${p.id}">Edit</button>
+                    </div>
+                `;
+                list.appendChild(card);
+            });
+            
+            document.querySelectorAll('.edit-product-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => this.editProduct(e.currentTarget.dataset.id));
+            });
+        },
+
+        async editProduct(id) {
+            const product = await DB.getProduct(Number(id));
+            if (!product) return;
+            
+            this.editingProductId = product.id;
+            this.capturedImageData = product.imageData; // Important for saving
+            
+            this.elements.modalTitle.textContent = "Edit Product";
+            document.getElementById('product-id').value = product.id;
+            document.getElementById('product-name').value = product.name;
+            document.getElementById('product-price').value = product.price;
+            document.getElementById('product-stock').value = product.stock;
+            document.getElementById('product-unit').value = product.unit;
+
+            this.showModal('product-details-modal');
+        },
+
+        prepareSellModal(product) {
+            this.elements.confirmSellBtn.dataset.productId = product.id;
+            this.elements.sellProductImage.src = product.imageData;
+            this.elements.sellProductName.textContent = product.name;
+            this.elements.sellQuantityInput.value = 1;
+            this.elements.sellQuantityInput.max = product.stock;
+            this.updateSellTotal();
+        },
+        
+        async updateSellTotal() {
+            const productId = this.elements.confirmSellBtn.dataset.productId;
+            const product = await DB.getProduct(Number(productId));
+            const quantity = parseInt(this.elements.sellQuantityInput.value) || 0;
+            const total = (product.price * quantity).toLocaleString();
+            this.elements.sellTotalPrice.textContent = `₦${total}`;
+        },
+
+        async processSale() {
+            const productId = Number(this.elements.confirmSellBtn.dataset.productId);
+            const quantitySold = parseInt(this.elements.sellQuantityInput.value);
+            const product = await DB.getProduct(productId);
+
+            if (quantitySold > product.stock) {
+                this.showToast("Not enough stock!");
+                return;
+            }
+
+            product.stock -= quantitySold;
+            await DB.saveProduct(product);
+            
+            // Record sale for dashboard
+            this.salesData.push({ name: product.name, quantity: quantitySold, total: product.price * quantitySold });
+
+            this.hideModal('sell-item-modal');
+            this.showToast("Sale recorded!");
+            this.refreshDashboard();
+            this.renderProducts();
+            
+            // Automatically start next scan
+            this.startScan('sell');
+        },
+
+        cancelSale() {
+            this.hideModal('sell-item-modal');
+             // Go back to the home screen after canceling a sale
+            this.navigateTo('home-view');
+        },
+        
+        refreshDashboard() {
+            const totalSales = this.salesData.reduce((sum, sale) => sum + sale.total, 0);
+            const itemsSold = this.salesData.reduce((sum, sale) => sum + sale.quantity, 0);
+
+            this.elements.totalSalesEl.textContent = `₦${totalSales.toLocaleString()}`;
+            this.elements.itemsSoldEl.textContent = itemsSold;
+
+            // Render recent sales
+            const list = this.elements.recentSalesList;
+            if (this.salesData.length === 0) {
+                 list.innerHTML = `<p class="empty-state">No sales recorded yet.</p>`;
+                 return;
+            }
+            list.innerHTML = this.salesData.slice(-5).reverse().map(sale => `
+                <div class="sale-item">
+                    <span class="sale-item-info">${sale.quantity}x ${sale.name}</span>
+                    <span class="sale-item-price">+₦${sale.total.toLocaleString()}</span>
+                </div>
+            `).join('');
+        },
+        
+        showModal(modalId) {
+            this.elements.modalBackdrop.classList.remove('hidden');
+            this.elements[modalId].classList.remove('hidden');
+        },
+
+        hideModal(modalId) {
+            this.elements.modalBackdrop.classList.add('hidden');
+            this.elements[modalId].classList.add('hidden');
+        },
+
+        showToast(message) {
+            const toast = this.elements.toast;
+            toast.textContent = message;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 3000);
+        },
+        
+        showCommunalBookingToast() {
+            const toast = this.elements.toast;
+            toast.innerHTML = "Incoming Purchase from Tolu! <strong>[View Items]</strong>";
+            toast.classList.add('show');
+        },
+        
+        hideToast() {
+            this.elements.toast.classList.remove('show');
+        },
+
+        promptInstall() {
+            if (this.deferredInstallPrompt) {
+                this.deferredInstallPrompt.prompt();
+                this.deferredInstallPrompt.userChoice.then(choiceResult => {
+                    if (choiceResult.outcome === 'accepted') {
+                        console.log('User accepted the install prompt');
+                    }
+                    this.deferredInstallPrompt = null;
+                });
+                this.elements.installBtn.classList.add('hidden');
+            }
+        },
+
+        registerServiceWorker() {
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('/serviceworker.js')
+                    .then(registration => console.log('Service Worker registered with scope:', registration.scope))
+                    .catch(error => console.log('Service Worker registration failed:', error));
+            }
+        },
     };
 
-    // Make App globally accessible for simplicity in this single-file context
-    window.App = App;
     App.init();
 });
-
-// NOTE: Due to the complexity and length, some parts of app.js like specific modal rendering and form handling
-// have been condensed for clarity. The core navigation, rendering, and improved scanning flow are fully implemented.
-// `camera.js`, `db.js`, `serviceworker.js`, `manifest.json` from the previous excellent version can be used as they are highly robust.

@@ -1,121 +1,129 @@
 const Camera = {
-  model: null,
-  videoStream: null,
-  isModelReady: false,
-  
-  async init() {
-    try {
-      this.model = await mobilenet.load({version: 2, alpha: 0.5});
-      this.isModelReady = true;
-      console.log('MobileNet model loaded (version 2, alpha 0.5).');
-    } catch (error) {
-      console.error('Error loading model:', error);
-      this.isModelReady = false;
-    }
-  },
+    videoElement: document.getElementById('camera-feed'),
+    canvasElement: document.getElementById('camera-canvas'),
+    stream: null,
+    model: null,
+    isRunning: false,
+    scanTimeout: null,
 
-  async startCamera(videoElement) {
-    if (this.videoStream) {
-        this.stopCamera();
-    }
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-      try {
-        const constraints = {
-          video: {
-            facingMode: 'environment',
-            width: { ideal: 640 },
-            height: { ideal: 480 }
-          }
-        };
-        this.videoStream = await navigator.mediaDevices.getUserMedia(constraints);
-        videoElement.srcObject = this.videoStream;
-        return new Promise(resolve => {
-            videoElement.onloadedmetadata = () => {
-                videoElement.play();
-                resolve(true);
+    async loadModel() {
+        if (!this.model) {
+            console.log("Loading MobileNet model...");
+            this.model = await mobilenet.load();
+            console.log("Model loaded.");
+        }
+    },
+
+    async start(onCaptureCallback, onMatchCallback) {
+        if (this.isRunning) return;
+        this.isRunning = true;
+        
+        await this.loadModel();
+        
+        try {
+            this.stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: 'environment' }
+            });
+            this.videoElement.srcObject = this.stream;
+            this.videoElement.play();
+
+            // Set canvas dimensions once video is playing
+            this.videoElement.onloadedmetadata = () => {
+                this.canvasElement.width = this.videoElement.videoWidth;
+                this.canvasElement.height = this.videoElement.videoHeight;
+                
+                const appState = window.App; // Access global App object
+                if (appState.currentScanMode === 'sell') {
+                    this.scanLoop(onMatchCallback, onCaptureCallback);
+                } else { // 'add' mode
+                    this.captureAfterDelay(onCaptureCallback);
+                }
             };
-        });
-      } catch (err) {
-        console.error("Error accessing camera:", err);
-        // Provide more helpful error messages
-        if(err.name === "NotAllowedError") {
-            alert("Camera permission was denied. Please enable it in your browser settings to continue.");
-        } else {
-            alert("Could not access the camera. It might be in use by another app or not available.");
+
+        } catch (error) {
+            this.isRunning = false;
+            throw error;
         }
-        return false;
-      }
-    }
-    return false;
-  },
+    },
 
-  stopCamera() {
-    if (this.videoStream) {
-      this.videoStream.getTracks().forEach(track => track.stop());
-      this.videoStream = null;
-    }
-  },
-
-  captureFrame(videoElement, canvasElement) {
-    const context = canvasElement.getContext('2d');
-    canvasElement.width = videoElement.videoWidth;
-    canvasElement.height = videoElement.videoHeight;
-    context.drawImage(videoElement, 0, 0, videoElement.videoWidth, videoElement.videoHeight);
-    return canvasElement.toDataURL('image/jpeg', 0.9);
-  },
-  
-  async getEmbedding(imageElementOrCanvas) {
-    if (!this.isModelReady) {
-      console.error("Model not loaded yet.");
-      return null;
-    }
-    try {
-      const tensor = tf.browser.fromPixels(imageElementOrCanvas).toFloat().div(tf.scalar(255.0)).expandDims();
-      const embedding = this.model.infer(tensor, true);
-      tensor.dispose();
-      return embedding.dataSync();
-    } catch (error) {
-      console.error('Error getting embedding:', error);
-      return null;
-    }
-  },
-
-  _cosineSimilarity(vecA, vecB) {
-      let dotProduct = 0;
-      let magnitudeA = 0;
-      let magnitudeB = 0;
-      for (let i = 0; i < vecA.length; i++) {
-          dotProduct += vecA[i] * vecB[i];
-          magnitudeA += vecA[i] * vecA[i];
-          magnitudeB += vecB[i] * vecB[i];
-      }
-      magnitudeA = Math.sqrt(magnitudeA);
-      magnitudeB = Math.sqrt(magnitudeB);
-      if (magnitudeA && magnitudeB) {
-          return dotProduct / (magnitudeA * magnitudeB);
-      }
-      return 0;
-  },
-
-  async findBestMatch(embeddingToMatch, allProducts) {
-    if (!embeddingToMatch || allProducts.length === 0) return null;
-
-    let bestMatch = { product: null, score: 0.0 };
-    const SIMILARITY_THRESHOLD = 0.92; // Stricter threshold for higher accuracy
-
-    for (const product of allProducts) {
-      if (product.embedding && product.stock > 0) { // Only match items in stock
-        const similarity = this._cosineSimilarity(embeddingToMatch, product.embedding);
-        if (similarity > bestMatch.score) {
-          bestMatch = { product: product, score: similarity };
+    stop() {
+        if (this.stream) {
+            this.stream.getTracks().forEach(track => track.stop());
         }
-      }
-    }
+        clearTimeout(this.scanTimeout);
+        this.videoElement.srcObject = null;
+        this.stream = null;
+        this.isRunning = false;
+    },
     
-    if (bestMatch.score > SIMILARITY_THRESHOLD) {
-      console.log(`Found match: ${bestMatch.product.name} with score ${bestMatch.score}`);
-      return bestMatch.product;
+    captureAfterDelay(callback) {
+        // Automatically captures after a short delay for the 'add' flow.
+        this.scanTimeout = setTimeout(() => {
+            if (!this.isRunning) return;
+            const imageData = this.captureFrame();
+            this.stop();
+            callback(imageData);
+        }, 2000); // 2-second delay
+    },
+    
+    async scanLoop(onMatchCallback, onCaptureCallback) {
+        // Continuously scan for a match in 'sell' mode.
+        if (!this.isRunning) return;
+
+        const predictions = await this.classifyFrame();
+        const products = await DB.getProducts();
+
+        // Simple matching logic: check if prediction keywords are in product names
+        let foundProduct = null;
+        if (predictions && predictions.length > 0) {
+            for (const product of products) {
+                for (const prediction of predictions) {
+                    // Check if any part of the prediction class name is in the product name
+                    const keywords = prediction.className.split(', ')[0].toLowerCase();
+                    if (product.name.toLowerCase().includes(keywords)) {
+                        foundProduct = product;
+                        break;
+                    }
+                }
+                if (foundProduct) break;
+            }
+        }
+        
+        if (foundProduct) {
+            onMatchCallback(foundProduct);
+        } else {
+            // If still running, loop again
+            if(this.isRunning) {
+                 requestAnimationFrame(() => this.scanLoop(onMatchCallback, onCaptureCallback));
+            }
+        }
+        
+        // Timeout logic: if no match found after 5s, trigger capture
+        if (!this.scanTimeout) {
+            this.scanTimeout = setTimeout(() => {
+                 if (this.isRunning) { // check if still running and no match was found
+                    const imageData = this.captureFrame();
+                    this.stop();
+                    onCaptureCallback(imageData);
+                 }
+            }, 5000);
+        }
+    },
+
+    captureFrame() {
+        const context = this.canvasElement.getContext('2d');
+        context.drawImage(this.videoElement, 0, 0, this.canvasElement.width, this.canvasElement.height);
+        return this.canvasElement.toDataURL('image/jpeg');
+    },
+    
+    async classifyFrame() {
+        if (!this.model || !this.isRunning) return null;
+        try {
+            const predictions = await this.model.classify(this.videoElement);
+            return predictions;
+        } catch (error) {
+            console.error("Classification error:", error);
+            return null;
+        }
     }
-    return null;
-  }
 };
