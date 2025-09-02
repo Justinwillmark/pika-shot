@@ -125,7 +125,7 @@ html, body {
 }
 
 .app-header h1 {
-    font-size: 1.75rem;
+    font-size: clamp(1.5rem, 5vw, 1.75rem);
     font-weight: 700;
 }
 
@@ -138,6 +138,7 @@ html, body {
     font-size: 0.8rem;
     font-weight: 600;
     cursor: pointer;
+    flex-shrink: 0;
 }
 
 
@@ -153,7 +154,7 @@ html, body {
 }
 
 .onboarding-content h1, .onboarding-content h2 {
-    font-size: 1.8rem;
+    font-size: clamp(1.6rem, 6vw, 1.8rem);
     font-weight: 700;
     margin-bottom: 12px;
 }
@@ -162,6 +163,7 @@ html, body {
     color: var(--text-light);
     margin-bottom: 24px;
     max-width: 320px;
+    line-height: 1.5;
 }
 .permission-icon {
     margin-bottom: 20px;
@@ -205,6 +207,7 @@ html, body {
     cursor: pointer;
     width: 100%;
     transition: background-color 0.2s;
+    min-height: 48px; /* Good touch target size */
 }
 .btn-primary {
     background-color: var(--primary-color);
@@ -235,8 +238,16 @@ html, body {
     box-shadow: 0 4px 15px rgba(0,0,0,0.2);
     border: none;
     z-index: 100;
+    transition: opacity 0.3s, transform 0.3s;
 }
 
+/* ✨ NEW: Style for disabled camera features */
+.disabled {
+    opacity: 0.6;
+    pointer-events: none;
+    cursor: not-allowed;
+    transform: scale(0.95);
+}
 
 /* === Bottom Navigation === */
 .bottom-nav {
@@ -285,6 +296,7 @@ html, body {
     color: white;
     box-shadow: 0 4px 15px rgba(74, 144, 226, 0.4);
     transform: translateY(-20px);
+    transition: opacity 0.3s, transform 0.3s;
 }
 .nav-btn-main span {
     font-size: 0.7rem;
@@ -311,7 +323,7 @@ html, body {
     margin-bottom: 8px;
 }
 .stat-card h2 {
-    font-size: 2rem;
+    font-size: clamp(1.75rem, 8vw, 2.25rem);
     font-weight: 700;
     color: var(--primary-color);
 }
@@ -337,12 +349,17 @@ html, body {
     border-radius: 8px;
     margin-right: 12px;
     object-fit: cover;
+    flex-shrink: 0;
 }
 .sale-info {
     flex-grow: 1;
+    overflow: hidden;
 }
 .sale-info p {
     font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 .sale-info span {
     font-size: 0.8rem;
@@ -351,6 +368,7 @@ html, body {
 .sale-price {
     font-weight: 700;
     font-size: 1.1rem;
+    margin-left: 8px;
 }
 
 
@@ -568,4 +586,21 @@ html, body {
 .sale-total h2 {
     margin: 0;
     color: var(--primary-color);
+}
+
+/* Responsiveness Tweaks */
+@media (max-width: 360px) {
+    .dashboard-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .product-grid {
+        grid-template-columns: repeat(auto-fill, minmax(135px, 1fr));
+        gap: 12px;
+        padding: 12px;
+    }
+
+    .page {
+        padding-bottom: 75px;
+    }
 }
