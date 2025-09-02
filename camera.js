@@ -1,86 +1,158 @@
-let stream;
-let model;
+const Camera = {
+    videoElement: document.getElementById('camera-feed'),
+    model: null,
+    stream: null,
+    isScanning: false,
+    scanTimeout: null,
+    captureTimeout: null,
 
-async function loadModel() {
-    console.log("Loading MobileNet model...");
-    try {
-        model = await mobilenet.load();
-        console.log("Model loaded successfully.");
-    } catch (err) {
-        console.error("Failed to load model:", err);
-    }
-}
-
-async function startCamera() {
-    const video = document.getElementById('video');
-    try {
-        if (stream) {
-            stream.getTracks().forEach(track => track.stop());
+    async init() {
+        try {
+            this.model = await mobilenet.load();
+            console.log('MobileNet model loaded.');
+        } catch (error) {
+            console.error('Failed to load MobileNet model:', error);
+            alert('Could not load the recognition engine. Please check your connection and refresh.');
         }
-        stream = await navigator.mediaDevices.getUserMedia({ 
-            video: { 
-                facingMode: 'environment',
-                width: { ideal: 640 },
-                height: { ideal: 480 }
-            } 
+    },
+
+    async start(onCapture, countdownElement = null) {
+        if (!this.model) {
+            alert('Recognition engine is not ready.');
+            return;
+        }
+        if (this.stream) this.stop();
+
+        try {
+            this.stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+            });
+            this.videoElement.srcObject = this.stream;
+            await this.videoElement.play();
+
+            // Auto-capture after countdown
+            if(countdownElement) {
+                let count = 3;
+                countdownElement.textContent = count;
+                const interval = setInterval(() => {
+                    count--;
+                    countdownElement.textContent = count > 0 ? count : '';
+                    if (count <= 0) {
+                        clearInterval(interval);
+                        this.captureAndProcess(onCapture);
+                    }
+                }, 1000);
+            }
+        } catch (err) {
+            console.error('Error starting camera:', err);
+            alert('Could not access the camera. Please grant permission.');
+        }
+    },
+
+    async startScan(onMatch) {
+        return new Promise(async (resolve, reject) => {
+            if (!this.model) {
+                return reject('Model not loaded');
+            }
+            if (this.stream) this.stop();
+
+            try {
+                this.stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+                });
+                this.videoElement.srcObject = this.stream;
+                await this.videoElement.play();
+                this.isScanning = true;
+
+                const scanLoop = async () => {
+                    if (!this.isScanning) return;
+                    
+                    const embedding = this.getEmbedding();
+                    if (embedding) {
+                        const products = await DB.getAllProducts();
+                        let bestMatch = null;
+                        let highestSimilarity = 0;
+                        const SIMILARITY_THRESHOLD = 0.85; // Adjust as needed
+
+                        for (const product of products) {
+                            if (product.embedding) {
+                                const similarity = this.cosineSimilarity(embedding, product.embedding);
+                                if (similarity > highestSimilarity) {
+                                    highestSimilarity = similarity;
+                                    bestMatch = product;
+                                }
+                            }
+                        }
+
+                        if (highestSimilarity > SIMILARITY_THRESHOLD) {
+                            this.stop();
+                            onMatch(bestMatch);
+                            return; // Exit loop
+                        }
+                    }
+                    requestAnimationFrame(scanLoop);
+                };
+                scanLoop();
+                
+                // Timeout if no match is found
+                this.scanTimeout = setTimeout(async () => {
+                    if (this.isScanning) {
+                        const { blob, embedding } = await this.captureAndProcess(() => {});
+                        this.stop();
+                        resolve({ reason: 'notFound', blob, embedding });
+                    }
+                }, 4000); // 4-second timeout
+
+            } catch (err) {
+                reject(err);
+            }
         });
-        video.srcObject = stream;
-        await video.play();
-    } catch (err) {
-        console.error("Camera access denied:", err);
-        throw err;
+    },
+
+    stop() {
+        this.isScanning = false;
+        clearTimeout(this.scanTimeout);
+        clearTimeout(this.captureTimeout);
+        if (this.stream) {
+            this.stream.getTracks().forEach(track => track.stop());
+            this.stream = null;
+        }
+        this.videoElement.srcObject = null;
+    },
+
+    async captureAndProcess(callback) {
+        const canvas = document.createElement('canvas');
+        canvas.width = this.videoElement.videoWidth;
+        canvas.height = this.videoElement.videoHeight;
+        const context = canvas.getContext('2d');
+        context.drawImage(this.videoElement, 0, 0, canvas.width, canvas.height);
+
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.9));
+        const embedding = this.getEmbedding(canvas);
+        
+        this.stop();
+        if (callback) callback(blob, embedding);
+        return { blob, embedding };
+    },
+
+    getEmbedding(source) {
+        if (!this.model) return null;
+        source = source || this.videoElement;
+        return tf.tidy(() => {
+            const img = tf.browser.fromPixels(source);
+            const resized = tf.image.resizeBilinear(img, [224, 224]);
+            const batched = resized.expandDims(0);
+            const preprocessed = batched.toFloat().div(tf.scalar(127.5)).sub(tf.scalar(1));
+            const embedding = this.model.infer(preprocessed, true);
+            return embedding.dataSync();
+        });
+    },
+
+    cosineSimilarity(vecA, vecB) {
+        const dotProduct = vecA.reduce((sum, a, i) => sum + a * vecB[i], 0);
+        const magnitudeA = Math.sqrt(vecA.reduce((sum, a) => sum + a * a, 0));
+        const magnitudeB = Math.sqrt(vecB.reduce((sum, b) => sum + b * b, 0));
+        if (magnitudeA === 0 || magnitudeB === 0) return 0;
+        return dotProduct / (magnitudeA * magnitudeB);
     }
-}
-
-function stopCamera() {
-    if (stream) {
-        stream.getTracks().forEach(track => track.stop());
-        stream = null;
-    }
-}
-
-async function captureImage(stop = true) {
-    const video = document.getElementById('video');
-    if (!video.srcObject) return null; // Camera not active
-    
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext('2d').drawImage(video, 0, 0);
-    
-    if (stop) stopCamera();
-    
-    return canvas.toDataURL('image/jpeg', 0.9); // Use JPEG for smaller size
-}
-
-async function extractFeatures(imageData) {
-    if (!model) {
-        console.error("Model not loaded!");
-        return null;
-    }
-    const img = new Image();
-    img.src = imageData;
-    await new Promise(r => img.onload = r);
-
-    return tf.tidy(() => {
-        const tfImg = tf.browser.fromPixels(img).toFloat();
-        const normalized = tfImg.div(255.0); // Normalize to [0, 1]
-        const resized = tf.image.resizeBilinear(normalized, [224, 224]); // MobileNet input size
-        const embeddings = model.infer(resized, true);
-        return embeddings.arraySync()[0];
-    });
-}
-
-function cosineSimilarity(a, b) {
-    if (!a || !b) return 0;
-    let dot = 0;
-    let normA = 0;
-    let normB = 0;
-    for (let i = 0; i < a.length; i++) {
-        dot += a[i] * b[i];
-        normA += a[i] * a[i];
-        normB += b[i] * b[i];
-    }
-    const denominator = Math.sqrt(normA) * Math.sqrt(normB);
-    return denominator === 0 ? 0 : dot / denominator;
-}
+};

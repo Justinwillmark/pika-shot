@@ -3,177 +3,191 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <meta name="theme-color" content="#4A90E2">
-    <title>Pika Shot</title>
-    <link rel="manifest" href="manifest.json">
-    <link rel="apple-touch-icon" href="icons/icon-192.png">
+    <meta name="theme-color" content="#4A90E2"/>
+    <title>pika shot</title>
     <link rel="stylesheet" href="style.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@latest"></script>
-    <script defer src="db.js"></script>
-    <script defer src="camera.js"></script>
-    <script defer src="app.js"></script>
+    <link rel="manifest" href="manifest.json">
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.11.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.0/dist/mobilenet.min.js"></script>
 </head>
 <body>
-    <div id="loading-spinner" class="loading-overlay">
+
+    <div id="loader" class="loader-container">
         <div class="spinner"></div>
-        <p>Loading Pika Shot...</p>
+        <p>pika shot</p>
+        <div id="loader-check" class="loader-check" style="display: none;">✔</div>
     </div>
 
-    <div id="app" style="display: none;">
-        <main id="app-main">
-            <div id="onboarding" class="view">
-                <div class="onboard-content">
-                    <div class="logo">📸</div>
-                    <h1>Welcome to Pika Shot</h1>
-                    <p>The fastest way to track your sales and stock.</p>
-                    <div id="onboard-step1">
-                        <input type="text" id="user-name" placeholder="Your Name">
-                        <input type="text" id="business-name" placeholder="Your Business Name">
-                        <button id="onboard-next" class="btn-primary">Next <i class="material-icons">arrow_forward</i></button>
+    <div id="app-container" class="app-container" style="display: none;">
+
+        <div id="onboarding-view" class="view">
+            <div class="onboarding-content">
+                <h1>Welcome to pika shot</h1>
+                <p>The simplest way to track your sales and inventory.</p>
+                <div class="form-group">
+                    <label for="user-name">Your Name</label>
+                    <input type="text" id="user-name" placeholder="e.g., Chiamaka">
+                </div>
+                <div class="form-group">
+                    <label for="business-name">Business Name</label>
+                    <input type="text" id="business-name" placeholder="e.g., Amaka's Provisions">
+                </div>
+                 <div class="form-group">
+                    <label for="business-location">Location</label>
+                    <select id="business-location">
+                        <option value="" disabled selected>Select your area</option>
+                        <option value="Lagos Island">Lagos Island</option>
+                        <option value="Ikeja">Ikeja</option>
+                        <option value="Yaba">Yaba</option>
+                        <option value="Surulere">Surulere</option>
+                        <option value="Lekki">Lekki</option>
+                        <option value="Apapa">Apapa</option>
+                    </select>
+                </div>
+                <button id="start-onboarding-btn" class="btn btn-primary">Get Started</button>
+            </div>
+        </div>
+
+        <div id="camera-permission-view" class="view">
+            <div class="onboarding-content">
+                <div class="permission-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+                </div>
+                <h2>Camera Access</h2>
+                <p>pika shot uses your camera to scan products instantly. This makes adding items and selling faster than ever. Please allow access to continue.</p>
+                <button id="grant-camera-btn" class="btn btn-primary">Allow Camera</button>
+            </div>
+        </div>
+
+
+        <main id="main-content" class="main-content" style="display: none;">
+            <header id="app-header" class="app-header">
+                 <h1 id="header-title">Home</h1>
+                 <button id="add-to-homescreen-btn" class="add-to-homescreen-btn" style="display: none;">Add to Homescreen</button>
+            </header>
+
+            <div id="home-view" class="view page">
+                <div class="dashboard-grid">
+                    <div class="card stat-card">
+                        <p>Today's Sales</p>
+                        <h2 id="total-sales">₦0</h2>
                     </div>
-                    <div id="camera-explain" style="display: none;">
-                        <p>Pika Shot uses your camera to scan products instantly. Please grant access to continue.</p>
-                        <button id="grant-camera" class="btn-primary">Grant Camera Access</button>
+                    <div class="card stat-card">
+                        <p>Items Sold</p>
+                        <h2 id="items-sold">0</h2>
                     </div>
+                </div>
+                <h3>Recent Sales</h3>
+                <div id="recent-sales-list" class="recent-sales-list">
+                    <p class="empty-state">No sales recorded yet.</p>
                 </div>
             </div>
 
-            <div id="home" class="view">
-                <header class="app-header">
-                    <h1 id="greeting">Hello!</h1>
-                    <button id="install-btn" style="display: none;">Add to Home Screen</button>
-                </header>
-                <div class="stats-grid">
-                    <div class="stat-card">
-                        <div class="card-icon money"><i class="material-icons">account_balance_wallet</i></div>
-                        <div class="card-details">
-                            <h2>Total Sales Today</h2>
-                            <p id="total-sales">₦0</p>
-                        </div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="card-icon items"><i class="material-icons">inventory_2</i></div>
-                        <div class="card-details">
-                            <h2>Items Sold Today</h2>
-                            <p id="items-sold">0</p>
-                        </div>
-                    </div>
+            <div id="products-view" class="view page">
+                <div id="product-grid" class="product-grid">
+                     <p class="empty-state">No products added yet. Tap "Add Product" to get started!</p>
                 </div>
-                <div id="recent-sales">
-                    <h3>Recent Sales</h3>
-                    <ul id="sales-list">
-                        </ul>
-                </div>
-            </div>
-
-            <div id="products" class="view">
-                <header class="app-header">
-                    <h1>My Products</h1>
-                </header>
-                <div id="product-grid" class="grid">
-                    </div>
-                 <div id="empty-products" style="display: none; text-align: center; padding: 40px;">
-                    <i class="material-icons" style="font-size: 60px; color: #ccc;">inbox</i>
-                    <p>No products yet.</p>
-                    <p>Tap "Add Product" to start scanning.</p>
-                </div>
-            </div>
-            
-            <div id="camera-view" class="view camera-fullscreen">
-                <video id="video" autoplay playsinline></video>
-                <div id="scan-overlay">
-                     <div class="scan-line"></div>
-                </div>
-                <div class="camera-controls">
-                    <p id="scan-message">Align product in the frame</p>
-                    <button id="cancel-scan" class="btn-secondary"><i class="material-icons">close</i> Cancel</button>
-                </div>
-            </div>
-            
-            <div id="confirm-image" class="view">
-                 <header class="app-header"><h1>Confirm Image</h1></header>
-                 <div class="confirm-image-content">
-                    <img id="confirm-img" src="" alt="Captured Image">
-                    <p>Does this look right?</p>
-                    <div class="button-group">
-                        <button id="confirm-no" class="btn-secondary"><i class="material-icons">refresh</i> Try Again</button>
-                        <button id="confirm-yes" class="btn-primary"><i class="material-icons">check</i> Yes, Looks Good</button>
-                    </div>
-                 </div>
+                <button id="add-new-product-btn" class="fab">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                </button>
             </div>
 
         </main>
 
-        <nav id="bottom-nav" style="display: none;">
-            <button class="nav-btn active" data-view="home"><i class="material-icons">home</i><span>Home</span></button>
-            <button class="nav-btn" data-view="products"><i class="material-icons">inventory</i><span>Products</span></button>
-            <button id="add-product-btn" class="nav-btn-special"><i class="material-icons">add_circle</i><span>Add Product</span></button>
-            <button id="sell-item-btn" class="fab"><i class="material-icons">camera_alt</i><span>Sell</span></button>
+        <nav id="bottom-nav" class="bottom-nav" style="display: none;">
+            <button class="nav-btn active" data-view="home-view">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                <span>Home</span>
+            </button>
+            <button id="sell-item-btn-main" class="nav-btn-main">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 4v6h6"></path><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
+                <span>Sell Item</span>
+            </button>
+            <button class="nav-btn" data-view="products-view">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><line x1="3" y1="6" x2="21" y2="6"></line><path d="M16 10a4 4 0 0 1-8 0"></path></svg>
+                <span>Products</span>
+            </button>
         </nav>
-        
-        <div id="product-modal" class="modal-overlay" style="display: none;">
-            <div class="modal-content">
-                <h2 id="product-modal-title">Add New Product</h2>
-                <form id="add-form">
-                    <img id="add-image" src="" alt="Product Image">
-                    <input type="text" id="add-name" placeholder="Product Name" required>
-                    <input type="number" id="add-price" placeholder="Price (₦)" inputmode="decimal" required>
-                    <input type="number" id="add-stock" placeholder="Stock Quantity" inputmode="numeric" required>
-                    <input type="text" id="add-unit" placeholder="Unit (e.g., sachets, bottles)" required>
-                    <input type="hidden" id="edit-id">
-                    <div class="button-group">
-                        <button type="button" id="cancel-add" class="btn-secondary">Cancel</button>
-                        <button type="submit" id="save-product-btn" class="btn-primary">Save Product</button>
-                    </div>
-                </form>
+
+        <div id="camera-view" class="view camera-container">
+            <video id="camera-feed" playsinline></video>
+            <div id="camera-overlay" class="camera-overlay">
+                <div class="scan-box"></div>
+                <p id="scan-feedback">Scanning...</p>
+                <div id="capture-countdown" class="capture-countdown"></div>
+            </div>
+            <button id="cancel-scan-btn" class="btn btn-secondary cancel-scan-btn">Cancel</button>
+        </div>
+
+    </div> <div id="modal-container" class="modal-container" style="display:none;">
+
+        <div id="confirm-picture-modal" class="modal-content" style="display:none;">
+            <h2>Confirm Picture</h2>
+            <img id="captured-image-preview" src="" alt="Captured product image">
+            <div class="modal-actions">
+                <button id="retake-picture-btn" class="btn btn-secondary">Try Again</button>
+                <button id="confirm-picture-btn" class="btn btn-primary">Confirm</button>
             </div>
         </div>
-        
-        <div id="sell-modal" class="modal-overlay" style="display: none;">
-            <div class="modal-content">
-                <h2>Sell Product</h2>
-                <img id="sell-image" src="" alt="Product">
-                <h3 id="sell-name">Product Name</h3>
-                <p class="sell-price-display">Price: ₦<span id="sell-price">0</span></p>
-                <div class="quantity-control">
-                    <label for="sell-quantity">Quantity:</label>
-                    <input type="number" id="sell-quantity" min="1" value="1" inputmode="numeric" required>
+
+        <div id="product-form-modal" class="modal-content" style="display:none;">
+            <h2 id="product-form-title">Add New Product</h2>
+            <form id="product-form">
+                <input type="hidden" id="product-id">
+                <div class="form-group">
+                    <label for="product-name">Product Name</label>
+                    <input type="text" id="product-name" required>
                 </div>
-                <p class="sell-total-display">Total: ₦<span id="sell-total">0</span></p>
-                <div class="button-group">
-                    <button id="close-sell" type="button" class="btn-secondary">Cancel</button>
-                    <button id="confirm-sale" class="btn-primary"><i class="material-icons">check</i> Confirm Sale</button>
+                <div class="form-group">
+                    <label for="product-price">Price (₦)</label>
+                    <input type="number" id="product-price" inputmode="decimal" required>
                 </div>
-                <input type="hidden" id="sell-id">
-            </div>
+                <div class="form-group">
+                    <label for="product-stock">Stock Quantity</label>
+                    <input type="number" id="product-stock" inputmode="numeric" required>
+                </div>
+                <div class="form-group">
+                    <label for="product-unit">Unit Type</label>
+                    <select id="product-unit" required>
+                        <option value="sachets">sachets</option>
+                        <option value="bottles">bottles</option>
+                        <option value="cans">cans</option>
+                        <option value="pieces">pieces</option>
+                        <option value="packs">packs</option>
+                    </select>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" id="cancel-product-form-btn" class="btn btn-secondary">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Product</button>
+                </div>
+            </form>
         </div>
         
-        <div id="incoming-modal" class="modal-overlay" style="display: none;">
-            <div class="modal-content">
-                <h2>Incoming Purchase</h2>
-                <p>From: <strong>Tolu</strong></p>
-                <ul class="incoming-list">
-                    <li><span>10 x</span> Indomie Noodles</li>
-                    <li><span>5 x</span> Peak Milk Sachets</li>
-                </ul>
-                <div class="button-group">
-                    <button id="decline-incoming" class="btn-secondary">Decline</button>
-                    <button id="accept-incoming" class="btn-primary">Accept</button>
+        <div id="confirm-sale-modal" class="modal-content" style="display:none;">
+            <h2>Confirm Sale</h2>
+            <div class="sale-item-details">
+                <img id="sale-product-image" src="" alt="Product image">
+                <div>
+                    <h3 id="sale-product-name">Product Name</h3>
+                    <p id="sale-product-stock">Stock: 50 sachets</p>
                 </div>
             </div>
-        </div>
-        
-        <div id="toast-container">
-            <div id="not-found-toast" class="toast" style="display: none;">
-                <i class="material-icons">search_off</i><span>Product not found. Let's add it.</span>
+            <div class="form-group">
+                <label for="sale-quantity">Quantity</label>
+                <input type="number" id="sale-quantity" inputmode="numeric" value="1" min="1">
             </div>
-            <div id="incoming-toast" class="toast" style="display: none;">
-                <span>Incoming Purchase from Tolu!</span> <button id="view-incoming">View</button>
+            <div class="sale-total">
+                <p>Total</p>
+                <h2 id="sale-total-price">₦0</h2>
+            </div>
+            <div class="modal-actions">
+                <button id="cancel-sale-btn" class="btn btn-secondary">Cancel</button>
+                <button id="confirm-sale-btn" class="btn btn-primary">Confirm Sale</button>
             </div>
         </div>
-    </div>
+
+    </div> <script src="db.js"></script>
+    <script src="camera.js"></script>
+    <script src="app.js"></script>
 </body>
 </html>

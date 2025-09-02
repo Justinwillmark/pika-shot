@@ -1,105 +1,103 @@
-let db;
+const DB = {
+    db: null,
+    dbName: 'PikaShotDB',
+    dbVersion: 1,
 
-function initDB() {
-    return new Promise((resolve, reject) => {
-        const request = indexedDB.open('PikaShotDB', 1);
-        request.onerror = () => {
-            console.error('IndexedDB error:', request.error);
-            reject(request.error);
-        };
-        request.onsuccess = () => {
-            db = request.result;
-            resolve();
-        };
-        request.onupgradeneeded = (e) => {
-            const db = e.target.result;
-            db.createObjectStore('users', { keyPath: 'id', autoIncrement: true });
-            db.createObjectStore('products', { keyPath: 'id', autoIncrement: true });
-            db.createObjectStore('sales', { keyPath: 'id', autoIncrement: true });
-        };
-    });
-}
+    init() {
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.open(this.dbName, this.dbVersion);
 
-function getUser() {
-    return new Promise((resolve) => {
-        if (!db) return resolve(null);
-        const tx = db.transaction('users', 'readonly');
-        const store = tx.objectStore('users');
-        const request = store.getAll();
-        request.onsuccess = () => resolve(request.result[0]);
-        request.onerror = () => resolve(null);
-    });
-}
+            request.onerror = (event) => {
+                console.error("Database error:", event.target.error);
+                reject("Database error");
+            };
 
-function setUser(user) {
-    return new Promise((resolve) => {
-        const tx = db.transaction('users', 'readwrite');
-        const store = tx.objectStore('users');
-        store.clear(); // Ensure only one user profile
-        const request = store.add(user);
-        request.onsuccess = resolve;
-    });
-}
+            request.onsuccess = (event) => {
+                this.db = event.target.result;
+                console.log("Database opened successfully");
+                resolve();
+            };
 
-function addProduct(product) {
-    return new Promise((resolve) => {
-        const tx = db.transaction('products', 'readwrite');
-        const store = tx.objectStore('products');
-        const request = store.add(product);
-        request.onsuccess = resolve;
-    });
-}
-
-function getProducts() {
-    return new Promise((resolve) => {
-        const tx = db.transaction('products', 'readonly');
-        const store = tx.objectStore('products');
-        const request = store.getAll();
-        request.onsuccess = () => resolve(request.result);
-    });
-}
-
-function getProduct(id) {
-    return new Promise((resolve) => {
-        const tx = db.transaction('products', 'readonly');
-        const store = tx.objectStore('products');
-        const request = store.get(id);
-        request.onsuccess = () => resolve(request.result);
-    });
-}
-
-function updateProduct(id, updates) {
-    return new Promise((resolve) => {
-        getProduct(id).then(prod => {
-            if (!prod) return resolve();
-            // Retain original image and features
-            const updated = { ...prod, ...updates, image: prod.image, features: prod.features };
-            const tx = db.transaction('products', 'readwrite');
-            const store = tx.objectStore('products');
-            const request = store.put(updated);
-            request.onsuccess = resolve;
+            request.onupgradeneeded = (event) => {
+                const db = event.target.result;
+                if (!db.objectStoreNames.contains('user')) {
+                    db.createObjectStore('user', { keyPath: 'id' });
+                }
+                if (!db.objectStoreNames.contains('products')) {
+                    db.createObjectStore('products', { keyPath: 'id' });
+                }
+                if (!db.objectStoreNames.contains('sales')) {
+                    db.createObjectStore('sales', { keyPath: 'id' });
+                }
+            };
         });
-    });
-}
+    },
 
-function updateStock(id, newStock) {
-    return updateProduct(id, { stock: newStock });
-}
+    // --- GENERIC HELPER ---
+    _getStore(storeName, mode) {
+        const transaction = this.db.transaction(storeName, mode);
+        return transaction.objectStore(storeName);
+    },
+    
+    _requestToPromise(request) {
+        return new Promise((resolve, reject) => {
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+    },
 
-function addSale(sale) {
-    return new Promise((resolve) => {
-        const tx = db.transaction('sales', 'readwrite');
-        const store = tx.objectStore('sales');
-        const request = store.add(sale);
-        request.onsuccess = resolve;
-    });
-}
+    // --- USER ---
+    saveUser(userData) {
+        const store = this._getStore('user', 'readwrite');
+        const user = { id: 1, ...userData };
+        return this._requestToPromise(store.put(user));
+    },
 
-function getSales() {
-    return new Promise((resolve) => {
-        const tx = db.transaction('sales', 'readonly');
-        const store = tx.objectStore('sales');
-        const request = store.getAll();
-        request.onsuccess = () => resolve(request.result);
-    });
-}
+    getUser() {
+        const store = this._getStore('user', 'readonly');
+        return this._requestToPromise(store.get(1));
+    },
+
+    // --- PRODUCTS ---
+    saveProduct(product) {
+        const store = this._getStore('products', 'readwrite');
+        return this._requestToPromise(store.put(product));
+    },
+
+    getProduct(id) {
+        const store = this._getStore('products', 'readonly');
+        return this._requestToPromise(store.get(id));
+    },
+
+    getAllProducts() {
+        const store = this._getStore('products', 'readonly');
+        return this._requestToPromise(store.getAll());
+    },
+    
+    // --- SALES ---
+    addSale(sale) {
+        const store = this._getStore('sales', 'readwrite');
+        return this._requestToPromise(store.add(sale));
+    },
+    
+    getSalesToday() {
+        return new Promise((resolve, reject) => {
+            const store = this._getStore('sales', 'readonly');
+            const allSalesRequest = store.getAll();
+
+            allSalesRequest.onsuccess = () => {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+
+                const todaysSales = allSalesRequest.result.filter(sale => {
+                    const saleDate = new Date(sale.timestamp);
+                    return saleDate >= today;
+                });
+                resolve(todaysSales);
+            };
+            allSalesRequest.onerror = (event) => {
+                reject(event.target.error);
+            };
+        });
+    }
+};
