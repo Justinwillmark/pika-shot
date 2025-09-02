@@ -3,7 +3,7 @@ const DB = {
   
   async init() {
     return new Promise((resolve, reject) => {
-      const request = indexedDB.open('pika-shot-db', 2); // Version bump for schema changes if any
+      const request = indexedDB.open('pika-shot-db', 2);
 
       request.onupgradeneeded = event => {
         this.db = event.target.result;
@@ -21,7 +21,6 @@ const DB = {
 
       request.onsuccess = event => {
         this.db = event.target.result;
-        console.log("Database initialized successfully.");
         resolve();
       };
 
@@ -40,10 +39,6 @@ const DB = {
       const transaction = this.db.transaction(storeName, mode);
       const store = transaction.objectStore(storeName);
       
-      transaction.oncomplete = () => {
-        // The transaction is fully complete, but we usually resolve inside the action's onsuccess
-      };
-
       transaction.onerror = (event) => {
         console.error(`Transaction error on ${storeName}:`, event.target.error);
         reject(event.target.error);

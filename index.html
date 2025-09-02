@@ -2,18 +2,19 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>pika shot</title>
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#4A6CFD">
+    <meta name="theme-color" content="#FFFFFF">
+    <meta name="apple-mobile-web-app-status-bar-style" content="white-translucent">
     <link rel="apple-touch-icon" href="icons/icon-192.png">
 </head>
 <body>
 
     <div id="loader" class="loader-overlay active">
         <div class="spinner"></div>
-        <p>Loading pika shot...</p>
+        <p>Starting up...</p>
     </div>
 
     <main id="app-container">
@@ -21,18 +22,20 @@
         <section id="permission-view" class="view"></section>
         <section id="dashboard-view" class="view"></section>
         <section id="products-view" class="view"></section>
-
+        
         <section id="camera-view" class="view camera-fullscreen">
+             <div class="camera-header">
+                <button id="camera-back-btn" class="camera-back-btn">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 16 16"><path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8 2.146 2.854Z"/></svg>
+                </button>
+            </div>
             <video id="camera-feed" playsinline></video>
             <canvas id="capture-canvas" hidden></canvas>
             <div class="camera-overlay">
-                <div class="camera-header">
-                    <p id="camera-status">Point at product</p>
+                <div id="scan-box" class="scan-box">
+                    <div class="scan-line"></div>
                 </div>
-                <div id="scan-box" class="scan-box"></div>
-                <div class="camera-footer">
-                    <button id="cancel-camera-btn" class="btn-secondary">Cancel</button>
-                </div>
+                <p id="camera-status">Point camera at a product</p>
             </div>
         </section>
     </main>
