@@ -2,196 +2,155 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>pika shot</title>
-    <meta name="theme-color" content="#4A90E2">
-    <link rel="stylesheet" href="style.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pika Shot</title>
     <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@latest/dist/mobilenet.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@latest"></script>
 </head>
 <body>
-    <div id="loader" class="loader-container">
-        <div class="spinner"></div>
-        <p>Loading Pika Shot...</p>
+    <div id="loading-spinner" class="spinner">Loading...</div>
+
+    <!-- Onboarding -->
+    <div id="onboarding" class="view hidden">
+        <h1>Welcome to Pika Shot</h1>
+        <input type="text" id="user-name" placeholder="Your Name">
+        <input type="text" id="business-name" placeholder="Business Name">
+        <button id="onboard-next">Next</button>
+        <div id="permission-explain" class="hidden">
+            <p>We need camera access to scan products quickly. This helps you add and sell items easily without typing.</p>
+            <button id="grant-permission">Grant Camera Access</button>
+        </div>
     </div>
 
-    <div id="app-container" class="hidden">
-
-        <div id="onboarding-view" class="view active-view">
-            <div class="onboarding-content">
-                <svg class="logo" width="80" height="80" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2L2 7V17L12 22L22 17V7L12 2Z" stroke="#4A90E2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 7L12 12L22 7" stroke="#4A90E2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 22V12" stroke="#4A90E2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                <h1>Welcome to Pika Shot</h1>
-                <p>The simplest way to track your sales and stock.</p>
-                <div class="form-group">
-                    <input type="text" id="user-name" placeholder="Your Name">
-                </div>
-                <div class="form-group">
-                    <input type="text" id="business-name" placeholder="Your Business Name">
-                </div>
-                <button id="finish-onboarding-btn" class="btn btn-primary">Get Started</button>
+    <!-- Home -->
+    <div id="home" class="view hidden">
+        <header>
+            <h1>Pika Shot</h1>
+            <button id="install-btn" class="hidden">Add to Homescreen</button>
+        </header>
+        <section id="summary">
+            <h2>Today's Summary</h2>
+            <div class="stats">
+                <div>Total Sales: <span id="total-sales">₦0</span></div>
+                <div>Items Sold: <span id="items-sold">0</span></div>
+                <div>Low Stock Items: <span id="low-stock">0</span></div>
             </div>
-        </div>
-
-        <div id="camera-permission-view" class="view">
-             <div class="onboarding-content">
-                <svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-camera"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
-                <h2>Camera Access</h2>
-                <p>Pika Shot uses the camera to scan products instantly. Please allow access to continue.</p>
-                <button id="grant-camera-btn" class="btn btn-primary">Allow Camera</button>
-            </div>
-        </div>
-
-        <main id="main-app" class="hidden">
-            <div id="home-view" class="view">
-                <header class="app-header">
-                    <div class="header-content">
-                        <h1 id="welcome-message">Welcome!</h1>
-                        <p id="business-name-header">Your business dashboard</p>
-                    </div>
-                    <button id="install-btn" class="install-btn hidden">Add to homescreen</button>
-                </header>
-                <div class="dashboard-grid">
-                    <div class="stat-card">
-                        <h3>Today's Sales</h3>
-                        <p id="total-sales">₦0</p>
-                    </div>
-                    <div class="stat-card">
-                        <h3>Items Sold</h3>
-                        <p id="items-sold">0</p>
-                    </div>
-                </div>
-                <div class="quick-actions">
-                    <h2>Quick Actions</h2>
-                    <div class="action-buttons">
-                        <button id="sell-item-home-btn" class="action-btn">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>
-                            <span>Sell Item</span>
-                        </button>
-                        <button id="add-product-home-btn" class="action-btn">
-                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h18v18H3zM12 8v8m-4-4h8"/></svg>
-                            <span>Add Product</span>
-                        </button>
-                    </div>
-                </div>
-                 <div class="recent-sales-container">
-                    <h2>Recent Sales</h2>
-                    <div id="recent-sales-list">
-                        <p class="empty-state">No sales recorded yet.</p>
-                    </div>
-                </div>
-            </div>
-
-            <div id="products-view" class="view">
-                <header class="view-header">
-                    <button class="back-btn" data-target="home-view">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
-                    </button>
-                    <h2>My Products</h2>
-                </header>
-                <div id="product-list" class="product-grid">
-                    </div>
-                <button id="add-new-product-btn-fab" class="fab">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                </button>
-            </div>
-            
-            <nav class="bottom-nav">
-                <button class="nav-btn active" data-view="home-view">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
-                    <span>Home</span>
-                </button>
-                <button class="nav-btn" data-view="products-view">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><line x1="3" y1="6" x2="21" y2="6"></line><path d="M16 10a4 4 0 0 1-8 0"></path></svg>
-                    <span>Products</span>
-                </button>
-            </nav>
-        </main>
-        
-        <div id="camera-view" class="view camera-container">
-            <video id="camera-feed" playsinline autoplay></video>
-            <canvas id="camera-canvas" class="hidden"></canvas>
-            <div class="camera-overlay">
-                <div class="scan-indicator"></div>
-                <p id="camera-status">Scanning for product...</p>
-                 <button id="cancel-scan-btn" class="btn btn-secondary">Cancel</button>
-            </div>
-        </div>
-
-        <div id="modal-backdrop" class="modal-backdrop hidden"></div>
-        
-        <div id="confirm-capture-modal" class="modal hidden">
-            <h2>Confirm Product Image</h2>
-            <img id="captured-image-preview" src="" alt="Captured Product">
-            <div class="modal-actions">
-                <button id="retake-photo-btn" class="btn btn-secondary">Try Again</button>
-                <button id="confirm-photo-btn" class="btn btn-primary">Confirm</button>
-            </div>
-        </div>
-
-        <div id="product-details-modal" class="modal hidden">
-            <h2 id="modal-title">Add New Product</h2>
-            <form id="product-form">
-                <input type="hidden" id="product-id">
-                <div class="form-group">
-                    <label for="product-name">Product Name</label>
-                    <input type="text" id="product-name" required>
-                </div>
-                <div class="form-group">
-                    <label for="product-price">Price (₦)</label>
-                    <input type="number" id="product-price" inputmode="numeric" required>
-                </div>
-                <div class="form-group">
-                    <label for="product-stock">Stock Quantity</label>
-                    <input type="number" id="product-stock" inputmode="numeric" required>
-                </div>
-                 <div class="form-group">
-                    <label for="product-unit">Unit Type (e.g., bottles, sachets)</label>
-                    <input type="text" id="product-unit" required>
-                </div>
-                <div class="modal-actions">
-                    <button type="button" id="cancel-product-form-btn" class="btn btn-secondary">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Save Product</button>
-                </div>
-            </form>
-        </div>
-
-        <div id="sell-item-modal" class="modal hidden">
-            <h2>Sell Item</h2>
-            <img id="sell-product-image" class="sell-image" src="" alt="Product to sell">
-            <h3 id="sell-product-name">Product Name</h3>
-            <div class="sell-details">
-                <div class="form-group">
-                    <label for="sell-quantity">Quantity</label>
-                    <input type="number" id="sell-quantity" value="1" min="1" inputmode="numeric">
-                </div>
-                <p class="total-price">Total: <span id="sell-total-price">₦0</span></p>
-            </div>
-            <div class="modal-actions">
-                <button id="cancel-sell-btn" class="btn btn-secondary">Cancel</button>
-                <button id="confirm-sell-btn" class="btn btn-primary">Confirm Sale</button>
-            </div>
-        </div>
-        
-        <div id="communal-booking-modal" class="modal hidden">
-            <h2>Incoming Purchase from Tolu</h2>
-            <ul class="item-list">
-                <li>5 x Gala Sausage Roll</li>
-                <li>2 x Coca-Cola (50cl)</li>
-                <li>10 x Tom Tom Candy</li>
-            </ul>
-            <div class="modal-actions">
-                <button id="decline-booking-btn" class="btn btn-secondary">Decline</button>
-                <button id="accept-booking-btn" class="btn btn-primary">Accept</button>
-            </div>
-        </div>
-
+        </section>
+        <section id="recent-sales">
+            <h2>Recent Sales</h2>
+            <ul id="recent-sales-list"></ul>
+        </section>
+        <nav>
+            <button id="to-products"><svg>...</svg> My Products</button> <!-- Use actual SVG for inventory icon -->
+            <button id="to-sell"><svg>...</svg> Sell Item</button> <!-- Use actual SVG for sell icon -->
+        </nav>
     </div>
 
-    <div id="toast" class="toast"></div>
+    <!-- My Products -->
+    <div id="my-products" class="view hidden">
+        <header>
+            <button id="back-to-home-from-products">Back</button>
+            <h1>My Products</h1>
+        </header>
+        <button id="add-product">Add New Product</button>
+        <div id="products-grid" class="grid"></div>
+    </div>
+
+    <!-- Add Product -->
+    <div id="add-product-view" class="view hidden">
+        <header>
+            <button id="cancel-add">Cancel</button>
+            <h1>Add Product</h1>
+        </header>
+        <div id="camera-container">
+            <video id="add-video" autoplay playsinline></video>
+            <div id="add-countdown"></div>
+            <button id="cancel-scan-add">Cancel</button>
+        </div>
+        <div id="confirm-capture" class="hidden">
+            <img id="captured-img" src="">
+            <button id="confirm-img">Confirm</button>
+            <button id="try-again">Try Again</button>
+        </div>
+        <div id="product-form" class="hidden">
+            <input type="text" id="product-name" placeholder="Product Name">
+            <input type="number" id="product-price" placeholder="Price (₦)">
+            <input type="number" id="product-stock" placeholder="Stock Quantity">
+            <input type="text" id="product-unit" placeholder="Unit Type (e.g., sachets)">
+            <button id="save-product">Save</button>
+        </div>
+    </div>
+
+    <!-- Edit Product -->
+    <div id="edit-product-view" class="view hidden">
+        <header>
+            <button id="back-to-products-from-edit">Back</button>
+            <h1>Edit Product</h1>
+        </header>
+        <img id="edit-img" src="">
+        <input type="text" id="edit-name" placeholder="Product Name">
+        <input type="number" id="edit-price" placeholder="Price (₦)">
+        <input type="number" id="edit-stock" placeholder="Stock Quantity">
+        <input type="text" id="edit-unit" placeholder="Unit Type">
+        <button id="update-product">Update</button>
+    </div>
+
+    <!-- Sell Item -->
+    <div id="sell-view" class="view hidden">
+        <header>
+            <button id="cancel-sell">Cancel</button>
+            <h1>Sell Item</h1>
+        </header>
+        <div id="sell-camera-container">
+            <video id="sell-video" autoplay playsinline></video>
+            <div id="sell-timer">Scanning...</div>
+            <button id="cancel-scan-sell">Cancel</button>
+        </div>
+        <div id="sell-confirm" class="hidden">
+            <img id="sell-img" src="">
+            <p id="sell-name"></p>
+            <p>Price: ₦<span id="sell-price"></span></p>
+            <input type="number" id="sell-quantity" placeholder="Quantity" min="1">
+            <p>Total: ₦<span id="sell-total">0</span></p>
+            <button id="confirm-sale">Confirm Sale</button>
+        </div>
+        <div id="not-found" class="hidden">
+            <p>Product not found. Add it now?</p>
+            <img id="not-found-img" src="">
+            <!-- Form same as add -->
+            <input type="text" id="not-found-name" placeholder="Product Name">
+            <input type="number" id="not-found-price" placeholder="Price (₦)">
+            <input type="number" id="not-found-stock" placeholder="Stock Quantity">
+            <input type="text" id="not-found-unit" placeholder="Unit Type">
+            <button id="save-not-found">Save and Sell</button>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="hidden">Incoming Purchase from Tolu! <button id="view-items">View Items</button></div>
+
+    <!-- Communal Modal -->
+    <div id="communal-modal" class="modal hidden">
+        <h2>Incoming Items</h2>
+        <ul>
+            <li>Item 1: 10 units</li>
+            <li>Item 2: 5 units</li>
+        </ul>
+        <button id="accept-communal">Accept</button>
+        <button id="decline-communal">Decline</button>
+    </div>
+
+    <canvas id="canvas" style="display:none;"></canvas>
 
     <script src="db.js"></script>
     <script src="camera.js"></script>
     <script src="app.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/serviceworker.js');
+        }
+    </script>
 </body>
 </html>

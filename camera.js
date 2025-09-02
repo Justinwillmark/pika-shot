@@ -1,129 +1,78 @@
-const Camera = {
-    videoElement: document.getElementById('camera-feed'),
-    canvasElement: document.getElementById('camera-canvas'),
-    stream: null,
-    model: null,
-    isRunning: false,
-    scanTimeout: null,
+// camera.js
+let stream;
+let mobilenetModel;
 
-    async loadModel() {
-        if (!this.model) {
-            console.log("Loading MobileNet model...");
-            this.model = await mobilenet.load();
-            console.log("Model loaded.");
-        }
-    },
+async function loadModel() {
+    mobilenetModel = await mobilenet.load();
+    return mobilenetModel;
+}
 
-    async start(onCaptureCallback, onMatchCallback) {
-        if (this.isRunning) return;
-        this.isRunning = true;
-        
-        await this.loadModel();
-        
-        try {
-            this.stream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: 'environment' }
-            });
-            this.videoElement.srcObject = this.stream;
-            this.videoElement.play();
-
-            // Set canvas dimensions once video is playing
-            this.videoElement.onloadedmetadata = () => {
-                this.canvasElement.width = this.videoElement.videoWidth;
-                this.canvasElement.height = this.videoElement.videoHeight;
-                
-                const appState = window.App; // Access global App object
-                if (appState.currentScanMode === 'sell') {
-                    this.scanLoop(onMatchCallback, onCaptureCallback);
-                } else { // 'add' mode
-                    this.captureAfterDelay(onCaptureCallback);
-                }
-            };
-
-        } catch (error) {
-            this.isRunning = false;
-            throw error;
-        }
-    },
-
-    stop() {
-        if (this.stream) {
-            this.stream.getTracks().forEach(track => track.stop());
-        }
-        clearTimeout(this.scanTimeout);
-        this.videoElement.srcObject = null;
-        this.stream = null;
-        this.isRunning = false;
-    },
-    
-    captureAfterDelay(callback) {
-        // Automatically captures after a short delay for the 'add' flow.
-        this.scanTimeout = setTimeout(() => {
-            if (!this.isRunning) return;
-            const imageData = this.captureFrame();
-            this.stop();
-            callback(imageData);
-        }, 2000); // 2-second delay
-    },
-    
-    async scanLoop(onMatchCallback, onCaptureCallback) {
-        // Continuously scan for a match in 'sell' mode.
-        if (!this.isRunning) return;
-
-        const predictions = await this.classifyFrame();
-        const products = await DB.getProducts();
-
-        // Simple matching logic: check if prediction keywords are in product names
-        let foundProduct = null;
-        if (predictions && predictions.length > 0) {
-            for (const product of products) {
-                for (const prediction of predictions) {
-                    // Check if any part of the prediction class name is in the product name
-                    const keywords = prediction.className.split(', ')[0].toLowerCase();
-                    if (product.name.toLowerCase().includes(keywords)) {
-                        foundProduct = product;
-                        break;
-                    }
-                }
-                if (foundProduct) break;
-            }
-        }
-        
-        if (foundProduct) {
-            onMatchCallback(foundProduct);
-        } else {
-            // If still running, loop again
-            if(this.isRunning) {
-                 requestAnimationFrame(() => this.scanLoop(onMatchCallback, onCaptureCallback));
-            }
-        }
-        
-        // Timeout logic: if no match found after 5s, trigger capture
-        if (!this.scanTimeout) {
-            this.scanTimeout = setTimeout(() => {
-                 if (this.isRunning) { // check if still running and no match was found
-                    const imageData = this.captureFrame();
-                    this.stop();
-                    onCaptureCallback(imageData);
-                 }
-            }, 5000);
-        }
-    },
-
-    captureFrame() {
-        const context = this.canvasElement.getContext('2d');
-        context.drawImage(this.videoElement, 0, 0, this.canvasElement.width, this.canvasElement.height);
-        return this.canvasElement.toDataURL('image/jpeg');
-    },
-    
-    async classifyFrame() {
-        if (!this.model || !this.isRunning) return null;
-        try {
-            const predictions = await this.model.classify(this.videoElement);
-            return predictions;
-        } catch (error) {
-            console.error("Classification error:", error);
-            return null;
-        }
+async function requestCameraPermission() {
+    try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        stream.getTracks().forEach(track => track.stop());
+    } catch (err) {
+        console.error('Camera permission denied', err);
     }
-};
+}
+
+async function startCamera(videoId) {
+    const video = document.getElementById(videoId);
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    video.srcObject = stream;
+}
+
+function stopCamera() {
+    if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        stream = null;
+    }
+}
+
+function captureImage(videoId) {
+    const video = document.getElementById(videoId);
+    const canvas = document.getElementById('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+    return canvas.toDataURL('image/jpeg');
+}
+
+async function extractFeatures(imageData) {
+    const img = new Image();
+    img.src = imageData;
+    await img.decode();
+    const tfImg = tf.browser.fromPixels(img);
+    const logits = mobilenetModel.infer(tfImg, true);
+    const features = logits.dataSync();
+    tfImg.dispose();
+    logits.dispose();
+    return Array.from(features);
+}
+
+function cosineSimilarity(a, b) {
+    let dot = 0;
+    let normA = 0;
+    let normB = 0;
+    for (let i = 0; i < a.length; i++) {
+        dot += a[i] * b[i];
+        normA += a[i] * a[i];
+        normB += b[i] * b[i];
+    }
+    return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
+async function findMatch(imageData) {
+    const features = await extractFeatures(imageData);
+    const products = await getProducts();
+    let bestMatch = null;
+    let bestScore = 0;
+    products.forEach(p => {
+        const score = cosineSimilarity(features, p.features);
+        if (score > bestScore && score > 0.8) { // Threshold
+            bestScore = score;
+            bestMatch = p;
+        }
+    });
+    return bestMatch;
+}

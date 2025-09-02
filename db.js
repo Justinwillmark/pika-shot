@@ -1,91 +1,96 @@
-const DB = {
-    dbName: 'PikaShotDB',
-    dbVersion: 1,
-    db: null,
+// db.js
+let db;
 
-    init() {
-        return new Promise((resolve, reject) => {
-            const request = indexedDB.open(this.dbName, this.dbVersion);
+function initDB() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open('PikaShotDB', 1);
+        request.onupgradeneeded = (event) => {
+            db = event.target.result;
+            db.createObjectStore('user', { keyPath: 'id' });
+            db.createObjectStore('products', { keyPath: 'id', autoIncrement: true });
+            db.createObjectStore('sales', { keyPath: 'id', autoIncrement: true });
+        };
+        request.onsuccess = (event) => {
+            db = event.target.result;
+            resolve();
+        };
+        request.onerror = (event) => reject(event.target.error);
+    });
+}
 
-            request.onerror = (event) => {
-                console.error("Database error:", event.target.errorCode);
-                reject("Database error");
-            };
+function getUser() {
+    return new Promise((resolve) => {
+        const tx = db.transaction('user', 'readonly');
+        const store = tx.objectStore('user');
+        const request = store.get(1);
+        request.onsuccess = () => resolve(request.result);
+    });
+}
 
-            request.onsuccess = (event) => {
-                this.db = event.target.result;
-                console.log("Database opened successfully");
-                resolve();
-            };
+function saveUser(user) {
+    return new Promise((resolve) => {
+        const tx = db.transaction('user', 'readwrite');
+        const store = tx.objectStore('user');
+        store.put({ id: 1, ...user });
+        tx.oncomplete = resolve;
+    });
+}
 
-            request.onupgradeneeded = (event) => {
-                const db = event.target.result;
-                if (!db.objectStoreNames.contains('products')) {
-                    db.createObjectStore('products', { keyPath: 'id' });
-                }
-                if (!db.objectStoreNames.contains('user_info')) {
-                    // **FIX:** Changed to not use an inline keyPath. This is more robust
-                    // for a single-entry store and prevents the previous error.
-                    db.createObjectStore('user_info');
-                }
-            };
+function addProduct(product) {
+    return new Promise((resolve) => {
+        const tx = db.transaction('products', 'readwrite');
+        const store = tx.objectStore('products');
+        const request = store.add(product);
+        request.onsuccess = () => {
+            product.id = request.result;
+            resolve(product);
+        };
+    });
+}
+
+function getProducts() {
+    return new Promise((resolve) => {
+        const tx = db.transaction('products', 'readonly');
+        const store = tx.objectStore('products');
+        const request = store.getAll();
+        request.onsuccess = () => resolve(request.result);
+    });
+}
+
+function getProduct(id) {
+    return new Promise((resolve) => {
+        const tx = db.transaction('products', 'readonly');
+        const store = tx.objectStore('products');
+        const request = store.get(id);
+        request.onsuccess = () => resolve(request.result);
+    });
+}
+
+function updateProduct(id, updates) {
+    return new Promise((resolve) => {
+        getProduct(id).then(product => {
+            const tx = db.transaction('products', 'readwrite');
+            const store = tx.objectStore('products');
+            store.put({ ...product, ...updates });
+            tx.oncomplete = resolve;
         });
-    },
+    });
+}
 
-    setUserInfo(info) {
-        return new Promise((resolve, reject) => {
-            const transaction = this.db.transaction(['user_info'], 'readwrite');
-            const store = transaction.objectStore('user_info');
-            // **FIX:** We now explicitly put the info object with a fixed key 'user'.
-            // The info object itself no longer needs an 'id' property.
-            const request = store.put(info, 'user'); 
-            
-            request.onsuccess = () => resolve();
-            request.onerror = (event) => reject("Error saving user info: " + event.target.error);
-        });
-    },
+function addSale(sale) {
+    return new Promise((resolve) => {
+        const tx = db.transaction('sales', 'readwrite');
+        const store = tx.objectStore('sales');
+        store.add(sale);
+        tx.oncomplete = resolve;
+    });
+}
 
-    getUserInfo() {
-        return new Promise((resolve, reject) => {
-            const transaction = this.db.transaction(['user_info'], 'readonly');
-            const store = transaction.objectStore('user_info');
-            const request = store.get('user');
-
-            request.onsuccess = () => resolve(request.result);
-            request.onerror = (event) => reject("Error fetching user info: " + event.target.error);
-        });
-    },
-    
-    saveProduct(product) {
-        return new Promise((resolve, reject) => {
-            const transaction = this.db.transaction(['products'], 'readwrite');
-            const store = transaction.objectStore('products');
-            const request = store.put(product);
-            
-            request.onsuccess = () => resolve(request.result);
-            request.onerror = (event) => reject("Error saving product: " + event.target.error);
-        });
-    },
-
-    getProducts() {
-        return new Promise((resolve, reject) => {
-            const transaction = this.db.transaction(['products'], 'readonly');
-            const store = transaction.objectStore('products');
-            const request = store.getAll();
-
-            request.onsuccess = () => resolve(request.result);
-            request.onerror = (event) => reject("Error fetching products: " + event.target.error);
-        });
-    },
-    
-    getProduct(id) {
-        return new Promise((resolve, reject) => {
-            const transaction = this.db.transaction(['products'], 'readonly');
-            const store = transaction.objectStore('products');
-            const request = store.get(id);
-
-            request.onsuccess = () => resolve(request.result);
-            request.onerror = (event) => reject("Error fetching product: " + event.target.error);
-        });
-    }
-};
+function getSales() {
+    return new Promise((resolve) => {
+        const tx = db.transaction('sales', 'readonly');
+        const store = tx.objectStore('sales');
+        const request = store.getAll();
+        request.onsuccess = () => resolve(request.result);
+    });
+}

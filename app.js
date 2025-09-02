@@ -1,450 +1,308 @@
-document.addEventListener('DOMContentLoaded', () => {
-    const App = {
-        // State
-        isCameraOn: false,
-        currentScanMode: null, // 'add' or 'sell'
-        capturedImageData: null,
-        editingProductId: null,
-        deferredInstallPrompt: null,
-        salesData: [], // To hold today's sales
+// app.js
+let deferredPrompt;
+let model;
+let currentView = 'loading';
+let currentProductId = null;
+let capturedImage = null;
+let sellInterval = null;
+let lastCaptured = null;
 
-        // UI Elements
-        elements: {
-            loader: document.getElementById('loader'),
-            appContainer: document.getElementById('app-container'),
-            views: document.querySelectorAll('.view'),
-            onboardingView: document.getElementById('onboarding-view'),
-            cameraPermissionView: document.getElementById('camera-permission-view'),
-            mainApp: document.getElementById('main-app'),
-            homeView: document.getElementById('home-view'),
-            productsView: document.getElementById('products-view'),
-            cameraView: document.getElementById('camera-view'),
-            
-            finishOnboardingBtn: document.getElementById('finish-onboarding-btn'),
-            grantCameraBtn: document.getElementById('grant-camera-btn'),
-            
-            navButtons: document.querySelectorAll('.nav-btn'),
-            backButtons: document.querySelectorAll('.back-btn'),
-            installBtn: document.getElementById('install-btn'),
-
-            // Modals & Backdrop
-            modalBackdrop: document.getElementById('modal-backdrop'),
-            confirmCaptureModal: document.getElementById('confirm-capture-modal'),
-            productDetailsModal: document.getElementById('product-details-modal'),
-            sellItemModal: document.getElementById('sell-item-modal'),
-            communalBookingModal: document.getElementById('communal-booking-modal'),
-
-            // Home
-            welcomeMessage: document.getElementById('welcome-message'),
-            businessNameHeader: document.getElementById('business-name-header'),
-            totalSalesEl: document.getElementById('total-sales'),
-            itemsSoldEl: document.getElementById('items-sold'),
-            recentSalesList: document.getElementById('recent-sales-list'),
-            sellItemHomeBtn: document.getElementById('sell-item-home-btn'),
-            addProductHomeBtn: document.getElementById('add-product-home-btn'),
-
-            // Products
-            productList: document.getElementById('product-list'),
-            addNewProductFab: document.getElementById('add-new-product-btn-fab'),
-            productForm: document.getElementById('product-form'),
-            modalTitle: document.getElementById('modal-title'),
-
-            // Camera
-            cameraStatus: document.getElementById('camera-status'),
-            cancelScanBtn: document.getElementById('cancel-scan-btn'),
-
-            // Product capture
-            capturedImagePreview: document.getElementById('captured-image-preview'),
-            retakePhotoBtn: document.getElementById('retake-photo-btn'),
-            confirmPhotoBtn: document.getElementById('confirm-photo-btn'),
-
-            // Sell item modal
-            sellProductName: document.getElementById('sell-product-name'),
-            sellProductImage: document.getElementById('sell-product-image'),
-            sellQuantityInput: document.getElementById('sell-quantity'),
-            sellTotalPrice: document.getElementById('sell-total-price'),
-            confirmSellBtn: document.getElementById('confirm-sell-btn'),
-            cancelSellBtn: document.getElementById('cancel-sell-btn'),
-
-            // Toast
-            toast: document.getElementById('toast'),
-        },
-
-        init() {
-            this.registerServiceWorker();
-            DB.init().then(() => {
-                this.bindEvents();
-                this.checkOnboarding();
-                // Simulate communal bookkeeping
-                setTimeout(() => this.showCommunalBookingToast(), 15000);
-            }).catch(err => {
-                console.error("Initialization failed:", err);
-                alert("There was a problem starting the app. Please try again.");
-            });
-        },
-
-        bindEvents() {
-            this.elements.finishOnboardingBtn.addEventListener('click', () => this.finishOnboarding());
-            this.elements.grantCameraBtn.addEventListener('click', () => this.requestCameraPermission());
-
-            // ... (rest of the bindEvents function is unchanged)
-            this.elements.navButtons.forEach(btn => {
-                btn.addEventListener('click', () => this.navigateTo(btn.dataset.view));
-            });
-            this.elements.backButtons.forEach(btn => {
-                btn.addEventListener('click', () => this.navigateTo(btn.dataset.target));
-            });
-            this.elements.sellItemHomeBtn.addEventListener('click', () => this.startScan('sell'));
-            this.elements.addProductHomeBtn.addEventListener('click', () => this.startScan('add'));
-            this.elements.addNewProductFab.addEventListener('click', () => this.startScan('add'));
-            this.elements.cancelScanBtn.addEventListener('click', () => this.stopScan());
-            this.elements.retakePhotoBtn.addEventListener('click', () => {
-                this.hideModal('confirm-capture-modal');
-                this.startScan(this.currentScanMode, true);
-            });
-            this.elements.confirmPhotoBtn.addEventListener('click', () => {
-                this.hideModal('confirm-capture-modal');
-                this.showModal('product-details-modal');
-            });
-            this.elements.productForm.addEventListener('submit', (e) => this.saveProduct(e));
-            document.getElementById('cancel-product-form-btn').addEventListener('click', () => {
-                this.hideModal('product-details-modal');
-                this.navigateTo('products-view');
-                this.stopScan();
-            });
-            this.elements.sellQuantityInput.addEventListener('input', () => this.updateSellTotal());
-            this.elements.confirmSellBtn.addEventListener('click', () => this.processSale());
-            this.elements.cancelSellBtn.addEventListener('click', () => this.cancelSale());
-            window.addEventListener('beforeinstallprompt', (e) => {
-                e.preventDefault();
-                this.deferredInstallPrompt = e;
-                this.elements.installBtn.classList.remove('hidden');
-            });
-            this.elements.installBtn.addEventListener('click', () => this.promptInstall());
-            this.elements.toast.addEventListener('click', () => {
-                this.hideToast();
-                this.showModal('communal-booking-modal');
-            });
-            document.getElementById('accept-booking-btn').addEventListener('click', () => this.hideModal('communal-booking-modal'));
-            document.getElementById('decline-booking-btn').addEventListener('click', () => this.hideModal('communal-booking-modal'));
-        },
-        
-        async checkOnboarding() {
-            const userInfo = await DB.getUserInfo();
-            this.elements.loader.classList.add('hidden');
-            this.elements.appContainer.classList.remove('hidden');
-
-            if (userInfo) {
-                this._launchApp(userInfo);
-            } else {
-                this.showView('onboarding-view');
-            }
-        },
-
-        _launchApp(userInfo) {
-            this.elements.welcomeMessage.textContent = `Welcome, ${userInfo.name}!`;
-            this.elements.businessNameHeader.textContent = userInfo.businessName;
-
-            this.elements.onboardingView.classList.remove('active-view');
-            this.elements.cameraPermissionView.classList.remove('active-view');
-            
-            this.elements.mainApp.classList.remove('hidden');
-            
-            this.navigateTo('home-view');
-            this.refreshDashboard();
-            this.renderProducts();
-        },
-
-        async finishOnboarding() {
-            try {
-                const name = document.getElementById('user-name').value.trim();
-                const businessName = document.getElementById('business-name').value.trim();
-                if (!name || !businessName) {
-                    this.showToast("Please enter your name and business name.");
-                    return;
-                }
-                // **FIX:** This call now correctly matches the updated, more robust db.js structure.
-                await DB.setUserInfo({ name, businessName });
-                this.showView('camera-permission-view');
-            } catch (err) {
-                console.error("Failed to finish onboarding:", err);
-                this.showToast("Error saving details. Please try again.");
-            }
-        },
-
-        async requestCameraPermission() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                stream.getTracks().forEach(track => track.stop());
-                
-                const userInfo = await DB.getUserInfo();
-                this._launchApp(userInfo);
-
-            } catch (error) {
-                alert("Camera access is required to scan products. Please enable it in your browser settings.");
-            }
-        },
-        
-        showView(viewId) {
-            this.elements.views.forEach(view => {
-                view.classList.remove('active-view');
-            });
-            document.getElementById(viewId).classList.add('active-view');
-        },
-        
-        navigateTo(viewId) {
-            this.showView(viewId);
-            this.elements.mainApp.classList.remove('hidden');
-            this.elements.cameraView.classList.remove('active-view');
-
-            this.elements.navButtons.forEach(btn => {
-                btn.classList.toggle('active', btn.dataset.view === viewId);
-            });
-        },
-
-        // ... The rest of the App object's methods (startScan, stopScan, etc.) remain unchanged ...
-        async startScan(mode, isRetake = false) {
-            this.currentScanMode = mode;
-            if (!isRetake) {
-                this.elements.mainApp.classList.add('hidden');
-                this.elements.cameraView.classList.add('active-view');
-            }
-            this.elements.cameraStatus.textContent = mode === 'add' ? 'Position product to add' : 'Scanning for product...';
-            
-            try {
-                await Camera.start(
-                    (imageData) => this.handleCapture(imageData),
-                    (matchedProduct) => this.handleProductMatch(matchedProduct)
-                );
-                this.isCameraOn = true;
-            } catch (error) {
-                console.error("Failed to start camera:", error);
-                alert("Could not start the camera. Please ensure you've granted permission.");
-                this.stopScan();
-            }
-        },
-
-        stopScan() {
-            if (this.isCameraOn) {
-                Camera.stop();
-                this.isCameraOn = false;
-            }
-            this.elements.mainApp.classList.remove('hidden');
-            this.elements.cameraView.classList.remove('active-view');
-            this.navigateTo('home-view');
-        },
-
-        handleCapture(imageData) {
-            this.capturedImageData = imageData;
-            this.elements.capturedImagePreview.src = this.capturedImageData;
-            
-            if (this.currentScanMode === 'sell') {
-                this.showToast("Product not found. Let's add it!");
-                this.currentScanMode = 'add'; 
-                this.showModal('product-details-modal');
-            } else {
-                this.showModal('confirm-capture-modal');
-            }
-        },
-
-        handleProductMatch(product) {
-            this.stopScan();
-            this.prepareSellModal(product);
-            this.showModal('sell-item-modal');
-        },
-
-        async saveProduct(event) {
-            event.preventDefault();
-            const product = {
-                id: this.editingProductId || Date.now(),
-                name: document.getElementById('product-name').value.trim(),
-                price: parseFloat(document.getElementById('product-price').value),
-                stock: parseInt(document.getElementById('product-stock').value),
-                unit: document.getElementById('product-unit').value.trim(),
-                imageData: this.capturedImageData,
-            };
-
-            if (!product.name || isNaN(product.price) || isNaN(product.stock) || !product.unit) {
-                this.showToast("Please fill all fields correctly.");
-                return;
-            }
-
-            await DB.saveProduct(product);
-            this.showToast(this.editingProductId ? 'Product Updated!' : 'Product Added!');
-            
-            this.editingProductId = null;
-            this.capturedImageData = null;
-            document.getElementById('product-form').reset();
-            this.hideModal('product-details-modal');
-            this.stopScan(); 
-            this.navigateTo('products-view');
-            this.renderProducts();
-        },
-        
-        async renderProducts() {
-            const products = await DB.getProducts();
-            const list = this.elements.productList;
-            list.innerHTML = '';
-            if (products.length === 0) {
-                list.innerHTML = `<p class="empty-state" style="grid-column: 1 / -1;">No products yet. Tap the '+' button to add your first product.</p>`;
-                return;
-            }
-            products.forEach(p => {
-                const card = document.createElement('div');
-                card.className = 'product-card';
-                card.innerHTML = `
-                    <img src="${p.imageData}" alt="${p.name}" class="product-card-image">
-                    <div class="product-card-info">
-                        <h3>${p.name}</h3>
-                        <p class="price">₦${p.price.toLocaleString()}</p>
-                        <p class="stock">${p.stock} ${p.unit} left</p>
-                    </div>
-                    <div class="product-card-actions">
-                        <button class="edit-product-btn" data-id="${p.id}">Edit</button>
-                    </div>
-                `;
-                list.appendChild(card);
-            });
-            
-            document.querySelectorAll('.edit-product-btn').forEach(btn => {
-                btn.addEventListener('click', (e) => this.editProduct(e.currentTarget.dataset.id));
-            });
-        },
-
-        async editProduct(id) {
-            const product = await DB.getProduct(Number(id));
-            if (!product) return;
-            
-            this.editingProductId = product.id;
-            this.capturedImageData = product.imageData;
-            
-            this.elements.modalTitle.textContent = "Edit Product";
-            document.getElementById('product-id').value = product.id;
-            document.getElementById('product-name').value = product.name;
-            document.getElementById('product-price').value = product.price;
-            document.getElementById('product-stock').value = product.stock;
-            document.getElementById('product-unit').value = product.unit;
-
-            this.showModal('product-details-modal');
-        },
-
-        prepareSellModal(product) {
-            this.elements.confirmSellBtn.dataset.productId = product.id;
-            this.elements.sellProductImage.src = product.imageData;
-            this.elements.sellProductName.textContent = product.name;
-            this.elements.sellQuantityInput.value = 1;
-            this.elements.sellQuantityInput.max = product.stock;
-            this.updateSellTotal();
-        },
-        
-        async updateSellTotal() {
-            const productId = this.elements.confirmSellBtn.dataset.productId;
-            const product = await DB.getProduct(Number(productId));
-            const quantity = parseInt(this.elements.sellQuantityInput.value) || 0;
-            const total = (product.price * quantity).toLocaleString();
-            this.elements.sellTotalPrice.textContent = `₦${total}`;
-        },
-
-        async processSale() {
-            const productId = Number(this.elements.confirmSellBtn.dataset.productId);
-            const quantitySold = parseInt(this.elements.sellQuantityInput.value);
-            const product = await DB.getProduct(productId);
-
-            if (quantitySold <= 0) {
-                this.showToast("Quantity must be at least 1.");
-                return;
-            }
-            if (quantitySold > product.stock) {
-                this.showToast("Not enough stock!");
-                return;
-            }
-
-            product.stock -= quantitySold;
-            await DB.saveProduct(product);
-            
-            this.salesData.push({ name: product.name, quantity: quantitySold, total: product.price * quantitySold });
-
-            this.hideModal('sell-item-modal');
-            this.showToast("Sale recorded!");
-            this.refreshDashboard();
-            this.renderProducts();
-            
-            this.startScan('sell');
-        },
-
-        cancelSale() {
-            this.hideModal('sell-item-modal');
-            this.navigateTo('home-view');
-        },
-        
-        refreshDashboard() {
-            const totalSales = this.salesData.reduce((sum, sale) => sum + sale.total, 0);
-            const itemsSold = this.salesData.reduce((sum, sale) => sum + sale.quantity, 0);
-
-            this.elements.totalSalesEl.textContent = `₦${totalSales.toLocaleString()}`;
-            this.elements.itemsSoldEl.textContent = itemsSold;
-
-            const list = this.elements.recentSalesList;
-            if (this.salesData.length === 0) {
-                 list.innerHTML = `<p class="empty-state">No sales recorded yet.</p>`;
-                 return;
-            }
-            list.innerHTML = this.salesData.slice(-5).reverse().map(sale => `
-                <div class="sale-item">
-                    <span class="sale-item-info">${sale.quantity}x ${sale.name}</span>
-                    <span class="sale-item-price">+₦${sale.total.toLocaleString()}</span>
-                </div>
-            `).join('');
-        },
-        
-        showModal(modalId) {
-            this.elements.modalBackdrop.classList.remove('hidden');
-            this.elements[modalId].classList.remove('hidden');
-        },
-
-        hideModal(modalId) {
-            this.elements.modalBackdrop.classList.add('hidden');
-            this.elements[modalId].classList.add('hidden');
-        },
-
-        showToast(message) {
-            const toast = this.elements.toast;
-            toast.textContent = message;
-            toast.classList.add('show');
-            setTimeout(() => toast.classList.remove('show'), 3000);
-        },
-        
-        showCommunalBookingToast() {
-            const toast = this.elements.toast;
-            toast.innerHTML = "Incoming Purchase from Tolu! <strong>[View Items]</strong>";
-            toast.classList.add('show');
-        },
-        
-        hideToast() {
-            this.elements.toast.classList.remove('show');
-        },
-
-        promptInstall() {
-            if (this.deferredInstallPrompt) {
-                this.deferredInstallPrompt.prompt();
-                this.deferredInstallPrompt.userChoice.then(choiceResult => {
-                    if (choiceResult.outcome === 'accepted') {
-                        console.log('User accepted the install prompt');
-                    }
-                    this.deferredInstallPrompt = null;
-                });
-                this.elements.installBtn.classList.add('hidden');
-            }
-        },
-
-        registerServiceWorker() {
-            if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.register('/serviceworker.js')
-                    .then(registration => console.log('Service Worker registered with scope:', registration.scope))
-                    .catch(error => console.log('Service Worker registration failed:', error));
-            }
-        },
-    };
-
-    App.init();
+window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    document.getElementById('install-btn').classList.remove('hidden');
 });
+
+document.getElementById('install-btn').addEventListener('click', () => {
+    if (deferredPrompt) {
+        deferredPrompt.prompt();
+        deferredPrompt = null;
+    }
+});
+
+async function initApp() {
+    document.getElementById('loading-spinner').style.display = 'block';
+    await initDB();
+    model = await loadModel();
+    const user = await getUser();
+    if (!user) {
+        showView('onboarding');
+    } else {
+        showView('home');
+        updateHome();
+    }
+    document.getElementById('loading-spinner').style.display = 'none';
+
+    setTimeout(showToast, 15000);
+}
+
+function showView(viewId) {
+    document.querySelectorAll('.view').forEach(v => v.classList.add('hidden'));
+    document.getElementById(viewId).classList.remove('hidden');
+    currentView = viewId;
+}
+
+document.getElementById('onboard-next').addEventListener('click', () => {
+    const name = document.getElementById('user-name').value;
+    const business = document.getElementById('business-name').value;
+    if (name && business) {
+        document.getElementById('permission-explain').classList.remove('hidden');
+    }
+});
+
+document.getElementById('grant-permission').addEventListener('click', async () => {
+    await requestCameraPermission();
+    const name = document.getElementById('user-name').value;
+    const business = document.getElementById('business-name').value;
+    await saveUser({ name, business });
+    showView('home');
+    updateHome();
+});
+
+document.getElementById('to-products').addEventListener('click', () => {
+    showView('my-products');
+    loadProducts();
+});
+
+document.getElementById('back-to-home-from-products').addEventListener('click', () => showView('home'));
+
+document.getElementById('add-product').addEventListener('click', () => {
+    showView('add-product-view');
+    startAddScan();
+});
+
+document.getElementById('cancel-add').addEventListener('click', () => {
+    stopCamera();
+    showView('my-products');
+});
+
+document.getElementById('cancel-scan-add').addEventListener('click', () => {
+    stopCamera();
+    showView('my-products');
+});
+
+async function startAddScan() {
+    await startCamera('add-video');
+    let countdown = 3;
+    const cdElem = document.getElementById('add-countdown');
+    cdElem.textContent = countdown;
+    const interval = setInterval(() => {
+        countdown--;
+        cdElem.textContent = countdown;
+        if (countdown === 0) {
+            clearInterval(interval);
+            capturedImage = captureImage('add-video');
+            showConfirmCapture();
+        }
+    }, 1000);
+}
+
+function showConfirmCapture() {
+    stopCamera();
+    document.getElementById('camera-container').classList.add('hidden');
+    const confirmDiv = document.getElementById('confirm-capture');
+    confirmDiv.classList.remove('hidden');
+    document.getElementById('captured-img').src = capturedImage;
+}
+
+document.getElementById('try-again').addEventListener('click', () => {
+    confirmDiv.classList.add('hidden');
+    document.getElementById('camera-container').classList.remove('hidden');
+    startAddScan();
+});
+
+document.getElementById('confirm-img').addEventListener('click', () => {
+    document.getElementById('confirm-capture').classList.add('hidden');
+    document.getElementById('product-form').classList.remove('hidden');
+});
+
+document.getElementById('save-product').addEventListener('click', async () => {
+    const name = document.getElementById('product-name').value;
+    const price = parseFloat(document.getElementById('product-price').value);
+    const stock = parseInt(document.getElementById('product-stock').value);
+    const unit = document.getElementById('product-unit').value;
+    if (name && price && stock && unit) {
+        const features = await extractFeatures(capturedImage);
+        await addProduct({ name, price, stock, unit, image: capturedImage, features });
+        showView('my-products');
+        loadProducts();
+    }
+});
+
+async function loadProducts() {
+    const products = await getProducts();
+    const grid = document.getElementById('products-grid');
+    grid.innerHTML = '';
+    products.forEach(p => {
+        const card = document.createElement('div');
+        card.classList.add('product-card');
+        card.innerHTML = `
+            <img src="${p.image}" alt="${p.name}">
+            <h3>${p.name}</h3>
+            <p>₦${p.price} / ${p.unit}</p>
+            <p>${p.stock} left</p>
+            <button onclick="editProduct(${p.id})">Edit</button>
+        `;
+        grid.appendChild(card);
+    });
+}
+
+window.editProduct = async (id) => {
+    const product = await getProduct(id);
+    currentProductId = id;
+    showView('edit-product-view');
+    document.getElementById('edit-img').src = product.image;
+    document.getElementById('edit-name').value = product.name;
+    document.getElementById('edit-price').value = product.price;
+    document.getElementById('edit-stock').value = product.stock;
+    document.getElementById('edit-unit').value = product.unit;
+};
+
+document.getElementById('update-product').addEventListener('click', async () => {
+    const name = document.getElementById('edit-name').value;
+    const price = parseFloat(document.getElementById('edit-price').value);
+    const stock = parseInt(document.getElementById('edit-stock').value);
+    const unit = document.getElementById('edit-unit').value;
+    if (name && price && stock && unit) {
+        await updateProduct(currentProductId, { name, price, stock, unit });
+        showView('my-products');
+        loadProducts();
+    }
+});
+
+document.getElementById('back-to-products-from-edit').addEventListener('click', () => {
+    showView('my-products');
+});
+
+document.getElementById('to-sell').addEventListener('click', () => {
+    showView('sell-view');
+    startSellScan();
+});
+
+document.getElementById('cancel-sell').addEventListener('click', () => {
+    stopSellScan();
+    showView('home');
+});
+
+document.getElementById('cancel-scan-sell').addEventListener('click', () => {
+    stopSellScan();
+    showView('home');
+});
+
+async function startSellScan() {
+    await startCamera('sell-video');
+    let timeLeft = 5;
+    const timerElem = document.getElementById('sell-timer');
+    timerElem.textContent = `Scanning... ${timeLeft}s`;
+    sellInterval = setInterval(async () => {
+        timeLeft--;
+        timerElem.textContent = `Scanning... ${timeLeft}s`;
+        const frame = captureImage('sell-video');
+        lastCaptured = frame;
+        const match = await findMatch(frame);
+        if (match) {
+            stopSellScan();
+            showSellConfirm(match);
+        } else if (timeLeft === 0) {
+            stopSellScan();
+            showNotFound();
+        }
+    }, 1000);
+}
+
+function stopSellScan() {
+    clearInterval(sellInterval);
+    stopCamera();
+}
+
+async function showSellConfirm(product) {
+    document.getElementById('sell-camera-container').classList.add('hidden');
+    const confirmDiv = document.getElementById('sell-confirm');
+    confirmDiv.classList.remove('hidden');
+    document.getElementById('sell-img').src = product.image;
+    document.getElementById('sell-name').textContent = product.name;
+    document.getElementById('sell-price').textContent = product.price;
+    const qtyInput = document.getElementById('sell-quantity');
+    qtyInput.addEventListener('input', () => {
+        const total = qtyInput.value * product.price;
+        document.getElementById('sell-total').textContent = total;
+    });
+    document.getElementById('confirm-sale').onclick = async () => {
+        const quantity = parseInt(qtyInput.value);
+        if (quantity > 0 && quantity <= product.stock) {
+            const total = quantity * product.price;
+            await addSale({ product_id: product.id, quantity, total, date: new Date() });
+            await updateProduct(product.id, { stock: product.stock - quantity });
+            showView('home');
+            updateHome();
+            // Auto restart scan
+            showView('sell-view');
+            startSellScan();
+        }
+    };
+}
+
+function showNotFound() {
+    document.getElementById('sell-camera-container').classList.add('hidden');
+    const nfDiv = document.getElementById('not-found');
+    nfDiv.classList.remove('hidden');
+    document.getElementById('not-found-img').src = lastCaptured;
+    capturedImage = lastCaptured;
+    document.getElementById('save-not-found').onclick = async () => {
+        const name = document.getElementById('not-found-name').value;
+        const price = parseFloat(document.getElementById('not-found-price').value);
+        const stock = parseInt(document.getElementById('not-found-stock').value);
+        const unit = document.getElementById('not-found-unit').value;
+        if (name && price && stock && unit) {
+            const features = await extractFeatures(capturedImage);
+            const newProduct = await addProduct({ name, price, stock, unit, image: capturedImage, features });
+            // Now sell
+            showSellConfirm(newProduct);
+            nfDiv.classList.add('hidden');
+        }
+    };
+}
+
+async function updateHome() {
+    const sales = await getSales();
+    const today = new Date().toDateString();
+    const todaySales = sales.filter(s => new Date(s.date).toDateString() === today);
+    const totalSales = todaySales.reduce((sum, s) => sum + s.total, 0);
+    const itemsSold = todaySales.reduce((sum, s) => sum + s.quantity, 0);
+    const products = await getProducts();
+    const lowStock = products.filter(p => p.stock < 10).length;
+    document.getElementById('total-sales').textContent = `₦${totalSales}`;
+    document.getElementById('items-sold').textContent = itemsSold;
+    document.getElementById('low-stock').textContent = lowStock;
+
+    const list = document.getElementById('recent-sales-list');
+    list.innerHTML = '';
+    todaySales.slice(0, 5).forEach(async s => {
+        const product = await getProduct(s.product_id);
+        const li = document.createElement('li');
+        li.textContent = `${s.quantity} ${product.unit} of ${product.name} for ₦${s.total}`;
+        list.appendChild(li);
+    });
+}
+
+function showToast() {
+    document.getElementById('toast').classList.remove('hidden');
+}
+
+document.getElementById('view-items').addEventListener('click', () => {
+    document.getElementById('toast').classList.add('hidden');
+    document.getElementById('communal-modal').classList.remove('hidden');
+});
+
+document.getElementById('accept-communal').addEventListener('click', () => {
+    document.getElementById('communal-modal').classList.add('hidden');
+    // Simulate accept, perhaps alert
+    alert('Accepted!');
+});
+
+document.getElementById('decline-communal').addEventListener('click', () => {
+    document.getElementById('communal-modal').classList.add('hidden');
+    alert('Declined.');
+});
+
+initApp();
