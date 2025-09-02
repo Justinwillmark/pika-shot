@@ -1,125 +1,87 @@
-const db = (() => {
-    let dbInstance;
-    const DB_NAME = 'pikaShotDB';
-    const DB_VERSION = 1;
-    const STORES = {
-        PRODUCTS: 'products',
-        SALES: 'sales',
-        USER: 'user',
-    };
+const DB = {
+  db: null,
+  
+  async init() {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open('pika-shot-db', 2); // Version bump for schema changes if any
 
-    async function init() {
-        return new Promise((resolve, reject) => {
-            const request = indexedDB.open(DB_NAME, DB_VERSION);
+      request.onupgradeneeded = event => {
+        this.db = event.target.result;
+        if (!this.db.objectStoreNames.contains('user')) {
+          this.db.createObjectStore('user', { keyPath: 'id' });
+        }
+        if (!this.db.objectStoreNames.contains('products')) {
+          const productStore = this.db.createObjectStore('products', { keyPath: 'id', autoIncrement: true });
+          productStore.createIndex('name', 'name', { unique: false });
+        }
+        if (!this.db.objectStoreNames.contains('sales')) {
+          this.db.createObjectStore('sales', { keyPath: 'id', autoIncrement: true });
+        }
+      };
 
-            request.onerror = (event) => {
-                console.error("Database error:", event.target.error);
-                reject("Database error");
-            };
+      request.onsuccess = event => {
+        this.db = event.target.result;
+        console.log("Database initialized successfully.");
+        resolve();
+      };
 
-            request.onsuccess = (event) => {
-                dbInstance = event.target.result;
-                resolve(dbInstance);
-            };
+      request.onerror = event => {
+        console.error('Database error:', event.target.error);
+        reject(event.target.error);
+      };
+    });
+  },
 
-            request.onupgradeneeded = (event) => {
-                const db = event.target.result;
-                if (!db.objectStoreNames.contains(STORES.PRODUCTS)) {
-                    db.createObjectStore(STORES.PRODUCTS, { keyPath: 'id', autoIncrement: true });
-                }
-                if (!db.objectStoreNames.contains(STORES.SALES)) {
-                    db.createObjectStore(STORES.SALES, { keyPath: 'id', autoIncrement: true });
-                }
-                if (!db.objectStoreNames.contains(STORES.USER)) {
-                    db.createObjectStore(STORES.USER, { keyPath: 'id' });
-                }
-            };
-        });
-    }
+  async performTransaction(storeName, mode, action) {
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        return reject('Database is not initialized.');
+      }
+      const transaction = this.db.transaction(storeName, mode);
+      const store = transaction.objectStore(storeName);
+      
+      transaction.oncomplete = () => {
+        // The transaction is fully complete, but we usually resolve inside the action's onsuccess
+      };
 
-    function getStore(storeName, mode) {
-        const transaction = dbInstance.transaction(storeName, mode);
-        return transaction.objectStore(storeName);
-    }
+      transaction.onerror = (event) => {
+        console.error(`Transaction error on ${storeName}:`, event.target.error);
+        reject(event.target.error);
+      };
 
-    async function saveUser(user) {
-        return new Promise((resolve, reject) => {
-            const store = getStore(STORES.USER, 'readwrite');
-            const request = store.put({ id: 1, ...user });
-            request.onsuccess = () => resolve();
-            request.onerror = (e) => reject(e.target.error);
-        });
-    }
+      action(store, resolve, reject);
+    });
+  },
 
-    async function getUser() {
-        return new Promise((resolve, reject) => {
-            const store = getStore(STORES.USER, 'readonly');
-            const request = store.get(1);
-            request.onsuccess = (e) => resolve(e.target.result);
-            request.onerror = (e) => reject(e.target.error);
-        });
-    }
+  async saveData(storeName, data) {
+    return this.performTransaction(storeName, 'readwrite', (store, resolve, reject) => {
+      const request = store.put(data);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  },
 
-    async function saveProduct(product) {
-        return new Promise((resolve, reject) => {
-            const store = getStore(STORES.PRODUCTS, 'readwrite');
-            const request = store.add(product);
-            request.onsuccess = () => resolve();
-            request.onerror = (e) => reject(e.target.error);
-        });
-    }
-    
-    async function updateProduct(product) {
-        return new Promise((resolve, reject) => {
-            const store = getStore(STORES.PRODUCTS, 'readwrite');
-            const request = store.put(product);
-            request.onsuccess = () => resolve();
-            request.onerror = (e) => reject(e.target.error);
-        });
-    }
+  async getData(storeName, key) {
+    return this.performTransaction(storeName, 'readonly', (store, resolve, reject) => {
+      const request = store.get(key);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  },
+  
+  async getAllData(storeName) {
+    return this.performTransaction(storeName, 'readonly', (store, resolve, reject) => {
+      const request = store.getAll();
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  },
 
-    async function getProduct(id) {
-        return new Promise((resolve, reject) => {
-            const store = getStore(STORES.PRODUCTS, 'readonly');
-            const request = store.get(id);
-            request.onsuccess = (e) => resolve(e.target.result);
-            request.onerror = (e) => reject(e.target.error);
-        });
-    }
-
-    async function getAllProducts() {
-        return new Promise((resolve, reject) => {
-            const store = getStore(STORES.PRODUCTS, 'readonly');
-            const request = store.getAll();
-            request.onsuccess = (e) => resolve(e.target.result);
-            request.onerror = (e) => reject(e.target.error);
-        });
-    }
-    
-    async function saveSale(sale) {
-        return new Promise((resolve, reject) => {
-            const store = getStore(STORES.SALES, 'readwrite');
-            const request = store.add(sale);
-            request.onsuccess = () => resolve();
-            request.onerror = (e) => reject(e.target.error);
-        });
-    }
-    
-    async function getDashboardStats() {
-        const products = await getAllProducts();
-        const sales = await new Promise((resolve, reject) => {
-            const store = getStore(STORES.SALES, 'readonly');
-            const request = store.getAll();
-            request.onsuccess = (e) => resolve(e.target.result);
-            request.onerror = (e) => reject(e.target.error);
-        });
-
-        const totalSales = sales.reduce((sum, sale) => sum + sale.totalPrice, 0);
-        const itemsSold = sales.reduce((sum, sale) => sum + sale.quantity, 0);
-        const productsInStock = products.length;
-
-        return { totalSales, itemsSold, productsInStock };
-    }
-
-    return { init, saveUser, getUser, saveProduct, getProduct, updateProduct, getAllProducts, saveSale, getDashboardStats };
-})();
+  async deleteData(storeName, key) {
+    return this.performTransaction(storeName, 'readwrite', (store, resolve, reject) => {
+      const request = store.delete(key);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+};
