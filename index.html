@@ -9,6 +9,7 @@
     <link rel="manifest" href="manifest.json">
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.11.0/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.0/dist/mobilenet.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 </head>
 <body>
 
@@ -93,9 +94,16 @@
                         </div>
                     </div>
                     <div class="recent-sales-container">
-                        <h4>Recent Sales</h4>
+                        <div class="recent-sales-header">
+                            <h4>Recent Sales</h4>
+                            <p id="selection-mode-hint" class="selection-hint">Long-press a sale to select</p>
+                        </div>
                         <div id="recent-sales-list">
                             <p class="empty-state">No sales recorded yet.</p>
+                        </div>
+                         <div id="receipt-actions" class="receipt-actions" style="display: none;">
+                            <button id="cancel-selection-btn" class="btn btn-secondary">Cancel</button>
+                            <button id="generate-receipt-btn" class="btn btn-primary" disabled>Generate Receipt</button>
                         </div>
                     </div>
                 </div>
@@ -137,7 +145,9 @@
             <button id="cancel-scan-btn" class="btn btn-secondary cancel-scan-btn">Cancel</button>
         </div>
 
-    </div> <div id="modal-container" class="modal-container" style="display:none;">
+    </div> 
+    
+    <div id="modal-container" class="modal-container" style="display:none;">
         <div id="confirm-picture-modal" class="modal-content" style="display:none;">
             <h2>Confirm Picture</h2>
             <img id="captured-image-preview" src="" alt="Captured product image">
@@ -162,7 +172,21 @@
             <div class="sale-item-details"><img id="sale-product-image" src="" alt="Product image"><div><h3 id="sale-product-name">Product Name</h3><p id="sale-product-stock">Stock: 50 sachets</p></div></div>
             <div class="form-group"><label for="sale-quantity">Quantity</label><input type="number" id="sale-quantity" inputmode="numeric" value="1" min="1"></div>
             <div class="sale-total"><p>Total</p><h2 id="sale-total-price">₦0</h2></div>
-            <div class="modal-actions"><button id="cancel-sale-btn" class="btn btn-secondary">Cancel</button><button id="confirm-sale-btn" class="btn btn-primary">Confirm Sale</button></div>
+            <div class="modal-actions">
+                <button id="cancel-sale-btn" class="btn btn-secondary">Cancel</button>
+                <button id="confirm-and-end-sale-btn" class="btn btn-secondary">Confirm & End</button>
+                <button id="confirm-sale-btn" class="btn btn-primary">Confirm Sale</button>
+            </div>
+        </div>
+
+        <div id="receipt-modal" class="modal-content receipt-modal" style="display:none;">
+            <div id="receipt-content" class="receipt-paper">
+                <!-- Receipt will be generated here -->
+            </div>
+            <div class="modal-actions">
+                <button id="close-receipt-btn" class="btn btn-secondary">Close</button>
+                <button id="share-receipt-btn" class="btn btn-primary">Share</button>
+            </div>
         </div>
     </div>
 

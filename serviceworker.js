@@ -37,26 +37,33 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
+    // For external CDN resources, try network first, but don't cache or fail.
     if (event.request.url.includes('cdn.jsdelivr.net')) {
         event.respondWith(
             fetch(event.request).catch(() => {
+                // If the network fails (offline), return a simple error response.
+                // The app should handle this gracefully (e.g., disable scanning).
                 return new Response(null, { status: 503, statusText: 'Service Unavailable' });
             })
         );
         return;
     }
 
+    // For local assets, use cache-first strategy.
     event.respondWith(
         caches.match(event.request)
             .then(response => {
                 if (response) {
-                    return response;
+                    return response; // Return from cache
                 }
+                // If not in cache, fetch from network
                 return fetch(event.request).then(
                     networkResponse => {
+                        // Check if we received a valid response
                         if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
                             return networkResponse;
                         }
+                        // Clone the response and cache it
                         const responseToCache = networkResponse.clone();
                         caches.open(CACHE_NAME)
                             .then(cache => {

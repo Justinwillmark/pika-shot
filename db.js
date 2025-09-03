@@ -33,7 +33,6 @@ const DB = {
         });
     },
 
-    // --- GENERIC HELPER ---
     _getStore(storeName, mode) {
         const transaction = this.db.transaction(storeName, mode);
         return transaction.objectStore(storeName);

@@ -96,13 +96,13 @@ html, body {
     transform: translateY(-50%);
 }
 
-/* === Onboarding & Permissions (Unchanged) === */
+/* === Onboarding & Permissions === */
 .onboarding-content { display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 30px; text-align: center; height: 100%; }
 .onboarding-content h1, .onboarding-content h2 { font-size: clamp(1.6rem, 6vw, 1.8rem); font-weight: 700; margin-bottom: 12px; }
 .onboarding-content p { font-size: 1rem; color: var(--text-light); margin-bottom: 24px; max-width: 320px; line-height: 1.5; }
 .permission-icon { margin-bottom: 20px; color: var(--primary-color); }
 
-/* === Forms (Unchanged) === */
+/* === Forms === */
 .form-group { width: 100%; margin-bottom: 20px; text-align: left; }
 .form-group label { display: block; font-weight: 600; margin-bottom: 8px; font-size: 0.9rem; }
 .form-group input, .form-group select { width: 100%; padding: 14px; border: 1px solid var(--border-color); border-radius: var(--border-radius); font-size: 1rem; background-color: #fafafa; }
@@ -110,6 +110,7 @@ html, body {
 
 /* === Buttons === */
 .btn { padding: 14px 20px; border: none; border-radius: var(--border-radius); font-size: 1rem; font-weight: 600; cursor: pointer; width: 100%; transition: background-color 0.2s; min-height: 48px; }
+.btn:disabled { background-color: #ccc; cursor: not-allowed; }
 .btn-primary { background-color: var(--primary-color); color: white; }
 .btn-primary:active { background-color: var(--primary-dark); }
 .btn-secondary { background-color: var(--border-color); color: var(--text-color); }
@@ -117,7 +118,7 @@ html, body {
 .fab { position: fixed; bottom: 90px; right: 20px; width: 60px; height: 60px; border-radius: 50%; background-color: var(--secondary-color); color: white; display: flex; justify-content: center; align-items: center; box-shadow: 0 4px 15px rgba(0,0,0,0.2); border: none; z-index: 100; transition: opacity 0.3s, transform 0.3s; }
 .disabled { opacity: 0.6; pointer-events: none; cursor: not-allowed; transform: scale(0.95); }
 
-/* === Bottom Navigation (Unchanged) === */
+/* === Bottom Navigation === */
 .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; max-width: 600px; margin: 0 auto; height: 70px; display: flex; justify-content: space-around; align-items: center; background-color: var(--surface-color); border-top: 1px solid var(--border-color); box-shadow: 0 -2px 10px rgba(0,0,0,0.05); }
 .nav-btn { background: none; border: none; color: var(--text-light); display: flex; flex-direction: column; align-items: center; font-size: 0.75rem; padding: 8px; transition: color 0.2s; }
 .nav-btn svg { margin-bottom: 4px; }
@@ -125,7 +126,7 @@ html, body {
 .nav-btn-main { background-color: var(--primary-color); border: none; border-radius: 50%; width: 60px; height: 60px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; box-shadow: 0 4px 15px rgba(74, 144, 226, 0.4); transform: translateY(-20px); transition: opacity 0.3s, transform 0.3s; }
 .nav-btn-main span { font-size: 0.7rem; margin-top: 2px; }
 
-/* ✨ NEW/MODIFIED: Home View / Dashboard Styles */
+/* Home View / Dashboard Styles */
 #home-view.page { padding-bottom: 80px; background: linear-gradient(180deg, var(--primary-color) 200px, var(--background-color) 200px); }
 .home-header { padding: 24px 20px; color: white; }
 .home-header p { font-size: 0.9rem; opacity: 0.8; }
@@ -139,19 +140,28 @@ html, body {
 .stat-icon.items { background-color: #9b59b6; }
 .stat-card p { font-size: 0.9rem; color: var(--text-light); }
 .stat-card h3 { font-size: clamp(1.5rem, 5vw, 1.75rem); font-weight: 700; color: var(--text-color); margin-top: 4px; }
+
+/* ✨ NEW: Recent Sales & Receipt Styles */
 .recent-sales-container { margin-top: 24px; }
-.recent-sales-container h4 { font-size: 1.1rem; font-weight: 600; margin-bottom: 12px; }
-.sale-item { display: flex; align-items: center; background: var(--surface-color); padding: 12px; border-radius: var(--border-radius); margin-bottom: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.05); }
+.recent-sales-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.recent-sales-header h4 { font-size: 1.1rem; font-weight: 600; }
+.selection-hint { font-size: 0.8rem; color: var(--text-light); }
+.sale-item { display: flex; align-items: center; background: var(--surface-color); padding: 12px; border-radius: var(--border-radius); margin-bottom: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.05); transition: background-color 0.2s, transform 0.2s; }
+.sale-item.selectable { cursor: pointer; }
+.sale-item.selected { background-color: #e0eaf6; transform: scale(1.02); }
 .sale-item img { width: 40px; height: 40px; border-radius: 8px; margin-right: 12px; object-fit: cover; flex-shrink: 0; }
 .sale-info { flex-grow: 1; overflow: hidden; }
 .sale-info p { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sale-info span { font-size: 0.8rem; color: var(--text-light); }
 .sale-price { font-weight: 700; font-size: 1.1rem; margin-left: 8px; }
+.receipt-actions { display: flex; gap: 12px; margin-top: 16px; }
 
-/* === Products View (Unchanged) === */
+/* === Products View === */
 .product-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px; padding: 20px; }
-.product-card { background-color: var(--surface-color); border-radius: var(--border-radius); box-shadow: var(--box-shadow); overflow: hidden; display: flex; flex-direction: column; }
+.product-card { background-color: var(--surface-color); border-radius: var(--border-radius); box-shadow: var(--box-shadow); overflow: hidden; display: flex; flex-direction: column; position: relative; }
 .product-card img { width: 100%; height: 120px; object-fit: cover; }
+/* ✨ NEW: Out of Stock Badge */
+.out-of-stock-badge { position: absolute; top: 8px; right: 8px; background-color: var(--danger-color); color: white; padding: 4px 8px; font-size: 0.75rem; font-weight: 600; border-radius: 6px; }
 .product-card-info { padding: 12px; flex-grow: 1; display: flex; flex-direction: column; }
 .product-card-info h4 { font-size: 1rem; font-weight: 600; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .product-price { font-size: 1.1rem; font-weight: 700; color: var(--primary-color); margin-bottom: 8px; }
@@ -160,7 +170,7 @@ html, body {
 .product-card-actions button { width: 100%; padding: 8px; font-size: 0.9rem; }
 .empty-state { padding: 40px 20px; text-align: center; color: var(--text-light); grid-column: 1 / -1; }
 
-/* === Camera View (Unchanged) === */
+/* === Camera View === */
 .camera-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: #000; z-index: 200; justify-content: center; align-items: center; }
 #camera-feed { width: 100%; height: 100%; object-fit: cover; }
 .camera-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; color: white; }
@@ -171,9 +181,10 @@ html, body {
 .capture-countdown { font-size: 4rem; font-weight: bold; margin-top: 20px; text-shadow: 0 2px 4px rgba(0,0,0,0.5); }
 .cancel-scan-btn { position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%); width: auto; padding: 12px 24px; }
 
-/* === Modals (Unchanged) === */
+/* === Modals === */
 .modal-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.6); display: flex; justify-content: center; align-items: center; z-index: 300; padding: 20px; }
 .modal-content { background-color: var(--surface-color); padding: 24px; border-radius: 16px; width: 100%; max-width: 400px; box-shadow: 0 8px 25px rgba(0,0,0,0.15); animation: modal-pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+.modal-content.receipt-modal { max-height: 80vh; overflow-y: auto; }
 .modal-content h2 { text-align: center; margin-bottom: 20px; }
 .modal-actions { display: flex; gap: 12px; margin-top: 24px; }
 #confirm-picture-modal img { width: 100%; max-height: 250px; object-fit: contain; border-radius: var(--border-radius); margin-bottom: 10px; }
@@ -184,6 +195,23 @@ html, body {
 .sale-total { display: flex; justify-content: space-between; align-items: center; margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border-color); }
 .sale-total p { font-size: 1rem; color: var(--text-light); }
 .sale-total h2 { margin: 0; color: var(--primary-color); }
+@keyframes modal-pop { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+
+/* ✨ NEW: Receipt Paper Styles */
+.receipt-paper { background: #fff; padding: 20px; font-family: 'Courier New', Courier, monospace; color: #000; border: 1px dashed #ccc; }
+.receipt-header { text-align: center; margin-bottom: 20px; }
+.receipt-header h3 { margin: 0; font-size: 1.2rem; }
+.receipt-header p { margin: 2px 0; font-size: 0.8rem; }
+.receipt-items table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.receipt-items th, .receipt-items td { text-align: left; padding: 5px 0; }
+.receipt-items thead tr { border-bottom: 1px solid #000; }
+.receipt-items .col-qty, .receipt-items .col-price, .receipt-items .col-total { text-align: right; }
+.receipt-total { margin-top: 20px; border-top: 2px double #000; padding-top: 10px; }
+.receipt-total .total-row { display: flex; justify-content: space-between; font-weight: bold; font-size: 1.1rem; }
+.receipt-footer { text-align: center; margin-top: 20px; font-size: 0.8rem; }
+.receipt-footer p { margin: 2px 0; }
+
 
 /* Responsiveness Tweaks */
 @media (max-width: 360px) {

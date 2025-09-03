@@ -30,7 +30,6 @@ const Camera = {
             this.videoElement.srcObject = this.stream;
             await this.videoElement.play();
 
-            // Auto-capture after countdown
             if(countdownElement) {
                 let count = 3;
                 countdownElement.textContent = count;
@@ -51,9 +50,7 @@ const Camera = {
 
     async startScan(onMatch) {
         return new Promise(async (resolve, reject) => {
-            if (!this.model) {
-                return reject('Model not loaded');
-            }
+            if (!this.model) return reject('Model not loaded');
             if (this.stream) this.stop();
 
             try {
@@ -72,7 +69,7 @@ const Camera = {
                         const products = await DB.getAllProducts();
                         let bestMatch = null;
                         let highestSimilarity = 0;
-                        const SIMILARITY_THRESHOLD = 0.85; // Adjust as needed
+                        const SIMILARITY_THRESHOLD = 0.85;
 
                         for (const product of products) {
                             if (product.embedding) {
@@ -87,21 +84,20 @@ const Camera = {
                         if (highestSimilarity > SIMILARITY_THRESHOLD) {
                             this.stop();
                             onMatch(bestMatch);
-                            return; // Exit loop
+                            return;
                         }
                     }
                     requestAnimationFrame(scanLoop);
                 };
                 scanLoop();
                 
-                // Timeout if no match is found
                 this.scanTimeout = setTimeout(async () => {
                     if (this.isScanning) {
                         const { blob, embedding } = await this.captureAndProcess(() => {});
                         this.stop();
                         resolve({ reason: 'notFound', blob, embedding });
                     }
-                }, 4000); // 4-second timeout
+                }, 4000);
 
             } catch (err) {
                 reject(err);
