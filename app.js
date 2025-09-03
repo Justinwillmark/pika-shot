@@ -26,10 +26,12 @@ document.addEventListener('DOMContentLoaded', () => {
             totalSalesEl: document.getElementById('total-sales'),
             itemsSoldEl: document.getElementById('items-sold'),
             recentSalesList: document.getElementById('recent-sales-list'),
+            seeAllContainer: document.getElementById('see-all-container'),
             seeAllSalesBtn: document.getElementById('see-all-sales-btn'),
             allSalesView: document.getElementById('all-sales-view'),
             allSalesList: document.getElementById('all-sales-list'),
             productsView: document.getElementById('products-view'),
+            productSkuCount: document.getElementById('product-sku-count'),
             productGrid: document.getElementById('product-grid'),
             productSearchContainer: document.getElementById('product-search-container'),
             productSearchInput: document.getElementById('product-search-input'),
@@ -70,6 +72,7 @@ document.addEventListener('DOMContentLoaded', () => {
             receiptActions: document.getElementById('receipt-actions'),
             generateReceiptBtn: document.getElementById('generate-receipt-btn'),
             cancelSelectionBtn: document.getElementById('cancel-selection-btn'),
+            selectionModeHint: document.getElementById('selection-mode-hint'),
             receiptModal: document.getElementById('receipt-modal'),
             receiptContent: document.getElementById('receipt-content'),
             shareReceiptBtn: document.getElementById('share-receipt-btn'),
@@ -239,12 +242,13 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.totalSalesEl.textContent = `₦${totalSales.toLocaleString()}`;
             this.elements.itemsSoldEl.textContent = itemsSold;
             
-            this.renderSalesList(sales, this.elements.recentSalesList, 15);
+            this.elements.seeAllContainer.style.display = sales.length > 6 ? 'block' : 'none';
+            this.renderSalesList(sales, this.elements.recentSalesList, 6);
         },
         
         renderSalesList(sales, targetElement, limit) {
             targetElement.innerHTML = '';
-            const sortedSales = sales.sort((a, b) => b.timestamp - a.timestamp);
+            const sortedSales = sales.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
             const salesToRender = limit ? sortedSales.slice(0, limit) : sortedSales;
 
             if (salesToRender.length === 0) {
@@ -259,27 +263,88 @@ document.addEventListener('DOMContentLoaded', () => {
                 const imageUrl = sale.image ? URL.createObjectURL(sale.image) : 'icons/icon-192.png';
                 saleEl.innerHTML = `<img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${sale.quantity} x ₦${sale.price.toLocaleString()}</span></div><p class="sale-price">₦${sale.total.toLocaleString()}</p>`;
                 
-                if (targetElement.id === 'recent-sales-list') {
-                     this.addSaleItemEventListeners(saleEl, sale);
-                }
+                this.addSaleItemEventListeners(saleEl, sale);
                 targetElement.appendChild(saleEl);
             });
         },
         
         async renderAllSales() {
             const allSales = await DB.getAllSales();
-            this.renderSalesList(allSales, this.elements.allSalesList);
+            const sortedSales = allSales.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+            this.elements.allSalesList.innerHTML = '';
+
+            if (sortedSales.length === 0) {
+                this.elements.allSalesList.innerHTML = `<p class="empty-state">No sales recorded yet.</p>`;
+                return;
+            }
+
+            const groupedSales = this.groupSalesByDate(sortedSales);
+            for (const groupTitle in groupedSales) {
+                const groupContainer = document.createElement('div');
+                groupContainer.className = 'sales-group';
+                
+                const titleEl = document.createElement('h3');
+                titleEl.textContent = groupTitle;
+                groupContainer.appendChild(titleEl);
+
+                groupedSales[groupTitle].forEach(sale => {
+                    const saleEl = document.createElement('div');
+                    saleEl.className = 'sale-item';
+                    saleEl.dataset.saleId = sale.id;
+                    const imageUrl = sale.image ? URL.createObjectURL(sale.image) : 'icons/icon-192.png';
+                    saleEl.innerHTML = `<img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${sale.quantity} x ₦${sale.price.toLocaleString()}</span></div><p class="sale-price">₦${sale.total.toLocaleString()}</p>`;
+                    this.addSaleItemEventListeners(saleEl, sale);
+                    groupContainer.appendChild(saleEl);
+                });
+                this.elements.allSalesList.appendChild(groupContainer);
+            }
+        },
+
+        groupSalesByDate(sales) {
+            const groups = {};
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const yesterday = new Date(today);
+            yesterday.setDate(today.getDate() - 1);
+            const startOfWeek = new Date(today);
+            startOfWeek.setDate(today.getDate() - today.getDay());
+
+            sales.forEach(sale => {
+                const saleDate = new Date(sale.timestamp);
+                saleDate.setHours(0, 0, 0, 0);
+                
+                let groupTitle;
+                if (saleDate.getTime() === today.getTime()) {
+                    groupTitle = 'Today';
+                } else if (saleDate.getTime() === yesterday.getTime()) {
+                    groupTitle = 'Yesterday';
+                } else if (saleDate >= startOfWeek) {
+                    groupTitle = 'This Week';
+                } else {
+                    groupTitle = saleDate.toLocaleDateString('en-NG', { month: 'long', year: 'numeric' });
+                }
+
+                if (!groups[groupTitle]) {
+                    groups[groupTitle] = [];
+                }
+                groups[groupTitle].push(sale);
+            });
+            return groups;
         },
 
         async renderProducts(filter = '') {
             const allProducts = await DB.getAllProducts();
             this.elements.productGrid.innerHTML = '';
+            this.elements.productSkuCount.textContent = `${allProducts.length} SKUs`;
+
             const products = filter ? allProducts.filter(p => p.name.toLowerCase().includes(filter.toLowerCase())) : allProducts;
             
             if (allProducts.length > 0) {
                 this.elements.productSearchContainer.style.display = 'block';
+                this.elements.productSkuCount.style.display = 'block';
             } else {
                 this.elements.productSearchContainer.style.display = 'none';
+                this.elements.productSkuCount.style.display = 'none';
             }
 
             if (products.length === 0) {
@@ -415,14 +480,42 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // --- RECEIPT & QR LOGIC ---
         addSaleItemEventListeners(element, sale) { const pressDuration = 500; const onTouchStart = () => { this.state.longPressTimer = setTimeout(() => this.enterSelectionMode(element, sale), pressDuration); }; const onTouchEnd = () => clearTimeout(this.state.longPressTimer); element.addEventListener('mousedown', onTouchStart); element.addEventListener('mouseup', onTouchEnd); element.addEventListener('mouseleave', onTouchEnd); element.addEventListener('touchstart', onTouchStart); element.addEventListener('touchend', onTouchEnd); element.addEventListener('click', () => { if(this.state.isSelectionMode) this.toggleSaleSelection(element, sale); }); },
-        enterSelectionMode(element, sale) { this.state.isSelectionMode = true; this.elements.recentSalesList.querySelectorAll('.sale-item').forEach(el => el.classList.add('selectable')); this.elements.receiptActions.style.display = 'flex'; this.toggleSaleSelection(element, sale); },
-        exitSelectionMode() { if (!this.state.isSelectionMode) return; this.state.isSelectionMode = false; this.state.selectedSales.clear(); this.elements.recentSalesList.querySelectorAll('.sale-item').forEach(el => { el.classList.remove('selectable'); el.classList.remove('selected'); }); this.elements.receiptActions.style.display = 'none'; },
+        enterSelectionMode(element, sale) {
+            this.state.isSelectionMode = true;
+            document.querySelectorAll('.sale-item').forEach(el => el.classList.add('selectable'));
+            this.elements.receiptActions.classList.add('visible');
+            this.elements.selectionModeHint.textContent = 'Tap to select more items';
+            this.toggleSaleSelection(element, sale);
+        },
+        exitSelectionMode() {
+            if (!this.state.isSelectionMode) return;
+            this.state.isSelectionMode = false;
+            this.state.selectedSales.clear();
+            document.querySelectorAll('.sale-item').forEach(el => { el.classList.remove('selectable'); el.classList.remove('selected'); });
+            this.elements.receiptActions.classList.remove('visible');
+            this.elements.selectionModeHint.textContent = 'Long-press to select';
+        },
         toggleSaleSelection(element, sale) { if (this.state.selectedSales.has(sale.id)) { this.state.selectedSales.delete(sale.id); element.classList.remove('selected'); } else { this.state.selectedSales.add(sale.id); element.classList.add('selected'); } this.elements.generateReceiptBtn.disabled = this.state.selectedSales.size === 0; },
-        async generateReceipt() { const sales = await DB.getSalesToday(); const selectedSaleObjects = sales.filter(s => this.state.selectedSales.has(s.id)); if (selectedSaleObjects.length === 0) return; const receiptId = `PS-${Date.now().toString().slice(-6)}`; const now = new Date(); let totalAmount = 0; let itemsHtml = ''; selectedSaleObjects.forEach(sale => { totalAmount += sale.total; itemsHtml += `<tr><td>${sale.productName}</td><td class="col-qty">${sale.quantity}</td><td class="col-price">₦${sale.price.toLocaleString()}</td><td class="col-total">₦${sale.total.toLocaleString()}</td></tr>`; }); const receiptHtml = `<div class="receipt-header"><h3>${this.state.user.business}</h3><p>${this.state.user.location}</p><p><strong>Receipt ID:</strong> ${receiptId}</p></div><div class="receipt-items"><table><thead><tr><th>Item</th><th class="col-qty">Qty</th><th class="col-price">Price</th><th class="col-total">Total</th></tr></thead><tbody>${itemsHtml}</tbody></table></div><div class="receipt-total"><div class="total-row"><span>TOTAL</span><span>₦${totalAmount.toLocaleString()}</span></div></div><div class="receipt-footer"><p>Thank you for your patronage!</p><p>${now.toLocaleDateString('en-NG')} ${now.toLocaleTimeString('en-NG')}</p></div>`; this.elements.receiptContent.innerHTML = receiptHtml; this.showModal('receipt-modal'); },
+        async generateReceipt() {
+            const allSales = await DB.getAllSales();
+            const selectedSaleObjects = allSales.filter(s => this.state.selectedSales.has(s.id));
+            if (selectedSaleObjects.length === 0) return;
+            const receiptId = `PS-${Date.now().toString().slice(-6)}`;
+            const now = new Date();
+            let totalAmount = 0;
+            let itemsHtml = '';
+            selectedSaleObjects.forEach(sale => {
+                totalAmount += sale.total;
+                itemsHtml += `<tr><td>${sale.productName}</td><td class="col-qty">${sale.quantity}</td><td class="col-price">&#8358;${sale.price.toLocaleString()}</td><td class="col-total">&#8358;${sale.total.toLocaleString()}</td></tr>`;
+            });
+            const receiptHtml = `<div class="receipt-header"><h3>${this.state.user.business}</h3><p>${this.state.user.location}</p><p><strong>Receipt ID:</strong> ${receiptId}</p></div><div class="receipt-items"><table><thead><tr><th>Item</th><th class="col-qty">Qty</th><th class="col-price">Price</th><th class="col-total">Total</th></tr></thead><tbody>${itemsHtml}</tbody></table></div><div class="receipt-total"><div class="total-row"><span>TOTAL</span><span>&#8358;${totalAmount.toLocaleString()}</span></div></div><div class="receipt-footer"><p>Thank you for your patronage!</p><p>${now.toLocaleDateString('en-NG')} ${now.toLocaleTimeString('en-NG')}</p></div>`;
+            this.elements.receiptContent.innerHTML = receiptHtml;
+            this.showModal('receipt-modal');
+        },
         async shareReceipt() { const receiptElement = this.elements.receiptContent; try { const canvas = await html2canvas(receiptElement, { scale: 2 }); canvas.toBlob(async (blob) => { if (navigator.share && blob) { try { await navigator.share({ files: [new File([blob], 'pika-shot-receipt.png', { type: 'image/png' })], title: 'Your Receipt', text: 'Here is your receipt from ' + this.state.user.business, }); } catch (error) { console.error('Error sharing:', error); } } else { alert('Sharing is not supported on this browser, or there was an error creating the image.'); } }, 'image/png'); } catch (error) { console.error('Error generating receipt image:', error); alert('Could not generate receipt image.'); } },
         async generateQrLog() {
-            const sales = await DB.getSalesToday();
-            const selectedSaleObjects = sales.filter(s => this.state.selectedSales.has(s.id));
+            const allSales = await DB.getAllSales();
+            const selectedSaleObjects = allSales.filter(s => this.state.selectedSales.has(s.id));
             if (selectedSaleObjects.length === 0) return;
             
             const logData = {

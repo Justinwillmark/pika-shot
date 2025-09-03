@@ -82,7 +82,7 @@
                     <div class="dashboard-grid">
                         <div class="card stat-card">
                             <div class="stat-icon sales">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="12" x="2" y="6" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
                             </div>
                             <p>Today's Sales</p>
                             <h3 id="total-sales">₦0</h3>
@@ -98,20 +98,21 @@
                     <div class="recent-sales-container">
                         <div class="recent-sales-header">
                             <h4>Recent Sales</h4>
-                            <button id="see-all-sales-btn" class="see-all-btn">See All</button>
+                            <p id="selection-mode-hint" class="selection-hint">Long-press to select</p>
                         </div>
                         <div id="recent-sales-list">
-                            <p class="empty-state">No sales recorded yet.</p>
-                        </div>
-                         <div id="receipt-actions" class="receipt-actions" style="display: none;">
-                            <button id="cancel-selection-btn" class="btn btn-secondary">Cancel</button>
-                            <button id="generate-receipt-btn" class="btn btn-primary" disabled>Generate Receipt</button>
+                            </div>
+                        <div id="see-all-container" class="see-all-container" style="display: none;">
+                            <button id="see-all-sales-btn" class="see-all-btn">See All</button>
                         </div>
                     </div>
                 </div>
             </div>
 
             <div id="products-view" class="view page">
+                <div class="product-header">
+                    <p id="product-sku-count" class="sku-count"></p>
+                </div>
                 <div id="product-search-container" style="display: none;">
                     <input type="search" id="product-search-input" placeholder="Search my products...">
                 </div>
@@ -144,6 +145,11 @@
                 <span>Products</span>
             </button>
         </nav>
+        
+        <div id="receipt-actions" class="receipt-actions">
+            <button id="cancel-selection-btn" class="btn btn-secondary">Cancel</button>
+            <button id="generate-receipt-btn" class="btn btn-primary" disabled>Generate Receipt</button>
+        </div>
 
         <div id="camera-view" class="view camera-container">
             <video id="camera-feed" playsinline></video>
