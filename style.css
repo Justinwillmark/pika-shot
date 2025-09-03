@@ -123,7 +123,7 @@ html, body {
 .nav-btn { background: none; border: none; color: var(--text-light); display: flex; flex-direction: column; align-items: center; font-size: 0.75rem; padding: 8px; transition: color 0.2s; }
 .nav-btn svg { margin-bottom: 4px; }
 .nav-btn.active { color: var(--primary-color); }
-.nav-btn-main { background-color: var(--primary-color); border: none; border-radius: 50%; width: 60px; height: 60px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; box-shadow: 0 4px 15px rgba(74, 144, 226, 0.4); transform: translateY(-20px); transition: opacity 0.3s, transform 0.3s; }
+.nav-btn-main { background-color: var(--primary-color); border: none; border-radius: 50%; width: 67px; height: 67px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; box-shadow: 0 4px 15px rgba(74, 144, 226, 0.4); transform: translateY(-20px); transition: opacity 0.3s, transform 0.3s; }
 .nav-btn-main span { font-size: 0.7rem; margin-top: 2px; }
 .receipt-actions { position: fixed; bottom: 0; left: 0; right: 0; max-width: 600px; margin: 0 auto; padding: 16px; background: var(--surface-color); box-shadow: 0 -4px 12px rgba(0,0,0,0.1); display: none; gap: 12px; z-index: 201; transform: translateY(100%); transition: transform 0.3s ease-in-out; }
 .receipt-actions.visible { display: flex; transform: translateY(0); }
@@ -148,7 +148,7 @@ html, body {
 .recent-sales-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 .recent-sales-header h4 { font-size: clamp(1rem, 3vw, 1.1rem); font-weight: 600; }
 .selection-hint { font-size: 0.8rem; color: var(--text-light); }
-.see-all-container { text-align: center; margin-top: 16px; }
+.see-all-container { text-align: center; margin-top: 16px; margin-bottom: 27px; }
 .see-all-btn { background: none; border: none; color: var(--primary-color); font-weight: 600; font-size: clamp(0.9rem, 2.5vw, 1rem); cursor: pointer; padding: 8px; }
 .sale-item { display: flex; align-items: center; background: var(--surface-color); padding: 12px; border-radius: var(--border-radius); margin-bottom: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.05); transition: background-color 0.2s, transform 0.2s; }
 .sale-item.selectable { cursor: pointer; }
@@ -159,8 +159,29 @@ html, body {
 .sale-info span { font-size: clamp(0.75rem, 2vw, 0.8rem); color: var(--text-light); }
 .sale-price { font-weight: 700; font-size: clamp(1rem, 3vw, 1.1rem); margin-left: 8px; }
 .all-sales-container { padding: 20px; }
-.sales-group h3 { font-size: 1.1rem; color: var(--text-color); padding-bottom: 8px; margin-bottom: 12px; margin-top: 24px; border-bottom: 1px solid var(--border-color); }
-.sales-group:first-child h3 { margin-top: 0; }
+.sales-group-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding-bottom: 8px;
+    margin-bottom: 12px;
+    margin-top: 24px;
+    border-bottom: 1px solid var(--border-color);
+}
+.sales-group:first-child .sales-group-header {
+    margin-top: 0;
+}
+.sales-group-header h3 {
+    font-size: 1.1rem;
+    color: var(--text-color);
+    margin: 0;
+}
+.sales-group-total {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--primary-color);
+    margin: 0;
+}
 
 /* === Products View === */
 .product-header { padding: 16px 20px 0; }

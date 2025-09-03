@@ -283,9 +283,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 const groupContainer = document.createElement('div');
                 groupContainer.className = 'sales-group';
                 
-                const titleEl = document.createElement('h3');
-                titleEl.textContent = groupTitle;
-                groupContainer.appendChild(titleEl);
+                const dailyTotal = groupedSales[groupTitle].reduce((sum, sale) => sum + sale.total, 0);
+
+                const groupHeader = document.createElement('div');
+                groupHeader.className = 'sales-group-header';
+                groupHeader.innerHTML = `<h3>${groupTitle}</h3><p class="sales-group-total">₦${dailyTotal.toLocaleString()}</p>`;
+                groupContainer.appendChild(groupHeader);
 
                 groupedSales[groupTitle].forEach(sale => {
                     const saleEl = document.createElement('div');
