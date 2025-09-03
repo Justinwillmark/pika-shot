@@ -28,6 +28,8 @@ document.addEventListener('DOMContentLoaded', () => {
             recentSalesList: document.getElementById('recent-sales-list'),
             productsView: document.getElementById('products-view'),
             productGrid: document.getElementById('product-grid'),
+            productSearchContainer: document.getElementById('product-search-container'),
+            productSearchInput: document.getElementById('product-search-input'),
             addNewProductBtn: document.getElementById('add-new-product-btn'),
             cameraView: document.getElementById('camera-view'),
             cancelScanBtn: document.getElementById('cancel-scan-btn'),
@@ -38,12 +40,14 @@ document.addEventListener('DOMContentLoaded', () => {
             modalContainer: document.getElementById('modal-container'),
             confirmPictureModal: document.getElementById('confirm-picture-modal'),
             capturedImagePreview: document.getElementById('captured-image-preview'),
+            cancelPictureBtn: document.getElementById('cancel-picture-btn'),
             retakePictureBtn: document.getElementById('retake-picture-btn'),
             confirmPictureBtn: document.getElementById('confirm-picture-btn'),
             productFormModal: document.getElementById('product-form-modal'),
             productForm: document.getElementById('product-form'),
             productFormTitle: document.getElementById('product-form-title'),
             productIdInput: document.getElementById('product-id'),
+            changePictureBtn: document.getElementById('change-picture-btn'),
             productNameInput: document.getElementById('product-name'),
             productPriceInput: document.getElementById('product-price'),
             productStockInput: document.getElementById('product-stock'),
@@ -57,9 +61,8 @@ document.addEventListener('DOMContentLoaded', () => {
             saleTotalPrice: document.getElementById('sale-total-price'),
             cancelSaleBtn: document.getElementById('cancel-sale-btn'),
             confirmSaleBtn: document.getElementById('confirm-sale-btn'),
-            confirmAndEndSaleBtn: document.getElementById('confirm-and-end-sale-btn'),
+            entrySaleBtn: document.getElementById('entry-sale-btn'),
             installBtn: document.getElementById('add-to-homescreen-btn'),
-            // Receipt elements
             receiptActions: document.getElementById('receipt-actions'),
             generateReceiptBtn: document.getElementById('generate-receipt-btn'),
             cancelSelectionBtn: document.getElementById('cancel-selection-btn'),
@@ -68,6 +71,29 @@ document.addEventListener('DOMContentLoaded', () => {
             receiptContent: document.getElementById('receipt-content'),
             shareReceiptBtn: document.getElementById('share-receipt-btn'),
             closeReceiptBtn: document.getElementById('close-receipt-btn'),
+            shareLogBtn: document.getElementById('share-log-btn'),
+            qrCodeModal: document.getElementById('qr-code-modal'),
+            qrCanvas: document.getElementById('qr-canvas'),
+            closeQrBtn: document.getElementById('close-qr-btn'),
+            entryChoiceModal: document.getElementById('entry-choice-modal'),
+            cancelEntryChoiceBtn: document.getElementById('cancel-entry-choice-btn'),
+            manualEntryBtn: document.getElementById('manual-entry-btn'),
+            selectFromProductsBtn: document.getElementById('select-from-products-btn'),
+            manualSaleModal: document.getElementById('manual-sale-modal'),
+            manualSaleForm: document.getElementById('manual-sale-form'),
+            cancelManualSaleBtn: document.getElementById('cancel-manual-sale-btn'),
+            manualProductName: document.getElementById('manual-product-name'),
+            manualProductPrice: document.getElementById('manual-product-price'),
+            manualSaleQuantity: document.getElementById('manual-sale-quantity'),
+            manualProductUnit: document.getElementById('manual-product-unit'),
+            selectProductModal: document.getElementById('select-product-modal'),
+            selectProductGrid: document.getElementById('select-product-grid'),
+            cancelSelectProductBtn: document.getElementById('cancel-select-product-btn'),
+            confirmLogModal: document.getElementById('confirm-log-modal'),
+            confirmLogTitle: document.getElementById('confirm-log-title'),
+            confirmLogContent: document.getElementById('confirm-log-content'),
+            rejectLogBtn: document.getElementById('reject-log-btn'),
+            acceptLogBtn: document.getElementById('accept-log-btn'),
         },
 
         // --- APP STATE ---
@@ -80,7 +106,10 @@ document.addEventListener('DOMContentLoaded', () => {
             capturedBlob: null,
             capturedEmbedding: null,
             editingProduct: null,
+            isChangingPicture: false, // For edit picture flow
+            productSelectionMode: false, // For sale by selection flow
             sellingProduct: null,
+            scannedLogData: null,
             deferredInstallPrompt: null,
             isSelectionMode: false,
             selectedSales: new Set(),
@@ -96,13 +125,11 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 await DB.init();
                 this.state.user = await DB.getUser();
-
                 if (!this.state.user) {
                     this.showView('onboarding-view');
                 } else {
                     await this.loadMainApp();
                 }
-                
                 this.loadCameraModelInBackground();
             } catch (error) {
                 console.error("Critical initialization failed:", error);
@@ -125,21 +152,30 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.cancelScanBtn.addEventListener('click', this.cancelScan.bind(this));
             this.elements.retakePictureBtn.addEventListener('click', this.handleRetakePicture.bind(this));
             this.elements.confirmPictureBtn.addEventListener('click', this.handleConfirmPicture.bind(this));
+            this.elements.changePictureBtn.addEventListener('click', this.handleChangePicture.bind(this));
+            this.elements.cancelPictureBtn.addEventListener('click', this.cancelScan.bind(this));
             this.elements.saleQuantityInput.addEventListener('input', this.updateSaleTotal.bind(this));
-            this.elements.cancelSaleBtn.addEventListener('click', () => {
-                this.hideModal();
-                if (this.state.cameraMode === 'sell') this.startSellScan(true);
-            });
+            // FIX: Universal cancel behavior
+            this.elements.cancelSaleBtn.addEventListener('click', this.cancelScan.bind(this));
             this.elements.confirmSaleBtn.addEventListener('click', this.handleConfirmSale.bind(this));
-            this.elements.confirmAndEndSaleBtn.addEventListener('click', this.handleConfirmAndEndSale.bind(this));
+            this.elements.entrySaleBtn.addEventListener('click', () => { this.hideModal(); this.showModal('entry-choice-modal'); });
             window.addEventListener('beforeinstallprompt', this.handleBeforeInstallPrompt.bind(this));
             this.elements.installBtn.addEventListener('click', this.promptInstall.bind(this));
-
-            // Receipt event listeners
             this.elements.generateReceiptBtn.addEventListener('click', this.generateReceipt.bind(this));
             this.elements.cancelSelectionBtn.addEventListener('click', this.exitSelectionMode.bind(this));
             this.elements.closeReceiptBtn.addEventListener('click', () => this.hideModal());
             this.elements.shareReceiptBtn.addEventListener('click', this.shareReceipt.bind(this));
+            this.elements.shareLogBtn.addEventListener('click', this.generateQrLog.bind(this));
+            this.elements.closeQrBtn.addEventListener('click', () => this.hideModal());
+            this.elements.productSearchInput.addEventListener('input', (e) => this.renderProducts(e.target.value));
+            this.elements.cancelEntryChoiceBtn.addEventListener('click', () => this.hideModal());
+            this.elements.manualEntryBtn.addEventListener('click', () => { this.hideModal(); this.elements.manualSaleForm.reset(); this.showModal('manual-sale-modal'); });
+            this.elements.cancelManualSaleBtn.addEventListener('click', () => this.hideModal());
+            this.elements.manualSaleForm.addEventListener('submit', this.handleManualSale.bind(this));
+            this.elements.selectFromProductsBtn.addEventListener('click', this.showProductSelection.bind(this));
+            this.elements.cancelSelectProductBtn.addEventListener('click', () => this.hideModal());
+            this.elements.rejectLogBtn.addEventListener('click', () => { this.hideModal(); this.state.scannedLogData = null; });
+            this.elements.acceptLogBtn.addEventListener('click', this.acceptPikaLog.bind(this));
         },
         
         // --- UI & NAVIGATION ---
@@ -148,15 +184,94 @@ document.addEventListener('DOMContentLoaded', () => {
         showView(viewId) { this.elements.views.forEach(view => view.classList.remove('active')); const viewToShow = document.getElementById(viewId); if (viewToShow) { viewToShow.classList.add('active'); this.state.currentView = viewId; if (!['onboarding-view', 'camera-permission-view', 'camera-view'].includes(viewId)) { this.updateHeader(viewId); } } },
         showModal(modalId) { this.elements.modalContainer.style.display = 'flex'; this.elements.modalContainer.querySelectorAll('.modal-content').forEach(m => m.style.display = 'none'); const modalToShow = document.getElementById(modalId); if (modalToShow) { modalToShow.style.display = 'block'; } },
         hideModal() { this.elements.modalContainer.style.display = 'none'; this.elements.modalContainer.querySelectorAll('.modal-content').forEach(m => m.style.display = 'none'); },
-        navigateTo(viewId, isBackNavigation = false) { if (!isBackNavigation && viewId !== this.state.currentView) { this.state.navigationHistory.push(this.state.currentView); } this.showView(viewId); this.elements.navButtons.forEach(btn => { btn.classList.toggle('active', btn.dataset.view === viewId); }); if (viewId === 'home-view') { this.elements.backBtn.style.display = 'none'; if (!isBackNavigation) this.state.navigationHistory = []; } else { this.elements.backBtn.style.display = 'block'; } this.exitSelectionMode(); },
-        navigateBack() { const previousView = this.state.navigationHistory.pop(); this.navigateTo(previousView || 'home-view', true); },
-        updateHeader(viewId) { const titles = { 'home-view': 'Home', 'products-view': 'My Products' }; this.elements.headerTitle.textContent = titles[viewId] || 'pika shot'; },
+        navigateTo(viewId, isBackNavigation = false) {
+            if (!isBackNavigation && viewId !== this.state.currentView) { this.state.navigationHistory.push(this.state.currentView); }
+            
+            // Handle exiting product selection mode
+            if (this.state.productSelectionMode && viewId !== 'products-view') {
+                this.state.productSelectionMode = false;
+            }
+
+            this.showView(viewId);
+            this.elements.navButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.view === viewId));
+            
+            if (viewId === 'home-view') {
+                this.elements.backBtn.style.display = 'none';
+                if (!isBackNavigation) this.state.navigationHistory = [];
+            } else {
+                this.elements.backBtn.style.display = 'block';
+            }
+            
+            this.elements.productsView.classList.toggle('selection-mode', this.state.productSelectionMode);
+            this.elements.addNewProductBtn.style.display = this.state.productSelectionMode ? 'none' : 'flex';
+            
+            this.exitSelectionMode();
+        },
+        navigateBack() {
+            this.state.productSelectionMode = false; // Always exit selection mode on back
+            const previousView = this.state.navigationHistory.pop();
+            this.navigateTo(previousView || 'home-view', true);
+        },
+        updateHeader(viewId) {
+            let title = 'pika shot';
+            if (this.state.productSelectionMode && viewId === 'products-view') {
+                title = 'Select a Product';
+            } else {
+                const titles = { 'home-view': 'Home', 'products-view': 'My Products' };
+                title = titles[viewId] || 'pika shot';
+            }
+            this.elements.headerTitle.textContent = title;
+        },
 
         async updateDashboard() { if (this.state.user) { this.elements.welcomeName.textContent = `Hello, ${this.state.user.name.split(' ')[0]}!`; } this.elements.welcomeDate.textContent = new Date().toLocaleDateString('en-NG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }); const sales = await DB.getSalesToday(); const totalSales = sales.reduce((sum, sale) => sum + sale.total, 0); const itemsSold = sales.reduce((sum, sale) => sum + sale.quantity, 0); this.elements.totalSalesEl.textContent = `₦${totalSales.toLocaleString()}`; this.elements.itemsSoldEl.textContent = itemsSold; this.renderRecentSales(sales); },
         
-        async renderRecentSales(sales) { this.elements.recentSalesList.innerHTML = ''; if (sales.length === 0) { this.elements.recentSalesList.innerHTML = '<p class="empty-state">No sales recorded yet today.</p>'; return; } sales.sort((a, b) => b.timestamp - a.timestamp).forEach(sale => { const saleEl = document.createElement('div'); saleEl.className = 'sale-item'; saleEl.dataset.saleId = sale.id; const imageUrl = URL.createObjectURL(sale.image); saleEl.innerHTML = `<img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${sale.quantity} x ₦${sale.price.toLocaleString()}</span></div><p class="sale-price">₦${sale.total.toLocaleString()}</p>`; this.addSaleItemEventListeners(saleEl, sale); this.elements.recentSalesList.appendChild(saleEl); }); },
+        async renderRecentSales(sales) { this.elements.recentSalesList.innerHTML = ''; if (sales.length === 0) { this.elements.recentSalesList.innerHTML = '<p class="empty-state">No sales recorded yet today.</p>'; return; } sales.sort((a, b) => b.timestamp - a.timestamp).forEach(sale => { const saleEl = document.createElement('div'); saleEl.className = 'sale-item'; saleEl.dataset.saleId = sale.id; const imageUrl = sale.image ? URL.createObjectURL(sale.image) : 'icons/icon-192.png'; saleEl.innerHTML = `<img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${sale.quantity} x ₦${sale.price.toLocaleString()}</span></div><p class="sale-price">₦${sale.total.toLocaleString()}</p>`; this.addSaleItemEventListeners(saleEl, sale); this.elements.recentSalesList.appendChild(saleEl); }); },
         
-        async renderProducts() { const products = await DB.getAllProducts(); this.elements.productGrid.innerHTML = ''; if (products.length === 0) { this.elements.productGrid.innerHTML = '<p class="empty-state">No products added yet. Tap the "+" button to add your first product!</p>'; return; } products.forEach(product => { const card = document.createElement('div'); card.className = 'product-card'; const imageUrl = URL.createObjectURL(product.image); let outOfStockBadge = ''; if (product.stock <= 0) { outOfStockBadge = '<div class="out-of-stock-badge">Out of Stock</div>'; } card.innerHTML = `${outOfStockBadge}<img src="${imageUrl}" alt="${product.name}"><div class="product-card-info"><h4>${product.name}</h4><p class="product-price">₦${product.price.toLocaleString()}</p><p class="product-stock">${product.stock > 0 ? `${product.stock} ${product.unit} left` : ''}</p></div><div class="product-card-actions"><button class="btn btn-secondary edit-btn">Edit</button></div>`; card.querySelector('.edit-btn').addEventListener('click', () => this.handleEditProduct(product)); this.elements.productGrid.appendChild(card); }); },
+        async renderProducts(filter = '') {
+            const allProducts = await DB.getAllProducts();
+            this.elements.productGrid.innerHTML = '';
+            const products = filter ? allProducts.filter(p => p.name.toLowerCase().includes(filter.toLowerCase())) : allProducts;
+            
+            if (allProducts.length > 0) { // Show search bar if there are ANY products
+                this.elements.productSearchContainer.style.display = 'block';
+            } else {
+                this.elements.productSearchContainer.style.display = 'none';
+            }
+
+            if (products.length === 0) {
+                if (filter) {
+                    this.elements.productGrid.innerHTML = '<p class="empty-state">No products match your search.</p>';
+                } else {
+                    this.elements.productGrid.innerHTML = '<p class="empty-state">No products added yet. Tap the "+" button to add your first product!</p>';
+                }
+                return;
+            }
+
+            products.forEach(product => {
+                const card = document.createElement('div');
+                card.className = 'product-card';
+                const imageUrl = product.image ? URL.createObjectURL(product.image) : 'icons/icon-192.png';
+                let outOfStockBadge = product.stock <= 0 ? '<div class="out-of-stock-badge">Out of Stock</div>' : '';
+                card.innerHTML = `${outOfStockBadge}<div class="product-card-image-wrapper"><img src="${imageUrl}" alt="${product.name}"></div><div class="product-card-info"><h4>${product.name}</h4><p class="product-price">₦${product.price.toLocaleString()}</p><p class="product-stock">${product.stock > 0 ? `${product.stock} ${product.unit} left` : ''}</p><div class="product-card-actions"><button class="btn btn-secondary edit-btn">Edit</button></div></div>`;
+                
+                const editBtn = card.querySelector('.edit-btn');
+                editBtn.addEventListener('click', (e) => {
+                    e.stopPropagation(); // Prevent card click when clicking edit
+                    this.handleEditProduct(product)
+                });
+
+                card.addEventListener('click', () => {
+                    if (this.state.productSelectionMode) {
+                        this.state.productSelectionMode = false;
+                        this.handleProductFound(product);
+                        this.elements.productsView.classList.remove('selection-mode');
+                        this.elements.addNewProductBtn.style.display = 'flex';
+                    }
+                });
+
+                this.elements.productGrid.appendChild(card);
+            });
+        },
 
         // --- CORE APP LOGIC ---
         async loadMainApp() { this.elements.appHeader.style.display = 'flex'; this.elements.mainContent.style.display = 'block'; this.elements.bottomNav.style.display = 'flex'; this.navigateTo('home-view'); await this.updateDashboard(); await this.renderProducts(); },
@@ -164,161 +279,145 @@ document.addEventListener('DOMContentLoaded', () => {
         async handleCameraPermission() { try { const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }); stream.getTracks().forEach(track => track.stop()); await this.loadMainApp(); } catch (err) { console.error("Camera permission denied:", err); alert("Camera access is required. Please enable it in browser settings."); } },
         async loadCameraModelInBackground() { try { this.elements.sellItemBtnText.textContent = 'Loading...'; await Camera.init(); this.state.cameraReady = true; this.elements.addNewProductBtn.classList.remove('disabled'); this.elements.sellItemBtnMain.classList.remove('disabled'); this.elements.sellItemBtnText.textContent = 'Sell Item'; console.log("Camera model ready."); } catch (error) { console.error("Failed to load camera model:", error); this.state.cameraReady = false; this.elements.sellItemBtnText.textContent = 'Offline'; } },
         startAddProduct() { if (!this.state.cameraReady) { alert("Camera is not ready. Connect to the internet for initial setup."); return; } this.state.cameraMode = 'add'; this.elements.scanFeedback.textContent = 'Hold steady to capture'; this.showView('camera-view'); Camera.start(this.handlePictureTaken.bind(this), this.elements.captureCountdown); },
-        async startSellScan(isRestart = false) { if (!this.state.cameraReady) { alert("Camera is not ready. Connect to the internet for initial setup."); return; } this.state.cameraMode = 'sell'; this.elements.scanFeedback.textContent = 'Scanning for product...'; this.elements.captureCountdown.textContent = ''; this.showView('camera-view'); try { const result = await Camera.startScan(this.handleProductFound.bind(this)); if (result && result.reason === 'notFound') { this.state.cameraMode = 'add'; this.handlePictureTaken(result.blob, result.embedding); } } catch (error) { console.error('Error during scanning:', error); this.cancelScan(); alert('Could not start scanning.'); } },
-        cancelScan() { Camera.stop(); this.navigateTo('home-view'); },
+        async startSellScan(isRestart = false) { if (!this.state.cameraReady) { alert("Camera is not ready. Connect to the internet for initial setup."); return; } this.state.cameraMode = 'sell'; this.elements.scanFeedback.textContent = 'Scanning for product or QR code...'; this.elements.captureCountdown.textContent = ''; this.showView('camera-view'); try { const result = await Camera.startScan(this.handleScanMatch.bind(this)); if (result && result.reason === 'notFound') { this.state.cameraMode = 'add'; this.handlePictureTaken(result.blob, result.embedding); } } catch (error) { console.error('Error during scanning:', error); this.cancelScan(); alert('Could not start scanning.'); } },
+        cancelScan() { Camera.stop(); this.hideModal(); this.navigateTo('home-view'); },
         handlePictureTaken(blob, embedding) { this.state.capturedBlob = blob; this.state.capturedEmbedding = embedding; this.elements.capturedImagePreview.src = URL.createObjectURL(blob); this.showModal('confirm-picture-modal'); },
-        handleRetakePicture() { this.hideModal(); if (this.state.cameraMode === 'add') this.startAddProduct(); else this.startSellScan(); },
-        handleConfirmPicture() { this.state.editingProduct = null; this.elements.productForm.reset(); this.elements.productFormTitle.textContent = 'Add New Product'; this.elements.productIdInput.value = ''; this.hideModal(); this.showModal('product-form-modal'); },
+        handleRetakePicture() { this.hideModal(); if (this.state.isChangingPicture) { this.handleChangePicture(); } else if (this.state.cameraMode === 'add') { this.startAddProduct(); } else { this.startSellScan(); } },
+        handleConfirmPicture() {
+            if (this.state.isChangingPicture) {
+                this.state.isChangingPicture = false;
+                this.hideModal();
+                this.showModal('product-form-modal'); // Re-show the form
+            } else {
+                this.state.editingProduct = null;
+                this.elements.productForm.reset();
+                this.elements.productFormTitle.textContent = 'Add New Product';
+                this.elements.changePictureBtn.style.display = 'none';
+                this.elements.productIdInput.value = '';
+                this.hideModal();
+                this.showModal('product-form-modal');
+            }
+        },
         async handleSaveProduct(e) { e.preventDefault(); const productData = { id: this.state.editingProduct ? this.state.editingProduct.id : Date.now(), name: this.elements.productNameInput.value.trim(), price: parseFloat(this.elements.productPriceInput.value), stock: parseInt(this.elements.productStockInput.value), unit: this.elements.productUnitInput.value, image: this.state.capturedBlob || this.state.editingProduct?.image, embedding: this.state.capturedEmbedding || this.state.editingProduct?.embedding, createdAt: this.state.editingProduct?.createdAt || new Date() }; if (!productData.name || isNaN(productData.price) || isNaN(productData.stock)) { alert('Please fill out all fields correctly.'); return; } await DB.saveProduct(productData); this.hideModal(); this.state.capturedBlob = null; this.state.capturedEmbedding = null; this.state.editingProduct = null; this.navigateTo('products-view'); await this.renderProducts(); },
-        handleEditProduct(product) { this.state.editingProduct = product; this.elements.productFormTitle.textContent = 'Edit Product'; this.elements.productIdInput.value = product.id; this.elements.productNameInput.value = product.name; this.elements.productPriceInput.value = product.price; this.elements.productStockInput.value = product.stock; this.elements.productUnitInput.value = product.unit; this.showModal('product-form-modal'); },
-        handleProductFound(product) { this.state.sellingProduct = product; this.elements.saleProductImage.src = URL.createObjectURL(product.image); this.elements.saleProductName.textContent = product.name; this.elements.saleProductStock.textContent = `Stock: ${product.stock} ${product.unit}`; this.elements.saleQuantityInput.value = 1; this.elements.saleQuantityInput.max = product.stock; this.updateSaleTotal(); this.showModal('confirm-sale-modal'); },
+        handleEditProduct(product) { this.state.editingProduct = product; this.elements.productFormTitle.textContent = 'Edit Product'; this.elements.changePictureBtn.style.display = 'block'; this.elements.productIdInput.value = product.id; this.elements.productNameInput.value = product.name; this.elements.productPriceInput.value = product.price; this.elements.productStockInput.value = product.stock; this.elements.productUnitInput.value = product.unit; this.showModal('product-form-modal'); },
+        handleChangePicture() { this.state.isChangingPicture = true; this.hideModal(); this.startAddProduct(); },
+        handleScanMatch(match) { if (match.type === 'product') { this.handleProductFound(match.data); } else if (match.type === 'qrlog') { this.handlePikaLogScanned(match.data); } },
+        handleProductFound(product) { this.state.sellingProduct = product; this.elements.saleProductImage.src = product.image ? URL.createObjectURL(product.image) : 'icons/icon-192.png'; this.elements.saleProductName.textContent = product.name; this.elements.saleProductStock.textContent = `Stock: ${product.stock} ${product.unit}`; this.elements.saleQuantityInput.value = 1; this.elements.saleQuantityInput.max = product.stock; this.updateSaleTotal(); this.showModal('confirm-sale-modal'); },
         updateSaleTotal() { const quantity = parseInt(this.elements.saleQuantityInput.value) || 0; const price = this.state.sellingProduct?.price || 0; const total = quantity * price; this.elements.saleTotalPrice.textContent = `₦${total.toLocaleString()}`; },
         async _processSale() { const quantity = parseInt(this.elements.saleQuantityInput.value); const product = this.state.sellingProduct; if (quantity <= 0 || !product || quantity > product.stock) { alert('Invalid quantity or product not available.'); return false; } product.stock -= quantity; await DB.saveProduct(product); const sale = { id: Date.now(), productId: product.id, productName: product.name, quantity: quantity, price: product.price, total: quantity * product.price, timestamp: new Date(), image: product.image }; await DB.addSale(sale); return true; },
         async handleConfirmSale() { const success = await this._processSale(); if (success) { this.hideModal(); await this.updateDashboard(); await this.renderProducts(); this.startSellScan(true); } },
-        async handleConfirmAndEndSale() { const success = await this._processSale(); if (success) { this.hideModal(); await this.updateDashboard(); await this.renderProducts(); this.navigateTo('home-view'); } },
-
-        // --- RECEIPT LOGIC ---
-        addSaleItemEventListeners(element, sale) {
-            const pressDuration = 500; // 500ms for long press
-            
-            const onTouchStart = () => {
-                this.state.longPressTimer = setTimeout(() => {
-                    this.enterSelectionMode(element, sale);
-                }, pressDuration);
-            };
-
-            const onTouchEnd = () => {
-                clearTimeout(this.state.longPressTimer);
-            };
-
-            element.addEventListener('mousedown', onTouchStart);
-            element.addEventListener('mouseup', onTouchEnd);
-            element.addEventListener('mouseleave', onTouchEnd);
-            element.addEventListener('touchstart', onTouchStart);
-            element.addEventListener('touchend', onTouchEnd);
-
-            element.addEventListener('click', () => {
-                if(this.state.isSelectionMode) {
-                    this.toggleSaleSelection(element, sale);
-                }
-            });
-        },
-
-        enterSelectionMode(element, sale) {
-            this.state.isSelectionMode = true;
-            this.elements.recentSalesList.querySelectorAll('.sale-item').forEach(el => el.classList.add('selectable'));
-            this.elements.receiptActions.style.display = 'flex';
-            this.elements.selectionModeHint.textContent = 'Tap to select more items';
-            this.toggleSaleSelection(element, sale);
-        },
-
-        exitSelectionMode() {
-            if (!this.state.isSelectionMode) return;
-            this.state.isSelectionMode = false;
-            this.state.selectedSales.clear();
-            this.elements.recentSalesList.querySelectorAll('.sale-item').forEach(el => {
-                el.classList.remove('selectable');
-                el.classList.remove('selected');
-            });
-            this.elements.receiptActions.style.display = 'none';
-            this.elements.selectionModeHint.textContent = 'Long-press a sale to select';
-        },
-
-        toggleSaleSelection(element, sale) {
-            if (this.state.selectedSales.has(sale.id)) {
-                this.state.selectedSales.delete(sale.id);
-                element.classList.remove('selected');
-            } else {
-                this.state.selectedSales.add(sale.id);
-                element.classList.add('selected');
+        
+        // --- NEW SALE ENTRY WORKFLOW ---
+        async handleManualSale(e) {
+            e.preventDefault();
+            const name = this.elements.manualProductName.value.trim();
+            const price = parseFloat(this.elements.manualProductPrice.value);
+            const quantity = parseInt(this.elements.manualSaleQuantity.value);
+            const unit = this.elements.manualProductUnit.value;
+            if (!name || isNaN(price) || isNaN(quantity) || quantity <= 0) {
+                alert('Please fill in all fields correctly.'); return;
             }
-            this.elements.generateReceiptBtn.disabled = this.state.selectedSales.size === 0;
+            
+            // FIX: Check for existing product and subtract stock
+            const allProducts = await DB.getAllProducts();
+            let productToSell = allProducts.find(p => p.name.toLowerCase() === name.toLowerCase());
+            let productExisted = true;
+
+            if (productToSell) {
+                if (productToSell.stock < quantity) {
+                    alert(`Not enough stock for ${name}. Only ${productToSell.stock} available.`);
+                    return;
+                }
+                productToSell.stock -= quantity;
+            } else {
+                productExisted = false;
+                productToSell = { id: Date.now(), name, price, stock: 0, unit, image: null, embedding: null, createdAt: new Date() };
+                alert(`${name} is a new item and will be added to your products list with 0 stock.`);
+            }
+
+            await DB.saveProduct(productToSell);
+            const sale = { id: Date.now() + 1, productId: productToSell.id, productName: name, quantity, price, total: price * quantity, timestamp: new Date(), image: productToSell.image };
+            await DB.addSale(sale);
+            this.hideModal();
+            await this.updateDashboard();
+            await this.renderProducts();
+            this.navigateTo('home-view');
+        },
+        async showProductSelection() {
+            this.hideModal();
+            this.state.productSelectionMode = true;
+            this.navigateTo('products-view');
         },
 
-        async generateReceipt() {
+        // --- RECEIPT & QR LOGIC ---
+        addSaleItemEventListeners(element, sale) { const pressDuration = 500; const onTouchStart = () => { this.state.longPressTimer = setTimeout(() => this.enterSelectionMode(element, sale), pressDuration); }; const onTouchEnd = () => clearTimeout(this.state.longPressTimer); element.addEventListener('mousedown', onTouchStart); element.addEventListener('mouseup', onTouchEnd); element.addEventListener('mouseleave', onTouchEnd); element.addEventListener('touchstart', onTouchStart); element.addEventListener('touchend', onTouchEnd); element.addEventListener('click', () => { if(this.state.isSelectionMode) this.toggleSaleSelection(element, sale); }); },
+        enterSelectionMode(element, sale) { this.state.isSelectionMode = true; this.elements.recentSalesList.querySelectorAll('.sale-item').forEach(el => el.classList.add('selectable')); this.elements.receiptActions.style.display = 'flex'; this.elements.selectionModeHint.textContent = 'Tap to select more items'; this.toggleSaleSelection(element, sale); },
+        exitSelectionMode() { if (!this.state.isSelectionMode) return; this.state.isSelectionMode = false; this.state.selectedSales.clear(); this.elements.recentSalesList.querySelectorAll('.sale-item').forEach(el => { el.classList.remove('selectable'); el.classList.remove('selected'); }); this.elements.receiptActions.style.display = 'none'; this.elements.selectionModeHint.textContent = 'Long-press a sale to select'; },
+        toggleSaleSelection(element, sale) { if (this.state.selectedSales.has(sale.id)) { this.state.selectedSales.delete(sale.id); element.classList.remove('selected'); } else { this.state.selectedSales.add(sale.id); element.classList.add('selected'); } this.elements.generateReceiptBtn.disabled = this.state.selectedSales.size === 0; },
+        async generateReceipt() { const sales = await DB.getSalesToday(); const selectedSaleObjects = sales.filter(s => this.state.selectedSales.has(s.id)); if (selectedSaleObjects.length === 0) return; const receiptId = `PS-${Date.now().toString().slice(-6)}`; const now = new Date(); let totalAmount = 0; let itemsHtml = ''; selectedSaleObjects.forEach(sale => { totalAmount += sale.total; itemsHtml += `<tr><td>${sale.productName}</td><td class="col-qty">${sale.quantity}</td><td class="col-price">₦${sale.price.toLocaleString()}</td><td class="col-total">₦${sale.total.toLocaleString()}</td></tr>`; }); const receiptHtml = `<div class="receipt-header"><h3>${this.state.user.business}</h3><p>${this.state.user.location}</p><p><strong>Receipt ID:</strong> ${receiptId}</p></div><div class="receipt-items"><table><thead><tr><th>Item</th><th class="col-qty">Qty</th><th class="col-price">Price</th><th class="col-total">Total</th></tr></thead><tbody>${itemsHtml}</tbody></table></div><div class="receipt-total"><div class="total-row"><span>TOTAL</span><span>₦${totalAmount.toLocaleString()}</span></div></div><div class="receipt-footer"><p>Thank you for your patronage!</p><p>${now.toLocaleDateString('en-NG')} ${now.toLocaleTimeString('en-NG')}</p></div>`; this.elements.receiptContent.innerHTML = receiptHtml; this.showModal('receipt-modal'); },
+        async shareReceipt() { const receiptElement = this.elements.receiptContent; try { const canvas = await html2canvas(receiptElement, { scale: 2 }); canvas.toBlob(async (blob) => { if (navigator.share && blob) { try { await navigator.share({ files: [new File([blob], 'pika-shot-receipt.png', { type: 'image/png' })], title: 'Your Receipt', text: 'Here is your receipt from ' + this.state.user.business, }); } catch (error) { console.error('Error sharing:', error); } } else { alert('Sharing is not supported on this browser, or there was an error creating the image.'); } }, 'image/png'); } catch (error) { console.error('Error generating receipt image:', error); alert('Could not generate receipt image.'); } },
+        async generateQrLog() {
             const sales = await DB.getSalesToday();
             const selectedSaleObjects = sales.filter(s => this.state.selectedSales.has(s.id));
             if (selectedSaleObjects.length === 0) return;
-
-            const receiptId = `PS-${Date.now().toString().slice(-6)}`;
-            const now = new Date();
-            let totalAmount = 0;
-
-            let itemsHtml = '';
-            selectedSaleObjects.forEach(sale => {
-                totalAmount += sale.total;
-                itemsHtml += `
-                    <tr>
-                        <td>${sale.productName}</td>
-                        <td class="col-qty">${sale.quantity}</td>
-                        <td class="col-price">₦${sale.price.toLocaleString()}</td>
-                        <td class="col-total">₦${sale.total.toLocaleString()}</td>
-                    </tr>
-                `;
+            
+            const logData = {
+                pikaLogVersion: 1,
+                senderStore: this.state.user.business,
+                items: selectedSaleObjects.map(s => ({
+                    name: s.productName,
+                    price: s.price,
+                    quantity: s.quantity,
+                    unit: 'pieces' // Default unit, needs improvement if possible
+                }))
+            };
+            const productIds = selectedSaleObjects.map(s => s.productId);
+            const products = await DB.getAllProducts();
+            const relevantProducts = products.filter(p => productIds.includes(p.id));
+            logData.items.forEach(item => {
+                const product = relevantProducts.find(p => p.name === item.name);
+                if (product) item.unit = product.unit;
             });
 
-            const receiptHtml = `
-                <div class="receipt-header">
-                    <h3>${this.state.user.business}</h3>
-                    <p>${this.state.user.location}</p>
-                    <p><strong>Receipt ID:</strong> ${receiptId}</p>
-                </div>
-                <div class="receipt-items">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Item</th>
-                                <th class="col-qty">Qty</th>
-                                <th class="col-price">Price</th>
-                                <th class="col-total">Total</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${itemsHtml}
-                        </tbody>
-                    </table>
-                </div>
-                <div class="receipt-total">
-                    <div class="total-row">
-                        <span>TOTAL</span>
-                        <span>₦${totalAmount.toLocaleString()}</span>
-                    </div>
-                </div>
-                <div class="receipt-footer">
-                    <p>Thank you for your patronage!</p>
-                    <p>${now.toLocaleDateString('en-NG')} ${now.toLocaleTimeString('en-NG')}</p>
-                </div>
-            `;
-
-            this.elements.receiptContent.innerHTML = receiptHtml;
-            this.showModal('receipt-modal');
+            QRCode.toCanvas(this.elements.qrCanvas, JSON.stringify(logData), { width: 250 }, (error) => {
+                if (error) console.error(error);
+                this.hideModal();
+                this.showModal('qr-code-modal');
+            });
         },
+        handlePikaLogScanned(logData) {
+            this.state.scannedLogData = logData;
+            this.elements.confirmLogTitle.textContent = `Accept Log from ${logData.senderStore}?`;
+            let contentHtml = `<p>This will add or restock the following items in your inventory:</p><ul>`;
+            logData.items.forEach(item => {
+                contentHtml += `<li>- ${item.quantity} ${item.unit} of ${item.name}</li>`;
+            });
+            contentHtml += '</ul>';
+            this.elements.confirmLogContent.innerHTML = contentHtml;
+            this.showModal('confirm-log-modal');
+        },
+        async acceptPikaLog() {
+            if (!this.state.scannedLogData) return;
+            const allProducts = await DB.getAllProducts();
+            const productUpdates = [];
 
-        async shareReceipt() {
-            const receiptElement = this.elements.receiptContent;
-            try {
-                const canvas = await html2canvas(receiptElement, { scale: 2 });
-                canvas.toBlob(async (blob) => {
-                    if (navigator.share && blob) {
-                        try {
-                           await navigator.share({
-                                files: [new File([blob], 'pika-shot-receipt.png', { type: 'image/png' })],
-                                title: 'Your Receipt',
-                                text: 'Here is your receipt from ' + this.state.user.business,
-                            });
-                        } catch (error) {
-                           console.error('Error sharing:', error);
-                        }
-                    } else {
-                        alert('Sharing is not supported on this browser, or there was an error creating the image.');
-                    }
-                }, 'image/png');
-            } catch (error) {
-                console.error('Error generating receipt image:', error);
-                alert('Could not generate receipt image.');
+            for (const item of this.state.scannedLogData.items) {
+                const existingProduct = allProducts.find(p => p.name.toLowerCase() === item.name.toLowerCase());
+                if (existingProduct) {
+                    existingProduct.stock += item.quantity;
+                    productUpdates.push(DB.saveProduct(existingProduct));
+                } else {
+                    const newProduct = { id: Date.now() + Math.random(), name: item.name, price: item.price, stock: item.quantity, unit: item.unit, image: null, embedding: null, createdAt: new Date() };
+                    productUpdates.push(DB.saveProduct(newProduct));
+                }
             }
+            await Promise.all(productUpdates);
+            this.hideModal();
+            this.state.scannedLogData = null;
+            alert('Inventory updated successfully!');
+            await this.renderProducts();
+            this.navigateTo('products-view');
         },
-
 
         // --- PWA FEATURES ---
         handleBeforeInstallPrompt(event) { event.preventDefault(); this.state.deferredInstallPrompt = event; this.elements.installBtn.style.display = 'block'; },

@@ -10,6 +10,8 @@
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.11.0/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.0/dist/mobilenet.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.4.4/build/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 </head>
 <body>
 
@@ -110,6 +112,9 @@
             </div>
 
             <div id="products-view" class="view page">
+                <div id="product-search-container" style="display: none;">
+                    <input type="search" id="product-search-input" placeholder="Search my products...">
+                </div>
                 <div id="product-grid" class="product-grid">
                      <p class="empty-state">No products added yet. Tap "Add Product" to get started!</p>
                 </div>
@@ -137,6 +142,7 @@
 
         <div id="camera-view" class="view camera-container">
             <video id="camera-feed" playsinline></video>
+            <canvas id="qr-canvas-helper" style="display:none;"></canvas>
             <div id="camera-overlay" class="camera-overlay">
                 <div class="scan-box"></div>
                 <p id="scan-feedback">Scanning...</p>
@@ -152,14 +158,21 @@
             <h2>Confirm Picture</h2>
             <img id="captured-image-preview" src="" alt="Captured product image">
             <div class="modal-actions">
-                <button id="retake-picture-btn" class="btn btn-secondary">Try Again</button>
+                <div class="modal-actions-inline">
+                    <button id="cancel-picture-btn" class="btn btn-secondary">Cancel</button>
+                    <button id="retake-picture-btn" class="btn btn-secondary">Try Again</button>
+                </div>
                 <button id="confirm-picture-btn" class="btn btn-primary">Confirm</button>
             </div>
         </div>
+
         <div id="product-form-modal" class="modal-content" style="display:none;">
             <h2 id="product-form-title">Add New Product</h2>
             <form id="product-form">
                 <input type="hidden" id="product-id">
+                <div class="form-group">
+                    <button type="button" id="change-picture-btn" class="btn btn-secondary" style="width: 100%; margin-bottom: 20px;">Change Picture</button>
+                </div>
                 <div class="form-group"><label for="product-name">Product Name</label><input type="text" id="product-name" required></div>
                 <div class="form-group"><label for="product-price">Price (₦)</label><input type="number" id="product-price" inputmode="decimal" required></div>
                 <div class="form-group"><label for="product-stock">Stock Quantity</label><input type="number" id="product-stock" inputmode="numeric" required></div>
@@ -167,27 +180,82 @@
                 <div class="modal-actions"><button type="button" id="cancel-product-form-btn" class="btn btn-secondary">Cancel</button><button type="submit" class="btn btn-primary">Save Product</button></div>
             </form>
         </div>
+
         <div id="confirm-sale-modal" class="modal-content" style="display:none;">
             <h2>Confirm Sale</h2>
             <div class="sale-item-details"><img id="sale-product-image" src="" alt="Product image"><div><h3 id="sale-product-name">Product Name</h3><p id="sale-product-stock">Stock: 50 sachets</p></div></div>
             <div class="form-group"><label for="sale-quantity">Quantity</label><input type="number" id="sale-quantity" inputmode="numeric" value="1" min="1"></div>
             <div class="sale-total"><p>Total</p><h2 id="sale-total-price">₦0</h2></div>
-            <div class="modal-actions">
-                <button id="cancel-sale-btn" class="btn btn-secondary">Cancel</button>
-                <button id="confirm-and-end-sale-btn" class="btn btn-secondary">Confirm & End</button>
+             <div class="modal-actions">
+                <div class="modal-actions-inline">
+                    <button id="cancel-sale-btn" class="btn btn-secondary">Cancel</button>
+                    <button id="entry-sale-btn" class="btn btn-secondary">Entry</button>
+                </div>
                 <button id="confirm-sale-btn" class="btn btn-primary">Confirm Sale</button>
             </div>
         </div>
 
         <div id="receipt-modal" class="modal-content receipt-modal" style="display:none;">
             <div id="receipt-content" class="receipt-paper">
-                <!-- Receipt will be generated here -->
-            </div>
+                </div>
             <div class="modal-actions">
                 <button id="close-receipt-btn" class="btn btn-secondary">Close</button>
+                <button id="share-log-btn" class="btn btn-secondary">Share as Log</button>
                 <button id="share-receipt-btn" class="btn btn-primary">Share</button>
             </div>
         </div>
+        
+        <div id="entry-choice-modal" class="modal-content" style="display:none;">
+            <h2>New Sale Entry</h2>
+            <p>How would you like to log this sale?</p>
+            <div class="modal-actions">
+                <button id="manual-entry-btn" class="btn btn-secondary">Manual Entry</button>
+                <button id="select-from-products-btn" class="btn btn-primary">Select from Products</button>
+            </div>
+             <button type="button" id="cancel-entry-choice-btn" class="btn btn-secondary" style="margin-top: 12px;">Cancel</button>
+        </div>
+
+        <div id="manual-sale-modal" class="modal-content" style="display:none;">
+            <h2>Manual Sale</h2>
+            <form id="manual-sale-form">
+                <div class="form-group"><label for="manual-product-name">Product Name</label><input type="text" id="manual-product-name" required></div>
+                <div class="form-group"><label for="manual-product-price">Price (₦)</label><input type="number" id="manual-product-price" inputmode="decimal" required></div>
+                <div class="form-group"><label for="manual-sale-quantity">Quantity</label><input type="number" id="manual-sale-quantity" value="1" inputmode="numeric" required></div>
+                <div class="form-group"><label for="manual-product-unit">Unit Type</label><select id="manual-product-unit" required><option value="pieces">pieces</option><option value="sachets">sachets</option><option value="bottles">bottles</option><option value="cans">cans</option><option value="packs">packs</option></select></div>
+                <div class="modal-actions">
+                    <button type="button" id="cancel-manual-sale-btn" class="btn btn-secondary">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Complete Sale</button>
+                </div>
+            </form>
+        </div>
+        
+        <div id="select-product-modal" class="modal-content" style="display:none;">
+             <h2>Select a Product</h2>
+             <div id="select-product-grid" class="product-grid selection-grid">
+                </div>
+             <div class="modal-actions">
+                 <button id="cancel-select-product-btn" class="btn btn-secondary">Cancel</button>
+             </div>
+        </div>
+
+        <div id="qr-code-modal" class="modal-content" style="display:none;">
+            <h2>Share Log via QR</h2>
+            <canvas id="qr-canvas"></canvas>
+            <p class="qr-help-text">Have the other retailer scan this QR code using their pika shot app to log this purchase.</p>
+            <div class="modal-actions">
+                <button id="close-qr-btn" class="btn btn-primary">Done</button>
+            </div>
+        </div>
+        
+        <div id="confirm-log-modal" class="modal-content" style="display:none;">
+            <h2 id="confirm-log-title">Accept Log?</h2>
+            <div id="confirm-log-content"></div>
+            <div class="modal-actions">
+                <button id="reject-log-btn" class="btn btn-secondary">Reject</button>
+                <button id="accept-log-btn" class="btn btn-primary">Accept & Add</button>
+            </div>
+        </div>
+
     </div>
 
     <script src="db.js"></script>

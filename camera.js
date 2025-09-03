@@ -1,5 +1,6 @@
 const Camera = {
     videoElement: document.getElementById('camera-feed'),
+    qrCanvas: document.getElementById('qr-canvas-helper'),
     model: null,
     stream: null,
     isScanning: false,
@@ -61,9 +62,32 @@ const Camera = {
                 await this.videoElement.play();
                 this.isScanning = true;
 
+                const qrContext = this.qrCanvas.getContext('2d');
+
                 const scanLoop = async () => {
                     if (!this.isScanning) return;
-                    
+
+                    // QR Code Scanning Logic
+                    if (this.videoElement.readyState === this.videoElement.HAVE_ENOUGH_DATA) {
+                        this.qrCanvas.height = this.videoElement.videoHeight;
+                        this.qrCanvas.width = this.videoElement.videoWidth;
+                        qrContext.drawImage(this.videoElement, 0, 0, this.qrCanvas.width, this.qrCanvas.height);
+                        const imageData = qrContext.getImageData(0, 0, this.qrCanvas.width, this.qrCanvas.height);
+                        const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "dontInvert" });
+                        
+                        if (code) {
+                            try {
+                                const jsonData = JSON.parse(code.data);
+                                if (jsonData && jsonData.pikaLogVersion === 1) {
+                                    this.stop();
+                                    onMatch({ type: 'qrlog', data: jsonData });
+                                    return; // Stop the loop
+                                }
+                            } catch (e) { /* Not a valid JSON QR code, ignore */ }
+                        }
+                    }
+
+                    // Image Recognition Logic
                     const embedding = this.getEmbedding();
                     if (embedding) {
                         const products = await DB.getAllProducts();
@@ -83,8 +107,8 @@ const Camera = {
 
                         if (highestSimilarity > SIMILARITY_THRESHOLD) {
                             this.stop();
-                            onMatch(bestMatch);
-                            return;
+                            onMatch({ type: 'product', data: bestMatch });
+                            return; // Stop the loop
                         }
                     }
                     requestAnimationFrame(scanLoop);
@@ -134,6 +158,9 @@ const Camera = {
     getEmbedding(source) {
         if (!this.model) return null;
         source = source || this.videoElement;
+        // Ensure source is ready
+        if (!source.videoWidth && !source.width) return null;
+
         return tf.tidy(() => {
             const img = tf.browser.fromPixels(source);
             const resized = tf.image.resizeBilinear(img, [224, 224]);
