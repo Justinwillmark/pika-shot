@@ -252,9 +252,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 card.className = 'product-card';
                 const imageUrl = product.image ? URL.createObjectURL(product.image) : 'icons/icon-192.png';
                 let outOfStockBadge = product.stock <= 0 ? '<div class="out-of-stock-badge">Out of Stock</div>' : '';
-                card.innerHTML = `${outOfStockBadge}<div class="product-card-image-wrapper"><img src="${imageUrl}" alt="${product.name}"></div><div class="product-card-info"><h4>${product.name}</h4><p class="product-price">₦${product.price.toLocaleString()}</p><p class="product-stock">${product.stock > 0 ? `${product.stock} ${product.unit} left` : ''}</p><div class="product-card-actions"><button class="btn btn-secondary edit-btn">Edit</button></div></div>`;
                 
-                const editBtn = card.querySelector('.edit-btn');
+                // FIX: Replace edit button with a pencil icon
+                const pencilIconSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>`;
+                card.innerHTML = `
+                    ${outOfStockBadge}
+                    <button class="edit-btn-icon">${pencilIconSVG}</button>
+                    <div class="product-card-image-wrapper">
+                        <img src="${imageUrl}" alt="${product.name}">
+                    </div>
+                    <div class="product-card-info">
+                        <h4>${product.name}</h4>
+                        <p class="product-price">₦${product.price.toLocaleString()}</p>
+                        <p class="product-stock">${product.stock > 0 ? `${product.stock} ${product.unit} left` : ''}</p>
+                    </div>`;
+                
+                // FIX: Attach event listener to the new icon button
+                const editBtn = card.querySelector('.edit-btn-icon');
                 editBtn.addEventListener('click', (e) => {
                     e.stopPropagation(); // Prevent card click when clicking edit
                     this.handleEditProduct(product)
