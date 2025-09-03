@@ -26,6 +26,9 @@ document.addEventListener('DOMContentLoaded', () => {
             totalSalesEl: document.getElementById('total-sales'),
             itemsSoldEl: document.getElementById('items-sold'),
             recentSalesList: document.getElementById('recent-sales-list'),
+            seeAllSalesBtn: document.getElementById('see-all-sales-btn'),
+            allSalesView: document.getElementById('all-sales-view'),
+            allSalesList: document.getElementById('all-sales-list'),
             productsView: document.getElementById('products-view'),
             productGrid: document.getElementById('product-grid'),
             productSearchContainer: document.getElementById('product-search-container'),
@@ -44,6 +47,7 @@ document.addEventListener('DOMContentLoaded', () => {
             retakePictureBtn: document.getElementById('retake-picture-btn'),
             confirmPictureBtn: document.getElementById('confirm-picture-btn'),
             productFormModal: document.getElementById('product-form-modal'),
+            deleteProductBtn: document.getElementById('delete-product-btn'),
             productForm: document.getElementById('product-form'),
             productFormTitle: document.getElementById('product-form-title'),
             productIdInput: document.getElementById('product-id'),
@@ -66,7 +70,6 @@ document.addEventListener('DOMContentLoaded', () => {
             receiptActions: document.getElementById('receipt-actions'),
             generateReceiptBtn: document.getElementById('generate-receipt-btn'),
             cancelSelectionBtn: document.getElementById('cancel-selection-btn'),
-            selectionModeHint: document.getElementById('selection-mode-hint'),
             receiptModal: document.getElementById('receipt-modal'),
             receiptContent: document.getElementById('receipt-content'),
             shareReceiptBtn: document.getElementById('share-receipt-btn'),
@@ -86,9 +89,6 @@ document.addEventListener('DOMContentLoaded', () => {
             manualProductPrice: document.getElementById('manual-product-price'),
             manualSaleQuantity: document.getElementById('manual-sale-quantity'),
             manualProductUnit: document.getElementById('manual-product-unit'),
-            selectProductModal: document.getElementById('select-product-modal'),
-            selectProductGrid: document.getElementById('select-product-grid'),
-            cancelSelectProductBtn: document.getElementById('cancel-select-product-btn'),
             confirmLogModal: document.getElementById('confirm-log-modal'),
             confirmLogTitle: document.getElementById('confirm-log-title'),
             confirmLogContent: document.getElementById('confirm-log-content'),
@@ -106,8 +106,8 @@ document.addEventListener('DOMContentLoaded', () => {
             capturedBlob: null,
             capturedEmbedding: null,
             editingProduct: null,
-            isChangingPicture: false, // For edit picture flow
-            productSelectionMode: false, // For sale by selection flow
+            isChangingPicture: false, 
+            productSelectionMode: false, 
             sellingProduct: null,
             scannedLogData: null,
             deferredInstallPrompt: null,
@@ -148,6 +148,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.sellItemBtnMain.addEventListener('click', this.startSellScan.bind(this));
             this.elements.addNewProductBtn.addEventListener('click', this.startAddProduct.bind(this));
             this.elements.productForm.addEventListener('submit', this.handleSaveProduct.bind(this));
+            this.elements.deleteProductBtn.addEventListener('click', this.handleDeleteProduct.bind(this));
             this.elements.cancelProductFormBtn.addEventListener('click', () => this.hideModal());
             this.elements.cancelScanBtn.addEventListener('click', this.cancelScan.bind(this));
             this.elements.retakePictureBtn.addEventListener('click', this.handleRetakePicture.bind(this));
@@ -155,13 +156,13 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.changePictureBtn.addEventListener('click', this.handleChangePicture.bind(this));
             this.elements.cancelPictureBtn.addEventListener('click', this.cancelScan.bind(this));
             this.elements.saleQuantityInput.addEventListener('input', this.updateSaleTotal.bind(this));
-            // FIX: Universal cancel behavior
             this.elements.cancelSaleBtn.addEventListener('click', this.cancelScan.bind(this));
             this.elements.confirmSaleBtn.addEventListener('click', this.handleConfirmSale.bind(this));
             this.elements.entrySaleBtn.addEventListener('click', () => { this.hideModal(); this.showModal('entry-choice-modal'); });
             window.addEventListener('beforeinstallprompt', this.handleBeforeInstallPrompt.bind(this));
             this.elements.installBtn.addEventListener('click', this.promptInstall.bind(this));
             this.elements.generateReceiptBtn.addEventListener('click', this.generateReceipt.bind(this));
+            this.elements.seeAllSalesBtn.addEventListener('click', () => this.navigateTo('all-sales-view'));
             this.elements.cancelSelectionBtn.addEventListener('click', this.exitSelectionMode.bind(this));
             this.elements.closeReceiptBtn.addEventListener('click', () => this.hideModal());
             this.elements.shareReceiptBtn.addEventListener('click', this.shareReceipt.bind(this));
@@ -173,7 +174,6 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.cancelManualSaleBtn.addEventListener('click', () => this.hideModal());
             this.elements.manualSaleForm.addEventListener('submit', this.handleManualSale.bind(this));
             this.elements.selectFromProductsBtn.addEventListener('click', this.showProductSelection.bind(this));
-            this.elements.cancelSelectProductBtn.addEventListener('click', () => this.hideModal());
             this.elements.rejectLogBtn.addEventListener('click', () => { this.hideModal(); this.state.scannedLogData = null; });
             this.elements.acceptLogBtn.addEventListener('click', this.acceptPikaLog.bind(this));
         },
@@ -187,9 +187,12 @@ document.addEventListener('DOMContentLoaded', () => {
         navigateTo(viewId, isBackNavigation = false) {
             if (!isBackNavigation && viewId !== this.state.currentView) { this.state.navigationHistory.push(this.state.currentView); }
             
-            // Handle exiting product selection mode
             if (this.state.productSelectionMode && viewId !== 'products-view') {
                 this.state.productSelectionMode = false;
+            }
+
+            if (viewId === 'all-sales-view') {
+                this.renderAllSales();
             }
 
             this.showView(viewId);
@@ -208,7 +211,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.exitSelectionMode();
         },
         navigateBack() {
-            this.state.productSelectionMode = false; // Always exit selection mode on back
+            this.state.productSelectionMode = false;
             const previousView = this.state.navigationHistory.pop();
             this.navigateTo(previousView || 'home-view', true);
         },
@@ -217,22 +220,63 @@ document.addEventListener('DOMContentLoaded', () => {
             if (this.state.productSelectionMode && viewId === 'products-view') {
                 title = 'Select a Product';
             } else {
-                const titles = { 'home-view': 'Home', 'products-view': 'My Products' };
+                const titles = { 'home-view': 'Home', 'products-view': 'My Products', 'all-sales-view': 'All Sales' };
                 title = titles[viewId] || 'pika shot';
             }
             this.elements.headerTitle.textContent = title;
         },
 
-        async updateDashboard() { if (this.state.user) { this.elements.welcomeName.textContent = `Hello, ${this.state.user.name.split(' ')[0]}!`; } this.elements.welcomeDate.textContent = new Date().toLocaleDateString('en-NG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }); const sales = await DB.getSalesToday(); const totalSales = sales.reduce((sum, sale) => sum + sale.total, 0); const itemsSold = sales.reduce((sum, sale) => sum + sale.quantity, 0); this.elements.totalSalesEl.textContent = `₦${totalSales.toLocaleString()}`; this.elements.itemsSoldEl.textContent = itemsSold; this.renderRecentSales(sales); },
+        async updateDashboard() {
+            if (this.state.user) {
+                this.elements.welcomeName.textContent = `Hello, ${this.state.user.name.split(' ')[0]}!`;
+            }
+            const date = new Date();
+            this.elements.welcomeDate.textContent = date.toLocaleDateString('en-NG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+            
+            const sales = await DB.getSalesToday();
+            const totalSales = sales.reduce((sum, sale) => sum + sale.total, 0);
+            const itemsSold = sales.reduce((sum, sale) => sum + sale.quantity, 0);
+            this.elements.totalSalesEl.textContent = `₦${totalSales.toLocaleString()}`;
+            this.elements.itemsSoldEl.textContent = itemsSold;
+            
+            this.renderSalesList(sales, this.elements.recentSalesList, 15);
+        },
         
-        async renderRecentSales(sales) { this.elements.recentSalesList.innerHTML = ''; if (sales.length === 0) { this.elements.recentSalesList.innerHTML = '<p class="empty-state">No sales recorded yet today.</p>'; return; } sales.sort((a, b) => b.timestamp - a.timestamp).forEach(sale => { const saleEl = document.createElement('div'); saleEl.className = 'sale-item'; saleEl.dataset.saleId = sale.id; const imageUrl = sale.image ? URL.createObjectURL(sale.image) : 'icons/icon-192.png'; saleEl.innerHTML = `<img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${sale.quantity} x ₦${sale.price.toLocaleString()}</span></div><p class="sale-price">₦${sale.total.toLocaleString()}</p>`; this.addSaleItemEventListeners(saleEl, sale); this.elements.recentSalesList.appendChild(saleEl); }); },
+        renderSalesList(sales, targetElement, limit) {
+            targetElement.innerHTML = '';
+            const sortedSales = sales.sort((a, b) => b.timestamp - a.timestamp);
+            const salesToRender = limit ? sortedSales.slice(0, limit) : sortedSales;
+
+            if (salesToRender.length === 0) {
+                targetElement.innerHTML = `<p class="empty-state">No sales recorded yet.</p>`;
+                return;
+            }
+            
+            salesToRender.forEach(sale => {
+                const saleEl = document.createElement('div');
+                saleEl.className = 'sale-item';
+                saleEl.dataset.saleId = sale.id;
+                const imageUrl = sale.image ? URL.createObjectURL(sale.image) : 'icons/icon-192.png';
+                saleEl.innerHTML = `<img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${sale.quantity} x ₦${sale.price.toLocaleString()}</span></div><p class="sale-price">₦${sale.total.toLocaleString()}</p>`;
+                
+                if (targetElement.id === 'recent-sales-list') {
+                     this.addSaleItemEventListeners(saleEl, sale);
+                }
+                targetElement.appendChild(saleEl);
+            });
+        },
         
+        async renderAllSales() {
+            const allSales = await DB.getAllSales();
+            this.renderSalesList(allSales, this.elements.allSalesList);
+        },
+
         async renderProducts(filter = '') {
             const allProducts = await DB.getAllProducts();
             this.elements.productGrid.innerHTML = '';
             const products = filter ? allProducts.filter(p => p.name.toLowerCase().includes(filter.toLowerCase())) : allProducts;
             
-            if (allProducts.length > 0) { // Show search bar if there are ANY products
+            if (allProducts.length > 0) {
                 this.elements.productSearchContainer.style.display = 'block';
             } else {
                 this.elements.productSearchContainer.style.display = 'none';
@@ -253,7 +297,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 const imageUrl = product.image ? URL.createObjectURL(product.image) : 'icons/icon-192.png';
                 let outOfStockBadge = product.stock <= 0 ? '<div class="out-of-stock-badge">Out of Stock</div>' : '';
                 
-                // FIX: Replace edit button with a pencil icon
                 const pencilIconSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>`;
                 card.innerHTML = `
                     ${outOfStockBadge}
@@ -267,10 +310,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         <p class="product-stock">${product.stock > 0 ? `${product.stock} ${product.unit} left` : ''}</p>
                     </div>`;
                 
-                // FIX: Attach event listener to the new icon button
                 const editBtn = card.querySelector('.edit-btn-icon');
                 editBtn.addEventListener('click', (e) => {
-                    e.stopPropagation(); // Prevent card click when clicking edit
+                    e.stopPropagation();
                     this.handleEditProduct(product)
                 });
 
@@ -301,11 +343,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (this.state.isChangingPicture) {
                 this.state.isChangingPicture = false;
                 this.hideModal();
-                this.showModal('product-form-modal'); // Re-show the form
+                this.showModal('product-form-modal');
             } else {
                 this.state.editingProduct = null;
                 this.elements.productForm.reset();
                 this.elements.productFormTitle.textContent = 'Add New Product';
+                this.elements.deleteProductBtn.style.display = 'none';
                 this.elements.changePictureBtn.style.display = 'none';
                 this.elements.productIdInput.value = '';
                 this.hideModal();
@@ -313,7 +356,19 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         },
         async handleSaveProduct(e) { e.preventDefault(); const productData = { id: this.state.editingProduct ? this.state.editingProduct.id : Date.now(), name: this.elements.productNameInput.value.trim(), price: parseFloat(this.elements.productPriceInput.value), stock: parseInt(this.elements.productStockInput.value), unit: this.elements.productUnitInput.value, image: this.state.capturedBlob || this.state.editingProduct?.image, embedding: this.state.capturedEmbedding || this.state.editingProduct?.embedding, createdAt: this.state.editingProduct?.createdAt || new Date() }; if (!productData.name || isNaN(productData.price) || isNaN(productData.stock)) { alert('Please fill out all fields correctly.'); return; } await DB.saveProduct(productData); this.hideModal(); this.state.capturedBlob = null; this.state.capturedEmbedding = null; this.state.editingProduct = null; this.navigateTo('products-view'); await this.renderProducts(); },
-        handleEditProduct(product) { this.state.editingProduct = product; this.elements.productFormTitle.textContent = 'Edit Product'; this.elements.changePictureBtn.style.display = 'block'; this.elements.productIdInput.value = product.id; this.elements.productNameInput.value = product.name; this.elements.productPriceInput.value = product.price; this.elements.productStockInput.value = product.stock; this.elements.productUnitInput.value = product.unit; this.showModal('product-form-modal'); },
+        handleEditProduct(product) { this.state.editingProduct = product; this.elements.productFormTitle.textContent = 'Edit Product'; this.elements.deleteProductBtn.style.display = 'flex'; this.elements.changePictureBtn.style.display = 'block'; this.elements.productIdInput.value = product.id; this.elements.productNameInput.value = product.name; this.elements.productPriceInput.value = product.price; this.elements.productStockInput.value = product.stock; this.elements.productUnitInput.value = product.unit; this.showModal('product-form-modal'); },
+        async handleDeleteProduct() {
+            if (!this.state.editingProduct) return;
+            const confirmation = confirm(`Are you sure you want to permanently delete "${this.state.editingProduct.name}"? This action cannot be undone.`);
+            if (confirmation) {
+                await DB.deleteProduct(this.state.editingProduct.id);
+                this.hideModal();
+                this.state.editingProduct = null;
+                await this.renderProducts();
+                this.navigateTo('products-view');
+                alert('Product deleted successfully.');
+            }
+        },
         handleChangePicture() { this.state.isChangingPicture = true; this.hideModal(); this.startAddProduct(); },
         handleScanMatch(match) { if (match.type === 'product') { this.handleProductFound(match.data); } else if (match.type === 'qrlog') { this.handlePikaLogScanned(match.data); } },
         handleProductFound(product) { this.state.sellingProduct = product; this.elements.saleProductImage.src = product.image ? URL.createObjectURL(product.image) : 'icons/icon-192.png'; this.elements.saleProductName.textContent = product.name; this.elements.saleProductStock.textContent = `Stock: ${product.stock} ${product.unit}`; this.elements.saleQuantityInput.value = 1; this.elements.saleQuantityInput.max = product.stock; this.updateSaleTotal(); this.showModal('confirm-sale-modal'); },
@@ -321,7 +376,6 @@ document.addEventListener('DOMContentLoaded', () => {
         async _processSale() { const quantity = parseInt(this.elements.saleQuantityInput.value); const product = this.state.sellingProduct; if (quantity <= 0 || !product || quantity > product.stock) { alert('Invalid quantity or product not available.'); return false; } product.stock -= quantity; await DB.saveProduct(product); const sale = { id: Date.now(), productId: product.id, productName: product.name, quantity: quantity, price: product.price, total: quantity * product.price, timestamp: new Date(), image: product.image }; await DB.addSale(sale); return true; },
         async handleConfirmSale() { const success = await this._processSale(); if (success) { this.hideModal(); await this.updateDashboard(); await this.renderProducts(); this.startSellScan(true); } },
         
-        // --- NEW SALE ENTRY WORKFLOW ---
         async handleManualSale(e) {
             e.preventDefault();
             const name = this.elements.manualProductName.value.trim();
@@ -332,11 +386,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 alert('Please fill in all fields correctly.'); return;
             }
             
-            // FIX: Check for existing product and subtract stock
             const allProducts = await DB.getAllProducts();
             let productToSell = allProducts.find(p => p.name.toLowerCase() === name.toLowerCase());
-            let productExisted = true;
-
             if (productToSell) {
                 if (productToSell.stock < quantity) {
                     alert(`Not enough stock for ${name}. Only ${productToSell.stock} available.`);
@@ -344,7 +395,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 productToSell.stock -= quantity;
             } else {
-                productExisted = false;
                 productToSell = { id: Date.now(), name, price, stock: 0, unit, image: null, embedding: null, createdAt: new Date() };
                 alert(`${name} is a new item and will be added to your products list with 0 stock.`);
             }
@@ -365,8 +415,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // --- RECEIPT & QR LOGIC ---
         addSaleItemEventListeners(element, sale) { const pressDuration = 500; const onTouchStart = () => { this.state.longPressTimer = setTimeout(() => this.enterSelectionMode(element, sale), pressDuration); }; const onTouchEnd = () => clearTimeout(this.state.longPressTimer); element.addEventListener('mousedown', onTouchStart); element.addEventListener('mouseup', onTouchEnd); element.addEventListener('mouseleave', onTouchEnd); element.addEventListener('touchstart', onTouchStart); element.addEventListener('touchend', onTouchEnd); element.addEventListener('click', () => { if(this.state.isSelectionMode) this.toggleSaleSelection(element, sale); }); },
-        enterSelectionMode(element, sale) { this.state.isSelectionMode = true; this.elements.recentSalesList.querySelectorAll('.sale-item').forEach(el => el.classList.add('selectable')); this.elements.receiptActions.style.display = 'flex'; this.elements.selectionModeHint.textContent = 'Tap to select more items'; this.toggleSaleSelection(element, sale); },
-        exitSelectionMode() { if (!this.state.isSelectionMode) return; this.state.isSelectionMode = false; this.state.selectedSales.clear(); this.elements.recentSalesList.querySelectorAll('.sale-item').forEach(el => { el.classList.remove('selectable'); el.classList.remove('selected'); }); this.elements.receiptActions.style.display = 'none'; this.elements.selectionModeHint.textContent = 'Long-press a sale to select'; },
+        enterSelectionMode(element, sale) { this.state.isSelectionMode = true; this.elements.recentSalesList.querySelectorAll('.sale-item').forEach(el => el.classList.add('selectable')); this.elements.receiptActions.style.display = 'flex'; this.toggleSaleSelection(element, sale); },
+        exitSelectionMode() { if (!this.state.isSelectionMode) return; this.state.isSelectionMode = false; this.state.selectedSales.clear(); this.elements.recentSalesList.querySelectorAll('.sale-item').forEach(el => { el.classList.remove('selectable'); el.classList.remove('selected'); }); this.elements.receiptActions.style.display = 'none'; },
         toggleSaleSelection(element, sale) { if (this.state.selectedSales.has(sale.id)) { this.state.selectedSales.delete(sale.id); element.classList.remove('selected'); } else { this.state.selectedSales.add(sale.id); element.classList.add('selected'); } this.elements.generateReceiptBtn.disabled = this.state.selectedSales.size === 0; },
         async generateReceipt() { const sales = await DB.getSalesToday(); const selectedSaleObjects = sales.filter(s => this.state.selectedSales.has(s.id)); if (selectedSaleObjects.length === 0) return; const receiptId = `PS-${Date.now().toString().slice(-6)}`; const now = new Date(); let totalAmount = 0; let itemsHtml = ''; selectedSaleObjects.forEach(sale => { totalAmount += sale.total; itemsHtml += `<tr><td>${sale.productName}</td><td class="col-qty">${sale.quantity}</td><td class="col-price">₦${sale.price.toLocaleString()}</td><td class="col-total">₦${sale.total.toLocaleString()}</td></tr>`; }); const receiptHtml = `<div class="receipt-header"><h3>${this.state.user.business}</h3><p>${this.state.user.location}</p><p><strong>Receipt ID:</strong> ${receiptId}</p></div><div class="receipt-items"><table><thead><tr><th>Item</th><th class="col-qty">Qty</th><th class="col-price">Price</th><th class="col-total">Total</th></tr></thead><tbody>${itemsHtml}</tbody></table></div><div class="receipt-total"><div class="total-row"><span>TOTAL</span><span>₦${totalAmount.toLocaleString()}</span></div></div><div class="receipt-footer"><p>Thank you for your patronage!</p><p>${now.toLocaleDateString('en-NG')} ${now.toLocaleTimeString('en-NG')}</p></div>`; this.elements.receiptContent.innerHTML = receiptHtml; this.showModal('receipt-modal'); },
         async shareReceipt() { const receiptElement = this.elements.receiptContent; try { const canvas = await html2canvas(receiptElement, { scale: 2 }); canvas.toBlob(async (blob) => { if (navigator.share && blob) { try { await navigator.share({ files: [new File([blob], 'pika-shot-receipt.png', { type: 'image/png' })], title: 'Your Receipt', text: 'Here is your receipt from ' + this.state.user.business, }); } catch (error) { console.error('Error sharing:', error); } } else { alert('Sharing is not supported on this browser, or there was an error creating the image.'); } }, 'image/png'); } catch (error) { console.error('Error generating receipt image:', error); alert('Could not generate receipt image.'); } },
@@ -382,7 +432,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     name: s.productName,
                     price: s.price,
                     quantity: s.quantity,
-                    unit: 'pieces' // Default unit, needs improvement if possible
+                    unit: 'pieces'
                 }))
             };
             const productIds = selectedSaleObjects.map(s => s.productId);
@@ -402,11 +452,37 @@ document.addEventListener('DOMContentLoaded', () => {
         handlePikaLogScanned(logData) {
             this.state.scannedLogData = logData;
             this.elements.confirmLogTitle.textContent = `Accept Log from ${logData.senderStore}?`;
-            let contentHtml = `<p>This will add or restock the following items in your inventory:</p><ul>`;
-            logData.items.forEach(item => {
-                contentHtml += `<li>- ${item.quantity} ${item.unit} of ${item.name}</li>`;
-            });
-            contentHtml += '</ul>';
+
+            const totalCost = logData.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            const dateScanned = new Date().toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' });
+
+            const itemsHtml = logData.items.map(item => `
+                <div class="log-details-row">
+                    <div class="log-details-cell item">${item.name} (${item.quantity} ${item.unit})</div>
+                    <div class="log-details-cell price">@ ₦${item.price.toLocaleString()}</div>
+                    <div class="log-details-cell total">₦${(item.quantity * item.price).toLocaleString()}</div>
+                </div>
+            `).join('');
+
+            const contentHtml = `
+                <div class="log-summary">
+                    <p><strong>From:</strong> ${logData.senderStore}</p>
+                    <p><strong>Date:</strong> ${dateScanned}</p>
+                </div>
+                <div class="log-details-table">
+                    <div class="log-details-row header">
+                        <div class="log-details-cell item">Product</div>
+                        <div class="log-details-cell price">Unit Price</div>
+                        <div class="log-details-cell total">Subtotal</div>
+                    </div>
+                    ${itemsHtml}
+                    <div class="log-details-row footer">
+                        <div class="log-details-cell item">TOTAL PURCHASE</div>
+                        <div class="log-details-cell total">₦${totalCost.toLocaleString()}</div>
+                    </div>
+                </div>
+            `;
+            
             this.elements.confirmLogContent.innerHTML = contentHtml;
             this.showModal('confirm-log-modal');
         },

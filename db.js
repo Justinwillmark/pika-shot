@@ -73,12 +73,22 @@ const DB = {
         return this._requestToPromise(store.getAll());
     },
     
+    deleteProduct(id) {
+        const store = this._getStore('products', 'readwrite');
+        return this._requestToPromise(store.delete(id));
+    },
+    
     // --- SALES ---
     addSale(sale) {
         const store = this._getStore('sales', 'readwrite');
         return this._requestToPromise(store.add(sale));
     },
     
+    getAllSales() {
+        const store = this._getStore('sales', 'readonly');
+        return this._requestToPromise(store.getAll());
+    },
+
     getSalesToday() {
         return new Promise((resolve, reject) => {
             const store = this._getStore('sales', 'readonly');
