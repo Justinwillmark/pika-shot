@@ -64,10 +64,14 @@ document.addEventListener('DOMContentLoaded', () => {
             saleProductName: document.getElementById('sale-product-name'),
             saleProductStock: document.getElementById('sale-product-stock'),
             saleQuantityInput: document.getElementById('sale-quantity'),
+            saleQuantityGroup: document.getElementById('sale-quantity-group'),
             saleTotalPrice: document.getElementById('sale-total-price'),
             cancelSaleBtn: document.getElementById('cancel-sale-btn'),
             confirmSaleBtn: document.getElementById('confirm-sale-btn'),
             entrySaleBtn: document.getElementById('entry-sale-btn'),
+            productNotFoundModal: document.getElementById('product-not-found-modal'),
+            cancelNotFoundBtn: document.getElementById('cancel-not-found-btn'),
+            entryNotFoundBtn: document.getElementById('entry-not-found-btn'),
             installBtn: document.getElementById('add-to-homescreen-btn'),
             receiptActions: document.getElementById('receipt-actions'),
             generateReceiptBtn: document.getElementById('generate-receipt-btn'),
@@ -108,6 +112,7 @@ document.addEventListener('DOMContentLoaded', () => {
             cameraMode: null,
             capturedBlob: null,
             capturedEmbedding: null,
+            capturedBarcode: null,
             editingProduct: null,
             isChangingPicture: false, 
             productSelectionMode: false, 
@@ -117,6 +122,7 @@ document.addEventListener('DOMContentLoaded', () => {
             isSelectionMode: false,
             selectedSales: new Set(),
             longPressTimer: null,
+            barcodeDetector: null,
         },
 
         // --- INITIALIZATION ---
@@ -128,6 +134,9 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 await DB.init();
                 this.state.user = await DB.getUser();
+                if ('BarcodeDetector' in window) {
+                    this.state.barcodeDetector = new BarcodeDetector();
+                }
                 if (!this.state.user) {
                     this.showView('onboarding-view');
                 } else {
@@ -162,6 +171,8 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.cancelSaleBtn.addEventListener('click', this.cancelScan.bind(this));
             this.elements.confirmSaleBtn.addEventListener('click', this.handleConfirmSale.bind(this));
             this.elements.entrySaleBtn.addEventListener('click', () => { this.hideModal(); this.showModal('entry-choice-modal'); });
+            this.elements.cancelNotFoundBtn.addEventListener('click', this.cancelScan.bind(this));
+            this.elements.entryNotFoundBtn.addEventListener('click', () => { this.hideModal(); this.showModal('entry-choice-modal'); });
             window.addEventListener('beforeinstallprompt', this.handleBeforeInstallPrompt.bind(this));
             this.elements.installBtn.addEventListener('click', this.promptInstall.bind(this));
             this.elements.generateReceiptBtn.addEventListener('click', this.generateReceipt.bind(this));
@@ -401,11 +412,40 @@ document.addEventListener('DOMContentLoaded', () => {
         async loadMainApp() { this.elements.appHeader.style.display = 'flex'; this.elements.mainContent.style.display = 'block'; this.elements.bottomNav.style.display = 'flex'; this.navigateTo('home-view'); await this.updateDashboard(); await this.renderProducts(); },
         async handleOnboarding(e) { e.preventDefault(); const name = this.elements.userNameInput.value.trim(); const business = this.elements.businessNameInput.value.trim(); const location = this.elements.businessLocationInput.value; if (!name || !business || !location) { alert('Please fill in all fields.'); return; } this.state.user = { name, business, location }; await DB.saveUser(this.state.user); this.showView('camera-permission-view'); },
         async handleCameraPermission() { try { const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }); stream.getTracks().forEach(track => track.stop()); await this.loadMainApp(); } catch (err) { console.error("Camera permission denied:", err); alert("Camera access is required. Please enable it in browser settings."); } },
-        async loadCameraModelInBackground() { try { this.elements.sellItemBtnText.textContent = 'Loading...'; await Camera.init(); this.state.cameraReady = true; this.elements.addNewProductBtn.classList.remove('disabled'); this.elements.sellItemBtnMain.classList.remove('disabled'); this.elements.sellItemBtnText.textContent = 'Sell Item'; console.log("Camera model ready."); } catch (error) { console.error("Failed to load camera model:", error); this.state.cameraReady = false; this.elements.sellItemBtnText.textContent = 'Offline'; } },
+        async loadCameraModelInBackground() { try { this.elements.sellItemBtnText.textContent = 'Loading...'; this.elements.sellItemBtnMain.classList.add('loading-progress'); await Camera.init(); this.state.cameraReady = true; this.elements.addNewProductBtn.classList.remove('disabled'); this.elements.sellItemBtnMain.classList.remove('disabled'); this.elements.sellItemBtnText.textContent = 'Sell Item'; this.elements.sellItemBtnMain.classList.remove('loading-progress'); console.log("Camera model ready."); } catch (error) { console.error("Failed to load camera model:", error); this.state.cameraReady = false; this.elements.sellItemBtnText.textContent = 'Offline'; this.elements.sellItemBtnMain.classList.remove('loading-progress'); } },
         startAddProduct() { if (!this.state.cameraReady) { alert("Camera is not ready. Connect to the internet for initial setup."); return; } this.state.cameraMode = 'add'; this.elements.scanFeedback.textContent = 'Hold steady to capture'; this.showView('camera-view'); Camera.start(this.handlePictureTaken.bind(this), this.elements.captureCountdown); },
-        async startSellScan(isRestart = false) { if (!this.state.cameraReady) { alert("Camera is not ready. Connect to the internet for initial setup."); return; } this.state.cameraMode = 'sell'; this.elements.scanFeedback.textContent = 'Scanning for product or QR code...'; this.elements.captureCountdown.textContent = ''; this.showView('camera-view'); try { const result = await Camera.startScan(this.handleScanMatch.bind(this)); if (result && result.reason === 'notFound') { this.state.cameraMode = 'add'; this.handlePictureTaken(result.blob, result.embedding); } } catch (error) { console.error('Error during scanning:', error); this.cancelScan(); alert('Could not start scanning.'); } },
+        async startSellScan() { if (!this.state.cameraReady) { alert("Camera is not ready. Connect to the internet for initial setup."); return; } this.state.cameraMode = 'sell'; this.elements.scanFeedback.textContent = 'Scanning for product or barcode...'; this.elements.captureCountdown.textContent = ''; this.showView('camera-view'); try { const result = await Camera.startScan(this.handleScanMatch.bind(this), this.elements.captureCountdown); if (result && result.reason === 'notFound') { this.showModal('product-not-found-modal'); } } catch (error) { console.error('Error during scanning:', error); this.cancelScan(); alert('Could not start scanning.'); } },
         cancelScan() { Camera.stop(); this.hideModal(); this.navigateTo('home-view'); },
-        handlePictureTaken(blob, embedding) { this.state.capturedBlob = blob; this.state.capturedEmbedding = embedding; this.elements.capturedImagePreview.src = URL.createObjectURL(blob); this.showModal('confirm-picture-modal'); },
+        async handlePictureTaken(blob, embedding, canvas) {
+            this.state.capturedBlob = blob;
+            this.state.capturedEmbedding = embedding;
+            this.state.capturedBarcode = null;
+
+            if (this.state.barcodeDetector) {
+                try {
+                    const barcodes = await this.state.barcodeDetector.detect(canvas);
+                    if (barcodes.length > 0) {
+                        const barcodeValue = barcodes[0].rawValue;
+                        const allProducts = await DB.getAllProducts();
+                        const existingProduct = allProducts.find(p => p.barcode === barcodeValue);
+                        if (existingProduct) {
+                            alert('Product already exists in inventory.');
+                            this.cancelScan();
+                            return;
+                        }
+                        this.state.capturedBarcode = barcodeValue;
+                        // Fetch a random FMCG image
+                        const response = await fetch('https://source.unsplash.com/300x300/?product,supermarket');
+                        this.state.capturedBlob = await response.blob();
+                        alert('Barcode found! A placeholder image has been fetched.');
+                    }
+                } catch(e) {
+                    console.error("Could not detect barcode from capture", e);
+                }
+            }
+            this.elements.capturedImagePreview.src = URL.createObjectURL(this.state.capturedBlob);
+            this.showModal('confirm-picture-modal');
+        },
         handleRetakePicture() { this.hideModal(); if (this.state.isChangingPicture) { this.handleChangePicture(); } else if (this.state.cameraMode === 'add') { this.startAddProduct(); } else { this.startSellScan(); } },
         handleConfirmPicture() {
             if (this.state.isChangingPicture) {
@@ -423,7 +463,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.showModal('product-form-modal');
             }
         },
-        async handleSaveProduct(e) { e.preventDefault(); const productData = { id: this.state.editingProduct ? this.state.editingProduct.id : Date.now(), name: this.elements.productNameInput.value.trim(), price: parseFloat(this.elements.productPriceInput.value), stock: parseInt(this.elements.productStockInput.value), unit: this.elements.productUnitInput.value, image: this.state.capturedBlob || this.state.editingProduct?.image, embedding: this.state.capturedEmbedding || this.state.editingProduct?.embedding, createdAt: this.state.editingProduct?.createdAt || new Date() }; if (!productData.name || isNaN(productData.price) || isNaN(productData.stock)) { alert('Please fill out all fields correctly.'); return; } await DB.saveProduct(productData); this.hideModal(); this.state.capturedBlob = null; this.state.capturedEmbedding = null; this.state.editingProduct = null; this.navigateTo('products-view'); await this.renderProducts(); },
+        async handleSaveProduct(e) { e.preventDefault(); const productData = { id: this.state.editingProduct ? this.state.editingProduct.id : Date.now(), name: this.elements.productNameInput.value.trim(), price: parseFloat(this.elements.productPriceInput.value), stock: parseInt(this.elements.productStockInput.value), unit: this.elements.productUnitInput.value, image: this.state.capturedBlob || this.state.editingProduct?.image, embedding: this.state.capturedEmbedding || this.state.editingProduct?.embedding, barcode: this.state.capturedBarcode || this.state.editingProduct?.barcode || null, createdAt: this.state.editingProduct?.createdAt || new Date() }; if (!productData.name || isNaN(productData.price) || isNaN(productData.stock)) { alert('Please fill out all fields correctly.'); return; } await DB.saveProduct(productData); this.hideModal(); this.state.capturedBlob = null; this.state.capturedEmbedding = null; this.state.capturedBarcode = null; this.state.editingProduct = null; this.navigateTo('products-view'); await this.renderProducts(); },
         handleEditProduct(product) { this.state.editingProduct = product; this.elements.productFormTitle.textContent = 'Edit Product'; this.elements.deleteProductBtn.style.display = 'flex'; this.elements.changePictureBtn.style.display = 'block'; this.elements.productIdInput.value = product.id; this.elements.productNameInput.value = product.name; this.elements.productPriceInput.value = product.price; this.elements.productStockInput.value = product.stock; this.elements.productUnitInput.value = product.unit; this.showModal('product-form-modal'); },
         async handleDeleteProduct() {
             if (!this.state.editingProduct) return;
@@ -438,11 +478,20 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         },
         handleChangePicture() { this.state.isChangingPicture = true; this.hideModal(); this.startAddProduct(); },
-        handleScanMatch(match) { if (match.type === 'product') { this.handleProductFound(match.data); } else if (match.type === 'qrlog') { this.handlePikaLogScanned(match.data); } },
+        handleScanMatch(match) { if (match.type === 'product') { this.handleProductFound(match.data); } else if (match.type === 'barcode') { this.handleBarcodeFound(match.data); } else if (match.type === 'qrlog') { this.handlePikaLogScanned(match.data); } },
+        async handleBarcodeFound(barcodeValue) {
+            const allProducts = await DB.getAllProducts();
+            const foundProduct = allProducts.find(p => p.barcode === barcodeValue);
+            if (foundProduct) {
+                this.handleProductFound(foundProduct);
+            } else {
+                this.showModal('product-not-found-modal');
+            }
+        },
         handleProductFound(product) { this.state.sellingProduct = product; this.elements.saleProductImage.src = product.image ? URL.createObjectURL(product.image) : 'icons/icon-192.png'; this.elements.saleProductName.textContent = product.name; this.elements.saleProductStock.textContent = `Stock: ${product.stock} ${product.unit}`; this.elements.saleQuantityInput.value = 1; this.elements.saleQuantityInput.max = product.stock; this.updateSaleTotal(); this.showModal('confirm-sale-modal'); },
         updateSaleTotal() { const quantity = parseInt(this.elements.saleQuantityInput.value) || 0; const price = this.state.sellingProduct?.price || 0; const total = quantity * price; this.elements.saleTotalPrice.textContent = `₦${total.toLocaleString()}`; },
         async _processSale() { const quantity = parseInt(this.elements.saleQuantityInput.value); const product = this.state.sellingProduct; if (quantity <= 0 || !product || quantity > product.stock) { alert('Invalid quantity or product not available.'); return false; } product.stock -= quantity; await DB.saveProduct(product); const sale = { id: Date.now(), productId: product.id, productName: product.name, quantity: quantity, price: product.price, total: quantity * product.price, timestamp: new Date(), image: product.image }; await DB.addSale(sale); return true; },
-        async handleConfirmSale() { const success = await this._processSale(); if (success) { this.hideModal(); await this.updateDashboard(); await this.renderProducts(); this.startSellScan(true); } },
+        async handleConfirmSale() { const success = await this._processSale(); if (success) { this.hideModal(); await this.updateDashboard(); await this.renderProducts(); this.navigateTo('home-view'); } },
         
         async handleManualSale(e) {
             e.preventDefault();
@@ -463,7 +512,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 productToSell.stock -= quantity;
             } else {
-                productToSell = { id: Date.now(), name, price, stock: 0, unit, image: null, embedding: null, createdAt: new Date() };
+                productToSell = { id: Date.now(), name, price, stock: 0, unit, image: null, embedding: null, barcode: null, createdAt: new Date() };
                 alert(`${name} is a new item and will be added to your products list with 0 stock.`);
             }
 

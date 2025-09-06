@@ -6,6 +6,8 @@ const Camera = {
     isScanning: false,
     scanTimeout: null,
     captureTimeout: null,
+    barcodeDetector: null,
+    countdownInterval: null,
 
     async init() {
         try {
@@ -14,6 +16,17 @@ const Camera = {
         } catch (error) {
             console.error('Failed to load MobileNet model:', error);
             alert('Could not load the recognition engine. Please check your connection and refresh.');
+        }
+        
+        if ('BarcodeDetector' in window) {
+            try {
+                this.barcodeDetector = new BarcodeDetector();
+                console.log('Barcode Detector is ready.');
+            } catch (e) {
+                console.error('Barcode Detector could not be started.', e);
+            }
+        } else {
+            console.warn('Barcode Detector API not supported by this browser.');
         }
     },
 
@@ -34,11 +47,11 @@ const Camera = {
             if(countdownElement) {
                 let count = 3;
                 countdownElement.textContent = count;
-                const interval = setInterval(() => {
+                this.countdownInterval = setInterval(() => {
                     count--;
                     countdownElement.textContent = count > 0 ? count : '';
                     if (count <= 0) {
-                        clearInterval(interval);
+                        clearInterval(this.countdownInterval);
                         this.captureAndProcess(onCapture);
                     }
                 }, 1000);
@@ -49,7 +62,7 @@ const Camera = {
         }
     },
 
-    async startScan(onMatch) {
+    async startScan(onMatch, countdownElement = null) {
         return new Promise(async (resolve, reject) => {
             if (!this.model) return reject('Model not loaded');
             if (this.stream) this.stop();
@@ -62,28 +75,33 @@ const Camera = {
                 await this.videoElement.play();
                 this.isScanning = true;
 
-                const qrContext = this.qrCanvas.getContext('2d');
+                if (countdownElement) {
+                    let count = 3;
+                    countdownElement.textContent = count;
+                    this.countdownInterval = setInterval(() => {
+                        count--;
+                        countdownElement.textContent = count > 0 ? count : '';
+                        if (count <= 0) {
+                           countdownElement.textContent = '';
+                           clearInterval(this.countdownInterval);
+                        }
+                    }, 1000);
+                }
 
                 const scanLoop = async () => {
                     if (!this.isScanning) return;
 
-                    // QR Code Scanning Logic
-                    if (this.videoElement.readyState === this.videoElement.HAVE_ENOUGH_DATA) {
-                        this.qrCanvas.height = this.videoElement.videoHeight;
-                        this.qrCanvas.width = this.videoElement.videoWidth;
-                        qrContext.drawImage(this.videoElement, 0, 0, this.qrCanvas.width, this.qrCanvas.height);
-                        const imageData = qrContext.getImageData(0, 0, this.qrCanvas.width, this.qrCanvas.height);
-                        const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "dontInvert" });
-                        
-                        if (code) {
-                            try {
-                                const jsonData = JSON.parse(code.data);
-                                if (jsonData && jsonData.pikaLogVersion === 1) {
-                                    this.stop();
-                                    onMatch({ type: 'qrlog', data: jsonData });
-                                    return; // Stop the loop
-                                }
-                            } catch (e) { /* Not a valid JSON QR code, ignore */ }
+                    // Barcode Scanning Logic
+                    if (this.barcodeDetector && this.videoElement.readyState === this.videoElement.HAVE_ENOUGH_DATA) {
+                        try {
+                            const barcodes = await this.barcodeDetector.detect(this.videoElement);
+                            if (barcodes.length > 0) {
+                                this.stop();
+                                onMatch({ type: 'barcode', data: barcodes[0].rawValue });
+                                return;
+                            }
+                        } catch (e) {
+                             /* Barcode detector may fail on some frames, ignore */
                         }
                     }
 
@@ -117,11 +135,10 @@ const Camera = {
                 
                 this.scanTimeout = setTimeout(async () => {
                     if (this.isScanning) {
-                        const { blob, embedding } = await this.captureAndProcess(() => {});
                         this.stop();
-                        resolve({ reason: 'notFound', blob, embedding });
+                        resolve({ reason: 'notFound' });
                     }
-                }, 4000);
+                }, 3000); // Enforce 3-second scan limit
 
             } catch (err) {
                 reject(err);
@@ -133,6 +150,7 @@ const Camera = {
         this.isScanning = false;
         clearTimeout(this.scanTimeout);
         clearTimeout(this.captureTimeout);
+        clearInterval(this.countdownInterval);
         if (this.stream) {
             this.stream.getTracks().forEach(track => track.stop());
             this.stream = null;
@@ -151,8 +169,8 @@ const Camera = {
         const embedding = this.getEmbedding(canvas);
         
         this.stop();
-        if (callback) callback(blob, embedding);
-        return { blob, embedding };
+        if (callback) callback(blob, embedding, canvas);
+        return { blob, embedding, canvas };
     },
 
     getEmbedding(source) {
