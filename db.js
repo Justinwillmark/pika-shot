@@ -1,7 +1,7 @@
 const DB = {
     db: null,
     dbName: 'PikaShotDB',
-    dbVersion: 1,
+    dbVersion: 2, // Incremented version to trigger onupgradeneeded
 
     init() {
         return new Promise((resolve, reject) => {
@@ -20,12 +20,24 @@ const DB = {
 
             request.onupgradeneeded = (event) => {
                 const db = event.target.result;
+                // User store
                 if (!db.objectStoreNames.contains('user')) {
                     db.createObjectStore('user', { keyPath: 'id' });
                 }
+                
+                // Products store
                 if (!db.objectStoreNames.contains('products')) {
-                    db.createObjectStore('products', { keyPath: 'id' });
+                    const productStore = db.createObjectStore('products', { keyPath: 'id' });
+                    productStore.createIndex('barcode', 'barcode', { unique: false });
+                } else {
+                    const transaction = event.target.transaction;
+                    const productStore = transaction.objectStore('products');
+                    if (!productStore.indexNames.contains('barcode')) {
+                         productStore.createIndex('barcode', 'barcode', { unique: false });
+                    }
                 }
+                
+                // Sales store
                 if (!db.objectStoreNames.contains('sales')) {
                     db.createObjectStore('sales', { keyPath: 'id' });
                 }
@@ -68,6 +80,12 @@ const DB = {
         return this._requestToPromise(store.get(id));
     },
 
+    getProductByBarcode(barcode) {
+        const store = this._getStore('products', 'readonly');
+        const index = store.index('barcode');
+        return this._requestToPromise(index.get(barcode));
+    },
+
     getAllProducts() {
         const store = this._getStore('products', 'readonly');
         return this._requestToPromise(store.getAll());
@@ -85,7 +103,7 @@ const DB = {
     },
     
     getAllSales() {
-        const store = this._getStore('sales', 'readonly');
+        const store = this._getSAtore('sales', 'readonly');
         return this._requestToPromise(store.getAll());
     },
 

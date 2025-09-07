@@ -5,91 +5,149 @@ const Camera = {
     stream: null,
     isScanning: false,
     scanTimeout: null,
-    captureTimeout: null,
+    countdownInterval: null,
+    barcodeDetector: null,
 
     async init() {
         try {
+            // Load image recognition model
             this.model = await mobilenet.load();
             console.log('MobileNet model loaded.');
         } catch (error) {
             console.error('Failed to load MobileNet model:', error);
-            alert('Could not load the recognition engine. Please check your connection and refresh.');
+            // Don't alert here, let the app decide how to handle it (e.g., disable AI features)
+        }
+
+        // Initialize Barcode Detector
+        if ('BarcodeDetector' in window) {
+            try {
+                this.barcodeDetector = new window.BarcodeDetector();
+                console.log('Barcode Detector initialized.');
+            } catch (e) {
+                console.error('Barcode Detector is supported, but failed to initialize:', e);
+                this.barcodeDetector = null;
+            }
+        } else {
+            console.warn('Barcode Detector API not supported in this browser.');
         }
     },
-
-    async start(onCapture, countdownElement = null) {
-        if (!this.model) {
-            alert('Recognition engine is not ready.');
-            return;
-        }
+    
+    _startCountdown(duration, countdownElement) {
+        let count = duration;
+        countdownElement.textContent = count;
+        this.countdownInterval = setInterval(() => {
+            count--;
+            countdownElement.textContent = count > 0 ? count : '';
+        }, 1000);
+    },
+    
+    async _startStream() {
         if (this.stream) this.stop();
-
         try {
             this.stream = await navigator.mediaDevices.getUserMedia({
                 video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
             });
             this.videoElement.srcObject = this.stream;
             await this.videoElement.play();
-
-            if(countdownElement) {
-                let count = 3;
-                countdownElement.textContent = count;
-                const interval = setInterval(() => {
-                    count--;
-                    countdownElement.textContent = count > 0 ? count : '';
-                    if (count <= 0) {
-                        clearInterval(interval);
-                        this.captureAndProcess(onCapture);
-                    }
-                }, 1000);
-            }
+            this.isScanning = true;
+            return true;
         } catch (err) {
             console.error('Error starting camera:', err);
-            alert('Could not access the camera. Please grant permission.');
+            alert('Could not access the camera. Please grant permission and try again.');
+            return false;
         }
     },
 
-    async startScan(onMatch) {
+    async startAddScan(onResult, countdownElement) {
         return new Promise(async (resolve, reject) => {
-            if (!this.model) return reject('Model not loaded');
-            if (this.stream) this.stop();
+            if (!this.barcodeDetector && !this.model) {
+                return reject('No scanning models are ready.');
+            }
+            if (!await this._startStream()) return reject('Could not start camera stream.');
+            
+            this._startCountdown(4, countdownElement);
 
-            try {
-                this.stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
-                });
-                this.videoElement.srcObject = this.stream;
-                await this.videoElement.play();
-                this.isScanning = true;
+            const scanLoop = async () => {
+                if (!this.isScanning) return;
 
-                const qrContext = this.qrCanvas.getContext('2d');
+                if (this.videoElement.readyState === this.videoElement.HAVE_ENOUGH_DATA) {
+                    // 1. Barcode and pika-log QR Scan
+                    if (this.barcodeDetector) {
+                        try {
+                            const barcodes = await this.barcodeDetector.detect(this.videoElement);
+                            if (barcodes.length > 0) {
+                                const detectedValue = barcodes[0].rawValue;
+                                // Check if it's a pika-log
+                                try {
+                                    const jsonData = JSON.parse(detectedValue);
+                                    if (jsonData && jsonData.pikaLogVersion === 1) {
+                                        this.stop();
+                                        onResult({ type: 'qrlog', data: jsonData });
+                                        resolve();
+                                        return;
+                                    }
+                                } catch (e) { /* Not a pika log, treat as regular barcode */ }
+                                
+                                // It's a regular barcode
+                                this.stop();
+                                onResult({ type: 'barcode', data: detectedValue });
+                                resolve();
+                                return;
+                            }
+                        } catch (e) {
+                             console.error("Barcode detection failed:", e);
+                        }
+                    }
+                }
+                requestAnimationFrame(scanLoop);
+            };
+            scanLoop();
 
-                const scanLoop = async () => {
-                    if (!this.isScanning) return;
+            // 4-second timeout to capture a photo if no barcode is found
+            this.scanTimeout = setTimeout(async () => {
+                if (this.isScanning) {
+                    const { blob, embedding } = await this.captureAndProcess();
+                    onResult({ type: 'capture', blob, embedding });
+                    resolve();
+                }
+            }, 4000);
+        });
+    },
 
-                    // QR Code Scanning Logic
-                    if (this.videoElement.readyState === this.videoElement.HAVE_ENOUGH_DATA) {
-                        this.qrCanvas.height = this.videoElement.videoHeight;
-                        this.qrCanvas.width = this.videoElement.videoWidth;
-                        qrContext.drawImage(this.videoElement, 0, 0, this.qrCanvas.width, this.qrCanvas.height);
-                        const imageData = qrContext.getImageData(0, 0, this.qrCanvas.width, this.qrCanvas.height);
-                        const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "dontInvert" });
-                        
-                        if (code) {
-                            try {
-                                const jsonData = JSON.parse(code.data);
-                                if (jsonData && jsonData.pikaLogVersion === 1) {
+    async startSellScan(onMatch, onNotFound, countdownElement) {
+        return new Promise(async (resolve, reject) => {
+            if (!this.barcodeDetector && !this.model) {
+                return reject('No scanning models are ready.');
+            }
+            if (!await this._startStream()) return reject('Could not start camera stream.');
+
+            this._startCountdown(3, countdownElement);
+
+            const scanLoop = async () => {
+                if (!this.isScanning) return;
+
+                if (this.videoElement.readyState === this.videoElement.HAVE_ENOUGH_DATA) {
+                    // 1. Barcode Scan
+                    if (this.barcodeDetector) {
+                        try {
+                            const barcodes = await this.barcodeDetector.detect(this.videoElement);
+                            if (barcodes.length > 0) {
+                                const product = await DB.getProductByBarcode(barcodes[0].rawValue);
+                                if (product) {
                                     this.stop();
-                                    onMatch({ type: 'qrlog', data: jsonData });
-                                    return; // Stop the loop
+                                    onMatch(product);
+                                    resolve();
+                                    return;
                                 }
-                            } catch (e) { /* Not a valid JSON QR code, ignore */ }
+                            }
+                        } catch (e) {
+                             console.error("Barcode detection failed:", e);
                         }
                     }
 
-                    // Image Recognition Logic
-                    const embedding = this.getEmbedding();
-                    if (embedding) {
+                    // 2. Image Recognition Scan
+                    if (this.model) {
+                        const embedding = this.getEmbedding();
                         const products = await DB.getAllProducts();
                         let bestMatch = null;
                         let highestSimilarity = 0;
@@ -107,32 +165,34 @@ const Camera = {
 
                         if (highestSimilarity > SIMILARITY_THRESHOLD) {
                             this.stop();
-                            onMatch({ type: 'product', data: bestMatch });
-                            return; // Stop the loop
+                            onMatch(bestMatch);
+                            resolve();
+                            return;
                         }
                     }
-                    requestAnimationFrame(scanLoop);
-                };
-                scanLoop();
-                
-                this.scanTimeout = setTimeout(async () => {
-                    if (this.isScanning) {
-                        const { blob, embedding } = await this.captureAndProcess(() => {});
-                        this.stop();
-                        resolve({ reason: 'notFound', blob, embedding });
-                    }
-                }, 4000);
+                }
+                requestAnimationFrame(scanLoop);
+            };
+            scanLoop();
 
-            } catch (err) {
-                reject(err);
-            }
+            // 3-second timeout if nothing is found
+            this.scanTimeout = setTimeout(() => {
+                if (this.isScanning) {
+                    this.stop();
+                    onNotFound();
+                    resolve();
+                }
+            }, 3000);
         });
     },
 
     stop() {
         this.isScanning = false;
         clearTimeout(this.scanTimeout);
-        clearTimeout(this.captureTimeout);
+        clearInterval(this.countdownInterval);
+        this.scanTimeout = null;
+        this.countdownInterval = null;
+        
         if (this.stream) {
             this.stream.getTracks().forEach(track => track.stop());
             this.stream = null;
@@ -140,7 +200,8 @@ const Camera = {
         this.videoElement.srcObject = null;
     },
 
-    async captureAndProcess(callback) {
+    async captureAndProcess() {
+        if (!this.videoElement.videoWidth) return { blob: null, embedding: null };
         const canvas = document.createElement('canvas');
         canvas.width = this.videoElement.videoWidth;
         canvas.height = this.videoElement.videoHeight;
@@ -151,14 +212,12 @@ const Camera = {
         const embedding = this.getEmbedding(canvas);
         
         this.stop();
-        if (callback) callback(blob, embedding);
         return { blob, embedding };
     },
 
     getEmbedding(source) {
         if (!this.model) return null;
         source = source || this.videoElement;
-        // Ensure source is ready
         if (!source.videoWidth && !source.width) return null;
 
         return tf.tidy(() => {

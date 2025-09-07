@@ -49,6 +49,7 @@ document.addEventListener('DOMContentLoaded', () => {
             retakePictureBtn: document.getElementById('retake-picture-btn'),
             confirmPictureBtn: document.getElementById('confirm-picture-btn'),
             productFormModal: document.getElementById('product-form-modal'),
+            productSourceInfo: document.getElementById('product-source-info'),
             deleteProductBtn: document.getElementById('delete-product-btn'),
             productForm: document.getElementById('product-form'),
             productFormTitle: document.getElementById('product-form-title'),
@@ -105,9 +106,9 @@ document.addEventListener('DOMContentLoaded', () => {
             user: null,
             currentView: 'home-view',
             cameraReady: false,
-            cameraMode: null,
             capturedBlob: null,
             capturedEmbedding: null,
+            capturedBarcode: null,
             editingProduct: null,
             isChangingPicture: false, 
             productSelectionMode: false, 
@@ -402,29 +403,153 @@ document.addEventListener('DOMContentLoaded', () => {
         async handleOnboarding(e) { e.preventDefault(); const name = this.elements.userNameInput.value.trim(); const business = this.elements.businessNameInput.value.trim(); const location = this.elements.businessLocationInput.value; if (!name || !business || !location) { alert('Please fill in all fields.'); return; } this.state.user = { name, business, location }; await DB.saveUser(this.state.user); this.showView('camera-permission-view'); },
         async handleCameraPermission() { try { const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }); stream.getTracks().forEach(track => track.stop()); await this.loadMainApp(); } catch (err) { console.error("Camera permission denied:", err); alert("Camera access is required. Please enable it in browser settings."); } },
         async loadCameraModelInBackground() { try { this.elements.sellItemBtnText.textContent = 'Loading...'; await Camera.init(); this.state.cameraReady = true; this.elements.addNewProductBtn.classList.remove('disabled'); this.elements.sellItemBtnMain.classList.remove('disabled'); this.elements.sellItemBtnText.textContent = 'Sell Item'; console.log("Camera model ready."); } catch (error) { console.error("Failed to load camera model:", error); this.state.cameraReady = false; this.elements.sellItemBtnText.textContent = 'Offline'; } },
-        startAddProduct() { if (!this.state.cameraReady) { alert("Camera is not ready. Connect to the internet for initial setup."); return; } this.state.cameraMode = 'add'; this.elements.scanFeedback.textContent = 'Hold steady to capture'; this.showView('camera-view'); Camera.start(this.handlePictureTaken.bind(this), this.elements.captureCountdown); },
-        async startSellScan(isRestart = false) { if (!this.state.cameraReady) { alert("Camera is not ready. Connect to the internet for initial setup."); return; } this.state.cameraMode = 'sell'; this.elements.scanFeedback.textContent = 'Scanning for product or QR code...'; this.elements.captureCountdown.textContent = ''; this.showView('camera-view'); try { const result = await Camera.startScan(this.handleScanMatch.bind(this)); if (result && result.reason === 'notFound') { this.state.cameraMode = 'add'; this.handlePictureTaken(result.blob, result.embedding); } } catch (error) { console.error('Error during scanning:', error); this.cancelScan(); alert('Could not start scanning.'); } },
-        cancelScan() { Camera.stop(); this.hideModal(); this.navigateTo('home-view'); },
-        handlePictureTaken(blob, embedding) { this.state.capturedBlob = blob; this.state.capturedEmbedding = embedding; this.elements.capturedImagePreview.src = URL.createObjectURL(blob); this.showModal('confirm-picture-modal'); },
-        handleRetakePicture() { this.hideModal(); if (this.state.isChangingPicture) { this.handleChangePicture(); } else if (this.state.cameraMode === 'add') { this.startAddProduct(); } else { this.startSellScan(); } },
+        
+        // --- ADD PRODUCT FLOW ---
+        startAddProduct() { 
+            if (!this.state.cameraReady) { alert("Camera is not ready yet. Please wait or check your connection."); return; }
+            if (!Camera.barcodeDetector && !Camera.model) { alert("Scanning is not available. Your browser might not be supported."); return; }
+            this.elements.scanFeedback.textContent = 'Scan barcode or product';
+            this.elements.captureCountdown.textContent = '';
+            this.showView('camera-view');
+            Camera.startAddScan(this.handleAddProductScanResult.bind(this), this.elements.captureCountdown);
+        },
+        
+        handleAddProductScanResult(result) {
+            switch (result.type) {
+                case 'barcode':
+                    this.state.capturedBarcode = result.data;
+                    this.state.capturedBlob = null;
+                    this.state.capturedEmbedding = null;
+                    this.state.editingProduct = null;
+                    this._openProductForm({ source: 'barcode' });
+                    break;
+                case 'capture':
+                    this.state.capturedBlob = result.blob;
+                    this.state.capturedEmbedding = result.embedding;
+                    this.elements.capturedImagePreview.src = URL.createObjectURL(result.blob);
+                    this.showModal('confirm-picture-modal');
+                    break;
+                case 'qrlog':
+                    this.handlePikaLogScanned(result.data);
+                    break;
+            }
+        },
+
+        // --- SELL ITEM FLOW ---
+        startSellScan() {
+            if (!this.state.cameraReady) { alert("Camera is not ready yet. Please wait or check your connection."); return; }
+             if (!Camera.barcodeDetector && !Camera.model) { alert("Scanning is not available. Your browser might not be supported."); return; }
+            this.elements.scanFeedback.textContent = 'Scanning for product...';
+            this.elements.captureCountdown.textContent = '';
+            this.showView('camera-view');
+            Camera.startSellScan(
+                this.handleProductFound.bind(this),
+                () => { // onNotFound callback
+                    alert('Product not found in your inventory.');
+                    this.navigateBack();
+                },
+                this.elements.captureCountdown
+            );
+        },
+
+        cancelScan() { Camera.stop(); this.hideModal(); this.navigateBack(); },
+        handleRetakePicture() { this.hideModal(); this.startAddProduct(); },
+        
         handleConfirmPicture() {
+            this.state.capturedBarcode = null;
             if (this.state.isChangingPicture) {
                 this.state.isChangingPicture = false;
                 this.hideModal();
-                this.showModal('product-form-modal');
+                this.showModal('product-form-modal'); // Re-show form with new picture data
             } else {
                 this.state.editingProduct = null;
-                this.elements.productForm.reset();
-                this.elements.productFormTitle.textContent = 'Add New Product';
-                this.elements.deleteProductBtn.style.display = 'none';
-                this.elements.changePictureBtn.style.display = 'none';
-                this.elements.productIdInput.value = '';
-                this.hideModal();
-                this.showModal('product-form-modal');
+                this._openProductForm({ source: 'photo' });
             }
         },
-        async handleSaveProduct(e) { e.preventDefault(); const productData = { id: this.state.editingProduct ? this.state.editingProduct.id : Date.now(), name: this.elements.productNameInput.value.trim(), price: parseFloat(this.elements.productPriceInput.value), stock: parseInt(this.elements.productStockInput.value), unit: this.elements.productUnitInput.value, image: this.state.capturedBlob || this.state.editingProduct?.image, embedding: this.state.capturedEmbedding || this.state.editingProduct?.embedding, createdAt: this.state.editingProduct?.createdAt || new Date() }; if (!productData.name || isNaN(productData.price) || isNaN(productData.stock)) { alert('Please fill out all fields correctly.'); return; } await DB.saveProduct(productData); this.hideModal(); this.state.capturedBlob = null; this.state.capturedEmbedding = null; this.state.editingProduct = null; this.navigateTo('products-view'); await this.renderProducts(); },
-        handleEditProduct(product) { this.state.editingProduct = product; this.elements.productFormTitle.textContent = 'Edit Product'; this.elements.deleteProductBtn.style.display = 'flex'; this.elements.changePictureBtn.style.display = 'block'; this.elements.productIdInput.value = product.id; this.elements.productNameInput.value = product.name; this.elements.productPriceInput.value = product.price; this.elements.productStockInput.value = product.stock; this.elements.productUnitInput.value = product.unit; this.showModal('product-form-modal'); },
+        
+        _openProductForm(options = {}) {
+            this.elements.productForm.reset();
+            this.elements.productFormTitle.textContent = 'Add New Product';
+            this.elements.deleteProductBtn.style.display = 'none';
+            this.elements.changePictureBtn.style.display = 'none'; // Hide by default
+            this.elements.productIdInput.value = '';
+            
+            if (options.source === 'barcode') {
+                this.elements.productSourceInfo.textContent = 'Added via barcode. No photo.';
+                this.elements.productSourceInfo.style.display = 'block';
+            } else if (options.source === 'photo') {
+                this.elements.productSourceInfo.textContent = 'Added via photo. No barcode.';
+                this.elements.productSourceInfo.style.display = 'block';
+            } else {
+                 this.elements.productSourceInfo.style.display = 'none';
+            }
+            
+            this.hideModal(); // Hide any other open modals
+            this.showModal('product-form-modal');
+        },
+
+        async handleSaveProduct(e) { 
+            e.preventDefault(); 
+            const isEditing = !!this.state.editingProduct;
+            let source = isEditing ? this.state.editingProduct.source : (this.state.capturedBarcode ? 'barcode' : 'photo');
+            
+            // Handle "Change Picture" case for a barcode-only product
+            if (isEditing && this.state.editingProduct.barcode && this.state.capturedBlob) {
+                source = 'hybrid';
+            }
+
+            const productData = { 
+                id: isEditing ? this.state.editingProduct.id : Date.now(), 
+                name: this.elements.productNameInput.value.trim(), 
+                price: parseFloat(this.elements.productPriceInput.value), 
+                stock: parseInt(this.elements.productStockInput.value), 
+                unit: this.elements.productUnitInput.value, 
+                image: this.state.capturedBlob || (isEditing ? this.state.editingProduct.image : null), 
+                embedding: this.state.capturedEmbedding || (isEditing ? this.state.editingProduct.embedding : null),
+                barcode: this.state.capturedBarcode || (isEditing ? this.state.editingProduct.barcode : null),
+                source: source,
+                createdAt: isEditing ? this.state.editingProduct.createdAt : new Date() 
+            }; 
+
+            if (!productData.name || isNaN(productData.price) || isNaN(productData.stock)) { 
+                alert('Please fill out all fields correctly.'); return; 
+            } 
+            await DB.saveProduct(productData); 
+            
+            this.hideModal(); 
+            this.state.capturedBlob = null; 
+            this.state.capturedEmbedding = null; 
+            this.state.capturedBarcode = null;
+            this.state.editingProduct = null; 
+            
+            this.navigateTo('products-view'); 
+            await this.renderProducts(); 
+        },
+
+        handleEditProduct(product) { 
+            this.state.editingProduct = product; 
+            this.elements.productFormTitle.textContent = 'Edit Product'; 
+            this.elements.deleteProductBtn.style.display = 'flex'; 
+            this.elements.changePictureBtn.style.display = 'block';
+            this.elements.productIdInput.value = product.id; 
+            this.elements.productNameInput.value = product.name; 
+            this.elements.productPriceInput.value = product.price; 
+            this.elements.productStockInput.value = product.stock; 
+            this.elements.productUnitInput.value = product.unit; 
+            
+            // Set source info text
+            if (product.source === 'hybrid' || (product.barcode && product.image)) {
+                this.elements.productSourceInfo.textContent = 'Barcode and photo active.';
+            } else if (product.source === 'barcode' || product.barcode) {
+                this.elements.productSourceInfo.textContent = 'Added via barcode. No photo.';
+            } else {
+                this.elements.productSourceInfo.textContent = 'Added via photo. No barcode.';
+            }
+            this.elements.productSourceInfo.style.display = 'block';
+
+            this.showModal('product-form-modal'); 
+        },
+
         async handleDeleteProduct() {
             if (!this.state.editingProduct) return;
             const confirmation = confirm(`Are you sure you want to permanently delete "${this.state.editingProduct.name}"? This action cannot be undone.`);
@@ -438,11 +563,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         },
         handleChangePicture() { this.state.isChangingPicture = true; this.hideModal(); this.startAddProduct(); },
-        handleScanMatch(match) { if (match.type === 'product') { this.handleProductFound(match.data); } else if (match.type === 'qrlog') { this.handlePikaLogScanned(match.data); } },
         handleProductFound(product) { this.state.sellingProduct = product; this.elements.saleProductImage.src = product.image ? URL.createObjectURL(product.image) : 'icons/icon-192.png'; this.elements.saleProductName.textContent = product.name; this.elements.saleProductStock.textContent = `Stock: ${product.stock} ${product.unit}`; this.elements.saleQuantityInput.value = 1; this.elements.saleQuantityInput.max = product.stock; this.updateSaleTotal(); this.showModal('confirm-sale-modal'); },
         updateSaleTotal() { const quantity = parseInt(this.elements.saleQuantityInput.value) || 0; const price = this.state.sellingProduct?.price || 0; const total = quantity * price; this.elements.saleTotalPrice.textContent = `₦${total.toLocaleString()}`; },
         async _processSale() { const quantity = parseInt(this.elements.saleQuantityInput.value); const product = this.state.sellingProduct; if (quantity <= 0 || !product || quantity > product.stock) { alert('Invalid quantity or product not available.'); return false; } product.stock -= quantity; await DB.saveProduct(product); const sale = { id: Date.now(), productId: product.id, productName: product.name, quantity: quantity, price: product.price, total: quantity * product.price, timestamp: new Date(), image: product.image }; await DB.addSale(sale); return true; },
-        async handleConfirmSale() { const success = await this._processSale(); if (success) { this.hideModal(); await this.updateDashboard(); await this.renderProducts(); this.startSellScan(true); } },
+        async handleConfirmSale() { const success = await this._processSale(); if (success) { this.hideModal(); await this.updateDashboard(); await this.renderProducts(); this.navigateBack(); } },
         
         async handleManualSale(e) {
             e.preventDefault();
@@ -463,7 +587,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 productToSell.stock -= quantity;
             } else {
-                productToSell = { id: Date.now(), name, price, stock: 0, unit, image: null, embedding: null, createdAt: new Date() };
+                productToSell = { id: Date.now(), name, price, stock: 0, unit, image: null, embedding: null, barcode: null, source: 'manual', createdAt: new Date() };
                 alert(`${name} is a new item and will be added to your products list with 0 stock.`);
             }
 
@@ -593,7 +717,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     existingProduct.stock += item.quantity;
                     productUpdates.push(DB.saveProduct(existingProduct));
                 } else {
-                    const newProduct = { id: Date.now() + Math.random(), name: item.name, price: item.price, stock: item.quantity, unit: item.unit, image: null, embedding: null, createdAt: new Date() };
+                    const newProduct = { id: Date.now() + Math.random(), name: item.name, price: item.price, stock: item.quantity, unit: item.unit, image: null, embedding: null, barcode: null, source: 'log', createdAt: new Date() };
                     productUpdates.push(DB.saveProduct(newProduct));
                 }
             }
