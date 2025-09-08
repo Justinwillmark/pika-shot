@@ -103,7 +103,7 @@ const DB = {
     },
     
     getAllSales() {
-        const store = this._getSAtore('sales', 'readonly');
+        const store = this._getStore('sales', 'readonly');
         return this._requestToPromise(store.getAll());
     },
 

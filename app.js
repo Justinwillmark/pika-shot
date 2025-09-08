@@ -50,6 +50,7 @@ document.addEventListener('DOMContentLoaded', () => {
             confirmPictureBtn: document.getElementById('confirm-picture-btn'),
             productFormModal: document.getElementById('product-form-modal'),
             productSourceInfo: document.getElementById('product-source-info'),
+            productBarcodeDisplay: document.getElementById('product-barcode-display'),
             deleteProductBtn: document.getElementById('delete-product-btn'),
             productForm: document.getElementById('product-form'),
             productFormTitle: document.getElementById('product-form-title'),
@@ -244,6 +245,9 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.itemsSoldEl.textContent = itemsSold;
             
             this.elements.seeAllContainer.style.display = sales.length > 6 ? 'block' : 'none';
+            // Only show the "Long press" hint if there are sales
+            this.elements.selectionModeHint.style.display = sales.length > 0 ? 'block' : 'none';
+
             this.renderSalesList(sales, this.elements.recentSalesList, 6);
         },
         
@@ -402,7 +406,24 @@ document.addEventListener('DOMContentLoaded', () => {
         async loadMainApp() { this.elements.appHeader.style.display = 'flex'; this.elements.mainContent.style.display = 'block'; this.elements.bottomNav.style.display = 'flex'; this.navigateTo('home-view'); await this.updateDashboard(); await this.renderProducts(); },
         async handleOnboarding(e) { e.preventDefault(); const name = this.elements.userNameInput.value.trim(); const business = this.elements.businessNameInput.value.trim(); const location = this.elements.businessLocationInput.value; if (!name || !business || !location) { alert('Please fill in all fields.'); return; } this.state.user = { name, business, location }; await DB.saveUser(this.state.user); this.showView('camera-permission-view'); },
         async handleCameraPermission() { try { const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }); stream.getTracks().forEach(track => track.stop()); await this.loadMainApp(); } catch (err) { console.error("Camera permission denied:", err); alert("Camera access is required. Please enable it in browser settings."); } },
-        async loadCameraModelInBackground() { try { this.elements.sellItemBtnText.textContent = 'Loading...'; await Camera.init(); this.state.cameraReady = true; this.elements.addNewProductBtn.classList.remove('disabled'); this.elements.sellItemBtnMain.classList.remove('disabled'); this.elements.sellItemBtnText.textContent = 'Sell Item'; console.log("Camera model ready."); } catch (error) { console.error("Failed to load camera model:", error); this.state.cameraReady = false; this.elements.sellItemBtnText.textContent = 'Offline'; } },
+        async loadCameraModelInBackground() { 
+            try { 
+                this.elements.sellItemBtnText.textContent = 'Loading...'; 
+                this.elements.sellItemBtnMain.classList.add('loading');
+                await Camera.init(); 
+                this.state.cameraReady = true; 
+                this.elements.addNewProductBtn.classList.remove('disabled'); 
+                this.elements.sellItemBtnMain.classList.remove('disabled'); 
+                this.elements.sellItemBtnText.textContent = 'Sell Item'; 
+                console.log("Camera model ready."); 
+            } catch (error) { 
+                console.error("Failed to load camera model:", error); 
+                this.state.cameraReady = false; 
+                this.elements.sellItemBtnText.textContent = 'Offline'; 
+            } finally {
+                this.elements.sellItemBtnMain.classList.remove('loading');
+            }
+        },
         
         // --- ADD PRODUCT FLOW ---
         startAddProduct() { 
@@ -473,6 +494,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.deleteProductBtn.style.display = 'none';
             this.elements.changePictureBtn.style.display = 'none'; // Hide by default
             this.elements.productIdInput.value = '';
+            this.elements.productBarcodeDisplay.style.display = 'none';
             
             if (options.source === 'barcode') {
                 this.elements.productSourceInfo.textContent = 'Added via barcode. No photo.';
@@ -537,7 +559,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.productStockInput.value = product.stock; 
             this.elements.productUnitInput.value = product.unit; 
             
-            // Set source info text
+            // Set source info and barcode text
             if (product.source === 'hybrid' || (product.barcode && product.image)) {
                 this.elements.productSourceInfo.textContent = 'Barcode and photo active.';
             } else if (product.source === 'barcode' || product.barcode) {
@@ -546,6 +568,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.productSourceInfo.textContent = 'Added via photo. No barcode.';
             }
             this.elements.productSourceInfo.style.display = 'block';
+
+            if (product.barcode) {
+                this.elements.productBarcodeDisplay.textContent = product.barcode;
+                this.elements.productBarcodeDisplay.style.display = 'block';
+            } else {
+                this.elements.productBarcodeDisplay.style.display = 'none';
+            }
 
             this.showModal('product-form-modal'); 
         },
@@ -620,7 +649,10 @@ document.addEventListener('DOMContentLoaded', () => {
             this.state.selectedSales.clear();
             document.querySelectorAll('.sale-item').forEach(el => { el.classList.remove('selectable'); el.classList.remove('selected'); });
             this.elements.receiptActions.classList.remove('visible');
-            this.elements.selectionModeHint.textContent = 'Long-press to select';
+             // Only show hint if there are sales today
+            if (this.elements.recentSalesList.children.length > 0 && this.elements.recentSalesList.children[0].className !== 'empty-state') {
+                this.elements.selectionModeHint.textContent = 'Long-press to select';
+            }
         },
         toggleSaleSelection(element, sale) { if (this.state.selectedSales.has(sale.id)) { this.state.selectedSales.delete(sale.id); element.classList.remove('selected'); } else { this.state.selectedSales.add(sale.id); element.classList.add('selected'); } this.elements.generateReceiptBtn.disabled = this.state.selectedSales.size === 0; },
         async generateReceipt() {

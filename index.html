@@ -137,7 +137,8 @@
                 <span>Home</span>
             </button>
             <button id="sell-item-btn-main" class="nav-btn-main disabled">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 21-6-6m2-5a7 7 0 1 1-14 0 7 7 0 0 1 14 0z"></path></svg>
+                 <div class="nav-btn-loader"></div>
+                 <svg class="nav-btn-icon" xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6.5h2.5l1.52 7.62A2 2 0 0 0 8.94 16H18a2 2 0 0 0 2-2V7H5.82M18 16l2-10H5M12 21a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"/><path d="M5 21a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"/></svg>
                 <span id="sell-item-btn-text">Sell Item</span>
             </button>
             <button class="nav-btn" data-view="products-view">
@@ -184,7 +185,8 @@
             <h2 id="product-form-title">Add New Product</h2>
             <form id="product-form">
                 <input type="hidden" id="product-id">
-                 <p id="product-source-info" class="source-info"></p>
+                <p id="product-source-info" class="source-info"></p>
+                <p id="product-barcode-display" class="barcode-display" style="display: none;"></p>
                 <div class="form-group">
                     <button type="button" id="change-picture-btn" class="btn btn-secondary" style="width: 100%; margin-bottom: 20px;">Change Picture</button>
                 </div>
