@@ -84,6 +84,7 @@ document.addEventListener('DOMContentLoaded', () => {
             qrCanvas: document.getElementById('qr-canvas'),
             closeQrBtn: document.getElementById('close-qr-btn'),
             entryChoiceModal: document.getElementById('entry-choice-modal'),
+            entryChoiceTitle: document.getElementById('entry-choice-title'),
             cancelEntryChoiceBtn: document.getElementById('cancel-entry-choice-btn'),
             manualEntryBtn: document.getElementById('manual-entry-btn'),
             selectFromProductsBtn: document.getElementById('select-from-products-btn'),
@@ -163,7 +164,11 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.saleQuantityInput.addEventListener('input', this.updateSaleTotal.bind(this));
             this.elements.cancelSaleBtn.addEventListener('click', this.cancelScan.bind(this));
             this.elements.confirmSaleBtn.addEventListener('click', this.handleConfirmSale.bind(this));
-            this.elements.entrySaleBtn.addEventListener('click', () => { this.hideModal(); this.showModal('entry-choice-modal'); });
+            this.elements.entrySaleBtn.addEventListener('click', () => { 
+                this.hideModal(); 
+                this.elements.entryChoiceTitle.textContent = 'New Sale Entry';
+                this.showModal('entry-choice-modal'); 
+            });
             window.addEventListener('beforeinstallprompt', this.handleBeforeInstallPrompt.bind(this));
             this.elements.installBtn.addEventListener('click', this.promptInstall.bind(this));
             this.elements.generateReceiptBtn.addEventListener('click', this.generateReceipt.bind(this));
@@ -465,12 +470,14 @@ document.addEventListener('DOMContentLoaded', () => {
             this.showView('camera-view');
             Camera.startSellScan(
                 this.handleProductFound.bind(this),
-                () => { // onNotFound callback
-                    alert('Product not found in your inventory.');
-                    this.navigateBack();
-                },
+                this.handleSellScanNotFound.bind(this), // onNotFound callback
                 this.elements.captureCountdown
             );
+        },
+
+        handleSellScanNotFound() {
+            this.elements.entryChoiceTitle.textContent = 'Item not found';
+            this.showModal('entry-choice-modal');
         },
 
         cancelScan() { Camera.stop(); this.hideModal(); this.navigateBack(); },
@@ -499,6 +506,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (options.source === 'barcode') {
                 this.elements.productSourceInfo.textContent = 'Added via barcode. No photo.';
                 this.elements.productSourceInfo.style.display = 'block';
+                // Show the captured barcode for the new product
+                if(this.state.capturedBarcode) {
+                    this.elements.productBarcodeDisplay.textContent = this.state.capturedBarcode;
+                    this.elements.productBarcodeDisplay.style.display = 'block';
+                }
             } else if (options.source === 'photo') {
                 this.elements.productSourceInfo.textContent = 'Added via photo. No barcode.';
                 this.elements.productSourceInfo.style.display = 'block';
@@ -595,7 +607,16 @@ document.addEventListener('DOMContentLoaded', () => {
         handleProductFound(product) { this.state.sellingProduct = product; this.elements.saleProductImage.src = product.image ? URL.createObjectURL(product.image) : 'icons/icon-192.png'; this.elements.saleProductName.textContent = product.name; this.elements.saleProductStock.textContent = `Stock: ${product.stock} ${product.unit}`; this.elements.saleQuantityInput.value = 1; this.elements.saleQuantityInput.max = product.stock; this.updateSaleTotal(); this.showModal('confirm-sale-modal'); },
         updateSaleTotal() { const quantity = parseInt(this.elements.saleQuantityInput.value) || 0; const price = this.state.sellingProduct?.price || 0; const total = quantity * price; this.elements.saleTotalPrice.textContent = `₦${total.toLocaleString()}`; },
         async _processSale() { const quantity = parseInt(this.elements.saleQuantityInput.value); const product = this.state.sellingProduct; if (quantity <= 0 || !product || quantity > product.stock) { alert('Invalid quantity or product not available.'); return false; } product.stock -= quantity; await DB.saveProduct(product); const sale = { id: Date.now(), productId: product.id, productName: product.name, quantity: quantity, price: product.price, total: quantity * product.price, timestamp: new Date(), image: product.image }; await DB.addSale(sale); return true; },
-        async handleConfirmSale() { const success = await this._processSale(); if (success) { this.hideModal(); await this.updateDashboard(); await this.renderProducts(); this.navigateBack(); } },
+        async handleConfirmSale() { 
+            Camera.stop(); // Explicitly stop any potential scan, as a safeguard.
+            const success = await this._processSale(); 
+            if (success) { 
+                this.hideModal(); 
+                await this.updateDashboard(); 
+                await this.renderProducts(); 
+                this.navigateBack(); 
+            } 
+        },
         
         async handleManualSale(e) {
             e.preventDefault();
