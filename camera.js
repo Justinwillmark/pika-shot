@@ -99,7 +99,9 @@ const Camera = {
                         }
                     }
                 }
-                requestAnimationFrame(scanLoop);
+                if (this.isScanning) {
+                    requestAnimationFrame(scanLoop);
+                }
             };
             scanLoop();
 
@@ -121,13 +123,15 @@ const Camera = {
             }
             if (!await this._startStream()) return reject('Could not start camera stream.');
 
-            this._startCountdown(3, countdownElement);
+            this._startCountdown(4, countdownElement);
+
+            const products = this.model ? await DB.getAllProducts() : [];
 
             const scanLoop = async () => {
                 if (!this.isScanning) return;
 
                 if (this.videoElement.readyState === this.videoElement.HAVE_ENOUGH_DATA) {
-                    // 1. Barcode Scan
+                    // 1. Barcode Scan (Continuously)
                     if (this.barcodeDetector) {
                         try {
                             const barcodes = await this.barcodeDetector.detect(this.videoElement);
@@ -144,45 +148,50 @@ const Camera = {
                              console.error("Barcode detection failed:", e);
                         }
                     }
-
-                    // 2. Image Recognition Scan
-                    if (this.model) {
-                        const embedding = this.getEmbedding();
-                        const products = await DB.getAllProducts();
-                        let bestMatch = null;
-                        let highestSimilarity = 0;
-                        const SIMILARITY_THRESHOLD = 0.85;
-
-                        for (const product of products) {
-                            if (product.embedding) {
-                                const similarity = this.cosineSimilarity(embedding, product.embedding);
-                                if (similarity > highestSimilarity) {
-                                    highestSimilarity = similarity;
-                                    bestMatch = product;
-                                }
-                            }
-                        }
-
-                        if (highestSimilarity > SIMILARITY_THRESHOLD) {
-                            this.stop();
-                            onMatch(bestMatch);
-                            resolve();
-                            return;
-                        }
-                    }
                 }
-                requestAnimationFrame(scanLoop);
+                
+                if (this.isScanning) {
+                    requestAnimationFrame(scanLoop);
+                }
             };
             scanLoop();
 
-            // 3-second timeout if nothing is found
-            this.scanTimeout = setTimeout(() => {
+            // 4-second timeout: if no barcode found, try image recognition once.
+            this.scanTimeout = setTimeout(async () => {
                 if (this.isScanning) {
+                    // 2. Image Recognition Scan (At the end)
+                    if (this.model) {
+                        const embedding = this.getEmbedding();
+                        if (embedding) {
+                            let bestMatch = null;
+                            let highestSimilarity = 0;
+                            const SIMILARITY_THRESHOLD = 0.85;
+
+                            for (const product of products) {
+                                if (product.embedding) {
+                                    const similarity = this.cosineSimilarity(embedding, product.embedding);
+                                    if (similarity > highestSimilarity) {
+                                        highestSimilarity = similarity;
+                                        bestMatch = product;
+                                    }
+                                }
+                            }
+
+                            if (highestSimilarity > SIMILARITY_THRESHOLD) {
+                                this.stop();
+                                onMatch(bestMatch);
+                                resolve();
+                                return;
+                            }
+                        }
+                    }
+                    
+                    // If we reach here, nothing was found.
                     this.stop();
                     onNotFound();
                     resolve();
                 }
-            }, 3000);
+            }, 4000);
         });
     },
 

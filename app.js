@@ -614,7 +614,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.hideModal(); 
                 await this.updateDashboard(); 
                 await this.renderProducts(); 
-                this.navigateBack(); 
+                this.navigateTo('home-view'); 
             } 
         },
         
