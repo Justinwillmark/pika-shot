@@ -123,7 +123,7 @@ const Camera = {
             }
             if (!await this._startStream()) return reject('Could not start camera stream.');
 
-            this._startCountdown(4, countdownElement);
+            this._startCountdown(3, countdownElement);
 
             const products = this.model ? await DB.getAllProducts() : [];
 
@@ -156,7 +156,7 @@ const Camera = {
             };
             scanLoop();
 
-            // 4-second timeout: if no barcode found, try image recognition once.
+            // 3-second timeout: if no barcode found, try image recognition once.
             this.scanTimeout = setTimeout(async () => {
                 if (this.isScanning) {
                     // 2. Image Recognition Scan (At the end)
@@ -191,7 +191,7 @@ const Camera = {
                     onNotFound();
                     resolve();
                 }
-            }, 4000);
+            }, 3000);
         });
     },
 
