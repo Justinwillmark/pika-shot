@@ -131,15 +131,6 @@
                     <h2 id="welcome-name">Welcome!</h2>
                 </div>
 
-                <div id="wholesaler-toggle-container" style="display: none;">
-                    <span class="toggle-label">My Dashboard</span>
-                    <label class="toggle-switch">
-                        <input type="checkbox" id="wholesaler-view-toggle">
-                        <span class="slider round"></span>
-                    </label>
-                    <span class="toggle-label">Retailer Stocks</span>
-                </div>
-
                 <div id="home-content" class="home-content">
                     <div id="home-dashboard-content">
                         <div class="dashboard-grid">
@@ -158,6 +149,12 @@
                                 <h3 id="items-sold">0</h3>
                             </div>
                         </div>
+
+                        <!-- This is the new link container, replacing the toggle -->
+                        <div id="see-stock-levels-container" class="see-all-container" style="display: none; margin-top: 24px; margin-bottom: 0;">
+                            <button id="see-stock-levels-btn" class="see-all-btn">See customers stock levels</button>
+                        </div>
+                        
                         <div class="recent-sales-container">
                             <div class="recent-sales-header">
                                 <h4>Recent Sales</h4>
@@ -169,9 +166,6 @@
                                 <button id="see-all-sales-btn" class="see-all-btn">See All</button>
                             </div>
                         </div>
-                    </div>
-                    <div id="retailer-stock-view" style="display: none;">
-                        <!-- Retailer stock levels will be rendered here -->
                     </div>
                 </div>
             </div>
@@ -194,6 +188,13 @@
             <div id="all-sales-view" class="view page">
                 <div id="all-sales-list" class="all-sales-container">
                     </div>
+            </div>
+
+            <!-- This is the new dedicated view for stock levels -->
+            <div id="stock-levels-view" class="view page">
+                <div id="retailer-stock-view" class="all-sales-container">
+                    <!-- Retailer stock levels will be rendered here via app.js -->
+                </div>
             </div>
 
         </main>

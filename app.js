@@ -114,8 +114,10 @@ document.addEventListener('DOMContentLoaded', () => {
             productExistsModal: document.getElementById('product-exists-modal'),
             productExistsMessage: document.getElementById('product-exists-message'),
             productExistsOkBtn: document.getElementById('product-exists-ok-btn'),
-            wholesalerToggleContainer: document.getElementById('wholesaler-toggle-container'),
-            wholesalerViewToggle: document.getElementById('wholesaler-view-toggle'),
+            // New and modified elements
+            seeStockLevelsContainer: document.getElementById('see-stock-levels-container'),
+            seeStockLevelsBtn: document.getElementById('see-stock-levels-btn'),
+            stockLevelsView: document.getElementById('stock-levels-view'),
             retailerStockView: document.getElementById('retailer-stock-view'),
         },
 
@@ -224,7 +226,8 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.retryAddScanBtn.addEventListener('click', () => { this.hideModal(); this.startAddProduct(); });
             this.elements.cancelAddScanBtn.addEventListener('click', () => { this.hideModal(); this.navigateTo('products-view'); });
             this.elements.productExistsOkBtn.addEventListener('click', () => { this.hideModal(); this.navigateTo('products-view'); });
-            this.elements.wholesalerViewToggle.addEventListener('change', this.toggleWholesalerView.bind(this));
+            // New event listener for the stock levels link
+            this.elements.seeStockLevelsBtn.addEventListener('click', () => this.navigateTo('stock-levels-view'));
         },
         
         // --- UI & NAVIGATION ---
@@ -242,6 +245,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (viewId === 'all-sales-view') {
                 this.renderAllSales();
+            }
+            
+            if (viewId === 'stock-levels-view') {
+                this.renderRetailerStocks();
             }
 
             this.showView(viewId);
@@ -269,7 +276,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (this.state.productSelectionMode && viewId === 'products-view') {
                 title = 'Select a Product';
             } else {
-                const titles = { 'home-view': 'Home', 'products-view': 'My Products', 'all-sales-view': 'All Sales' };
+                const titles = { 'home-view': 'Home', 'products-view': 'My Products', 'all-sales-view': 'All Sales', 'stock-levels-view': 'Customer Stocks' };
                 title = titles[viewId] || 'pika shot';
             }
             this.elements.headerTitle.textContent = title;
@@ -278,10 +285,11 @@ document.addEventListener('DOMContentLoaded', () => {
         async updateDashboard() {
             if (this.state.user) {
                 this.elements.welcomeName.textContent = `Hello, ${this.state.user.name.split(' ')[0]}!`;
+                // Show the "See customer stock levels" link if user is a Wholesaler
                 if (this.state.user.type === 'Wholesaler') {
-                    this.elements.wholesalerToggleContainer.style.display = 'flex';
+                    this.elements.seeStockLevelsContainer.style.display = 'block';
                 } else {
-                    this.elements.wholesalerToggleContainer.style.display = 'none';
+                    this.elements.seeStockLevelsContainer.style.display = 'none';
                 }
             }
             const date = new Date();
@@ -874,7 +882,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (this.state.firebaseReady && this.state.scannedLogData.senderId && this.state.user.uid) {
                 try {
-                    const retailerDocRef = window.fb.doc(window.fb.db, `retailer_stocks/${this.state.scannedLogData.senderId}`, this.state.user.uid);
+                    const retailerDocRef = window.fb.doc(window.fb.db, `retailer_stocks/${this.state.scannedLogData.senderId}/supplied_retailers/${this.state.user.uid}`);
                     const docSnap = await window.fb.getDoc(retailerDocRef);
                     let existingProducts = docSnap.exists() ? docSnap.data().products : {};
                     const finalProducts = { ...existingProducts, ...updatedProductsForFirebase };
@@ -901,18 +909,6 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         // --- WHOLESALER VIEW ---
-        toggleWholesalerView(e) {
-            const isChecked = e.target.checked;
-            if (isChecked) {
-                this.elements.homeDashboardContent.style.display = 'none';
-                this.elements.retailerStockView.style.display = 'block';
-                this.renderRetailerStocks();
-            } else {
-                this.elements.homeDashboardContent.style.display = 'block';
-                this.elements.retailerStockView.style.display = 'none';
-            }
-        },
-
         async renderRetailerStocks() {
             this.elements.retailerStockView.innerHTML = '<div class="spinner"></div>';
             if (!this.state.firebaseReady || !this.state.user.uid) {
@@ -921,7 +917,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             try {
-                const retailersRef = window.fb.collection(window.fb.db, `retailer_stocks/${this.state.user.uid}`);
+                const retailersRef = window.fb.collection(window.fb.db, `retailer_stocks/${this.state.user.uid}/supplied_retailers`);
                 const querySnapshot = await window.fb.getDocs(retailersRef);
                 
                 if (querySnapshot.empty) {
