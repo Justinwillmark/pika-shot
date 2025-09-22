@@ -114,7 +114,6 @@ document.addEventListener('DOMContentLoaded', () => {
             productExistsModal: document.getElementById('product-exists-modal'),
             productExistsMessage: document.getElementById('product-exists-message'),
             productExistsOkBtn: document.getElementById('product-exists-ok-btn'),
-            // New and modified elements
             seeStockLevelsContainer: document.getElementById('see-stock-levels-container'),
             seeStockLevelsBtn: document.getElementById('see-stock-levels-btn'),
             stockLevelsView: document.getElementById('stock-levels-view'),
@@ -139,6 +138,7 @@ document.addEventListener('DOMContentLoaded', () => {
             selectedSales: new Set(),
             longPressTimer: null,
             firebaseReady: false,
+            retailerListener: null, // For unsubscribing from Firestore listener
         },
 
         // --- INITIALIZATION ---
@@ -226,7 +226,6 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.retryAddScanBtn.addEventListener('click', () => { this.hideModal(); this.startAddProduct(); });
             this.elements.cancelAddScanBtn.addEventListener('click', () => { this.hideModal(); this.navigateTo('products-view'); });
             this.elements.productExistsOkBtn.addEventListener('click', () => { this.hideModal(); this.navigateTo('products-view'); });
-            // New event listener for the stock levels link
             this.elements.seeStockLevelsBtn.addEventListener('click', () => this.navigateTo('stock-levels-view'));
         },
         
@@ -249,6 +248,12 @@ document.addEventListener('DOMContentLoaded', () => {
             
             if (viewId === 'stock-levels-view') {
                 this.renderRetailerStocks();
+            } else {
+                // If we navigate away from the stock view, unsubscribe from the listener
+                if (this.state.retailerListener) {
+                    this.state.retailerListener(); // This is the unsubscribe function returned by onSnapshot
+                    this.state.retailerListener = null;
+                }
             }
 
             this.showView(viewId);
@@ -285,7 +290,6 @@ document.addEventListener('DOMContentLoaded', () => {
         async updateDashboard() {
             if (this.state.user) {
                 this.elements.welcomeName.textContent = `Hello, ${this.state.user.name.split(' ')[0]}!`;
-                // Show the "See customer stock levels" link if user is a Wholesaler
                 if (this.state.user.type === 'Wholesaler') {
                     this.elements.seeStockLevelsContainer.style.display = 'block';
                 } else {
@@ -322,7 +326,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 saleEl.className = 'sale-item';
                 saleEl.dataset.saleId = sale.id;
                 const imageUrl = sale.image ? URL.createObjectURL(sale.image) : 'icons/icon-192.png';
-                saleEl.innerHTML = `<img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${sale.quantity} x ₦${sale.price.toLocaleString()}</span></div><p class="sale-price">₦${sale.total.toLocaleString()}</p>`;
+                saleEl.innerHTML = `<img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${sale.quantity} x &#8358;${sale.price.toLocaleString()}</span></div><p class="sale-price">&#8358;${sale.total.toLocaleString()}</p>`;
                 
                 this.addSaleItemEventListeners(saleEl, sale);
                 targetElement.appendChild(saleEl);
@@ -348,7 +352,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const groupHeader = document.createElement('div');
                 groupHeader.className = 'sales-group-header';
-                groupHeader.innerHTML = `<h3>${groupTitle}</h3><p class="sales-group-total">₦${dailyTotal.toLocaleString()}</p>`;
+                groupHeader.innerHTML = `<h3>${groupTitle}</h3><p class="sales-group-total">&#8358;${dailyTotal.toLocaleString()}</p>`;
                 groupContainer.appendChild(groupHeader);
 
                 groupedSales[groupTitle].forEach(sale => {
@@ -356,7 +360,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     saleEl.className = 'sale-item';
                     saleEl.dataset.saleId = sale.id;
                     const imageUrl = sale.image ? URL.createObjectURL(sale.image) : 'icons/icon-192.png';
-                    saleEl.innerHTML = `<img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${sale.quantity} x ₦${sale.price.toLocaleString()}</span></div><p class="sale-price">₦${sale.total.toLocaleString()}</p>`;
+                    saleEl.innerHTML = `<img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${sale.quantity} x &#8358;${sale.price.toLocaleString()}</span></div><p class="sale-price">&#8358;${sale.total.toLocaleString()}</p>`;
                     this.addSaleItemEventListeners(saleEl, sale);
                     groupContainer.appendChild(saleEl);
                 });
@@ -426,6 +430,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 const imageUrl = product.image ? URL.createObjectURL(product.image) : 'icons/icon-192.png';
                 let outOfStockBadge = product.stock <= 0 ? '<div class="out-of-stock-badge">Out of Stock</div>' : '';
                 
+                const words = product.name.split(' ');
+                const displayName = words.length > 2 ? words.slice(0, 2).join(' ') + '...' : product.name;
+
                 const pencilIconSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>`;
                 card.innerHTML = `
                     ${outOfStockBadge}
@@ -434,8 +441,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         <img src="${imageUrl}" alt="${product.name}">
                     </div>
                     <div class="product-card-info">
-                        <h4>${product.name}</h4>
-                        <p class="product-price">₦${product.price.toLocaleString()}</p>
+                        <h4>${displayName}</h4>
+                        <p class="product-price">&#8358;${product.price.toLocaleString()}</p>
                         <p class="product-stock">${product.stock > 0 ? `${product.stock} ${product.unit} left` : ''}</p>
                     </div>`;
                 
@@ -584,6 +591,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         handleConfirmPicture() {
             this.hideModal();
+            this.elements.addChangePictureBtn.textContent = 'New product photo added';
             this.showModal('product-form-modal'); // Re-show form with new picture data ready in state
         },
         
@@ -592,6 +600,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.productFormTitle.textContent = 'Add New Product';
             this.elements.deleteProductBtn.style.display = 'none';
             this.elements.addChangePictureBtn.style.display = 'block';
+            this.elements.addChangePictureBtn.textContent = 'Add / Change Picture';
             this.elements.productIdInput.value = '';
             this.elements.productBarcodeDisplay.style.display = 'none';
             this.state.capturedBlob = null;
@@ -645,12 +654,13 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.productFormTitle.textContent = 'Edit Product'; 
             this.elements.deleteProductBtn.style.display = 'flex'; 
             this.elements.addChangePictureBtn.style.display = 'block';
+            this.elements.addChangePictureBtn.textContent = 'Add / Change Picture';
             this.elements.productIdInput.value = product.id; 
             this.elements.productNameInput.value = product.name; 
             this.elements.productPriceInput.value = product.price; 
             this.elements.productStockInput.value = product.stock; 
             this.elements.productUnitInput.value = product.unit; 
-            this.state.capturedBlob = product.image; // Pre-load existing image blob
+            this.state.capturedBlob = product.image;
             
             if (product.barcode) {
                 this.elements.productSourceInfo.textContent = 'Product has a barcode.';
@@ -668,7 +678,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         async handleDeleteProduct() {
             if (!this.state.editingProduct) return;
-            const confirmation = window.confirm(`Are you sure you want to permanently delete "${this.state.editingProduct.name}"? This action cannot be undone.`);
+            // Not using window.confirm as it can be blocked in PWAs
+            const confirmation = confirm(`Are you sure you want to permanently delete "${this.state.editingProduct.name}"? This action cannot be undone.`);
             if (confirmation) {
                 await DB.deleteProduct(this.state.editingProduct.id);
                 this.hideModal();
@@ -831,8 +842,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const itemsHtml = logData.items.map(item => `
                 <div class="log-details-row">
                     <div class="log-details-cell item">${item.name} (${item.quantity} ${item.unit})</div>
-                    <div class="log-details-cell price">@ ₦${item.price.toLocaleString()}</div>
-                    <div class="log-details-cell total">₦${(item.quantity * item.price).toLocaleString()}</div>
+                    <div class="log-details-cell price">@ &#8358;${item.price.toLocaleString()}</div>
+                    <div class="log-details-cell total">&#8358;${(item.quantity * item.price).toLocaleString()}</div>
                 </div>
             `).join('');
 
@@ -850,7 +861,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     ${itemsHtml}
                     <div class="log-details-row footer">
                         <div class="log-details-cell item">TOTAL PURCHASE</div>
-                        <div class="log-details-cell total">₦${totalCost.toLocaleString()}</div>
+                        <div class="log-details-cell total">&#8358;${totalCost.toLocaleString()}</div>
                     </div>
                 </div>
             `;
@@ -883,14 +894,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (this.state.firebaseReady && this.state.scannedLogData.senderId && this.state.user.uid) {
                 try {
                     const retailerDocRef = window.fb.doc(window.fb.db, `retailer_stocks/${this.state.scannedLogData.senderId}/supplied_retailers/${this.state.user.uid}`);
-                    const docSnap = await window.fb.getDoc(retailerDocRef);
-                    let existingProducts = docSnap.exists() ? docSnap.data().products : {};
-                    const finalProducts = { ...existingProducts, ...updatedProductsForFirebase };
-
                     await window.fb.setDoc(retailerDocRef, {
                         retailerName: this.state.user.business,
                         retailerLocation: this.state.user.location,
-                        products: finalProducts,
+                        retailerPhone: this.state.user.phone,
+                        products: updatedProductsForFirebase,
                         lastUpdate: window.fb.serverTimestamp()
                     }, { merge: true });
 
@@ -909,7 +917,7 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         // --- WHOLESALER VIEW ---
-        async renderRetailerStocks() {
+        renderRetailerStocks() {
             this.elements.retailerStockView.innerHTML = '<div class="spinner"></div>';
             if (!this.state.firebaseReady || !this.state.user.uid) {
                 this.elements.retailerStockView.innerHTML = `<p class="empty-state">Could not connect to online services.</p>`;
@@ -917,41 +925,54 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             try {
-                const retailersRef = window.fb.collection(window.fb.db, `retailer_stocks/${this.state.user.uid}/supplied_retailers`);
-                const querySnapshot = await window.fb.getDocs(retailersRef);
-                
-                if (querySnapshot.empty) {
-                    this.elements.retailerStockView.innerHTML = `<p class="empty-state">No retailer data found. Share a log with a retailer to see their stock here.</p>`;
-                    return;
+                if (this.state.retailerListener) {
+                    this.state.retailerListener(); // Unsubscribe from previous listener
                 }
+                const retailersRef = window.fb.collection(window.fb.db, `retailer_stocks/${this.state.user.uid}/supplied_retailers`);
+                const q = window.fb.query(retailersRef);
 
-                let contentHtml = '';
-                querySnapshot.forEach(doc => {
-                    const retailer = doc.data();
-                    let productsHtml = '';
-                    if (retailer.products && Object.keys(retailer.products).length > 0) {
-                        for (const productName in retailer.products) {
-                            const product = retailer.products[productName];
-                            productsHtml += `<div class="retailer-product-item"><span>${productName}</span><strong>${product.stock} ${product.unit}</strong></div>`;
-                        }
-                    } else {
-                        productsHtml = `<div class="retailer-product-item"><span>No product data available.</span></div>`;
+                this.state.retailerListener = window.fb.onSnapshot(q, (querySnapshot) => {
+                    if (querySnapshot.empty) {
+                        this.elements.retailerStockView.innerHTML = `<p class="empty-state">No retailer data found. Share a log with a retailer to see their stock here.</p>`;
+                        return;
                     }
-                    
-                    contentHtml += `
-                        <div class="card">
-                            <h4>${retailer.retailerName} (${retailer.retailerLocation})</h4>
-                            <div class="retailer-product-list">${productsHtml}</div>
-                        </div>
-                    `;
+
+                    let contentHtml = '';
+                    querySnapshot.forEach(doc => {
+                        const retailer = doc.data();
+                        let productsHtml = '';
+                        if (retailer.products && Object.keys(retailer.products).length > 0) {
+                            for (const productName in retailer.products) {
+                                const product = retailer.products[productName];
+                                productsHtml += `<div class="retailer-product-item"><span>${productName}</span><strong>${product.stock} ${product.unit}</strong></div>`;
+                            }
+                        } else {
+                            productsHtml = `<div class="retailer-product-item"><span>No product data available.</span></div>`;
+                        }
+                        
+                        const phoneIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>`;
+                        const callButton = retailer.retailerPhone ? `<a href="tel:${retailer.retailerPhone}" class="retailer-call-btn" title="Call ${retailer.retailerName}">${phoneIcon}</a>` : '';
+
+                        contentHtml += `
+                            <div class="card">
+                                <div class="retailer-header">
+                                    <h4>${retailer.retailerName} (${retailer.retailerLocation})</h4>
+                                    ${callButton}
+                                </div>
+                                <div class="retailer-product-list">${productsHtml}</div>
+                            </div>
+                        `;
+                    });
+                    this.elements.retailerStockView.innerHTML = contentHtml;
+                }, (error) => {
+                     console.error("Error fetching retailer stocks in real-time:", error);
+                     this.elements.retailerStockView.innerHTML = `<p class="empty-state">Error loading retailer data.</p>`;
                 });
-                this.elements.retailerStockView.innerHTML = contentHtml;
             } catch (error) {
-                console.error("Error fetching retailer stocks:", error);
+                console.error("Error setting up retailer stocks listener:", error);
                 this.elements.retailerStockView.innerHTML = `<p class="empty-state">Error loading retailer data.</p>`;
             }
         },
-
 
         // --- PWA FEATURES ---
         handleBeforeInstallPrompt(event) { event.preventDefault(); this.state.deferredInstallPrompt = event; this.elements.installBtn.style.display = 'block'; },

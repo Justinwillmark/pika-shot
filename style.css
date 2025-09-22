@@ -186,7 +186,23 @@ html, body {
 .recent-sales-header h4 { font-size: clamp(1rem, 3vw, 1.1rem); font-weight: 600; }
 .selection-hint { font-size: 0.8rem; color: var(--text-light); }
 .see-all-container { text-align: center; margin-top: 16px; margin-bottom: 27px; }
-.see-all-btn { background: none; border: none; color: var(--primary-color); font-weight: 600; font-size: clamp(0.9rem, 2.5vw, 1rem); cursor: pointer; padding: 8px; }
+.see-all-btn {
+    background: none;
+    border: none;
+    color: var(--primary-color);
+    font-weight: 600;
+    font-size: clamp(0.9rem, 2.5vw, 1rem);
+    cursor: pointer;
+    padding: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+.arrow-icon {
+    display: inline-block;
+    vertical-align: middle;
+}
 .sale-item { display: flex; align-items: center; background: var(--surface-color); padding: 12px; border-radius: var(--border-radius); margin-bottom: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.05); transition: background-color 0.2s, transform 0.2s; }
 .sale-item.selectable { cursor: pointer; }
 .sale-item.selected { background-color: #e0eaf6; transform: scale(1.02); box-shadow: 0 4px 8px rgba(74, 144, 226, 0.3); }
@@ -258,13 +274,30 @@ html, body {
     margin-bottom: 16px;
     box-shadow: var(--box-shadow);
 }
-#retailer-stock-view h4 {
+.retailer-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     padding: 12px 16px;
-    margin:0;
+    margin: 0;
     border-bottom: 1px solid var(--border-color);
     background-color: #f9f9f9;
+}
+.retailer-header h4 {
+    margin: 0;
     font-size: 1rem;
     font-weight: 600;
+    flex-grow: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.retailer-call-btn {
+    color: var(--primary-color);
+    padding: 4px;
+    line-height: 0;
+    margin-left: 8px;
+    flex-shrink: 0;
 }
 #retailer-stock-view .retailer-product-list {
     padding: 8px 16px;
@@ -318,7 +351,7 @@ html, body {
 
 /* Receipt & Log Modals */
 .receipt-modal { max-height: 80vh; }
-.receipt-paper { background: #fff; padding: 20px; font-family: 'Courier New', Courier, monospace; color: #000; border: 1px dashed #ccc; }
+.receipt-paper { background: #fff; padding: 20px; font-family: var(--font-family); color: #000; border: 1px dashed #ccc; }
 .receipt-header { text-align: center; margin-bottom: 20px; }
 .receipt-header h3 { margin: 0; font-size: 1.2rem; }
 .receipt-header p { margin: 2px 0; font-size: 0.8rem; }

@@ -15,7 +15,7 @@
         // Import the functions you need from the SDKs you need
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-app.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-auth.js";
-        import { getFirestore, collection, doc, getDoc, setDoc, getDocs, serverTimestamp, updateDoc } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore.js";
+        import { getFirestore, collection, doc, getDoc, setDoc, getDocs, serverTimestamp, updateDoc, onSnapshot, query } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore.js";
         
         // Your web app's Firebase configuration
         const firebaseConfig = {
@@ -39,7 +39,9 @@
             setDoc,
             getDocs,
             updateDoc,
-            serverTimestamp
+            serverTimestamp,
+            onSnapshot,
+            query
         };
     </script>
 </head>
@@ -150,9 +152,8 @@
                             </div>
                         </div>
 
-                        <!-- This is the new link container, replacing the toggle -->
                         <div id="see-stock-levels-container" class="see-all-container" style="display: none; margin-top: 24px; margin-bottom: 0;">
-                            <button id="see-stock-levels-btn" class="see-all-btn">See customers stock levels</button>
+                            <button id="see-stock-levels-btn" class="see-all-btn">See customers stock levels <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="arrow-icon"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
                         </div>
                         
                         <div class="recent-sales-container">
@@ -163,7 +164,7 @@
                             <div id="recent-sales-list">
                                 </div>
                             <div id="see-all-container" class="see-all-container" style="display: none;">
-                                <button id="see-all-sales-btn" class="see-all-btn">See All</button>
+                                <button id="see-all-sales-btn" class="see-all-btn">See All <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="arrow-icon"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
                             </div>
                         </div>
                     </div>
@@ -190,7 +191,6 @@
                     </div>
             </div>
 
-            <!-- This is the new dedicated view for stock levels -->
             <div id="stock-levels-view" class="view page">
                 <div id="retailer-stock-view" class="all-sales-container">
                     <!-- Retailer stock levels will be rendered here via app.js -->
