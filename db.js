@@ -1,7 +1,7 @@
 const DB = {
     db: null,
     dbName: 'PikaShotDB',
-    dbVersion: 2, // Incremented version to trigger onupgradeneeded
+    dbVersion: 2, // Version remains the same if schema hasn't changed beyond user store
 
     init() {
         return new Promise((resolve, reject) => {
@@ -60,6 +60,7 @@ const DB = {
     // --- USER ---
     saveUser(userData) {
         const store = this._getStore('user', 'readwrite');
+        // The user object now contains more fields, but the schema is flexible.
         const user = { id: 1, ...userData };
         return this._requestToPromise(store.put(user));
     },

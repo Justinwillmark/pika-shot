@@ -7,11 +7,8 @@
     <title>pika shot</title>
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="manifest.json">
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.11.0/dist/tf.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.0/dist/mobilenet.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcode@1.4.4/build/qrcode.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 </head>
 <body>
 
@@ -29,15 +26,27 @@
                 <p>The simplest way to track your sales and inventory.</p>
                 <div class="form-group">
                     <label for="user-name">Your Name</label>
-                    <input type="text" id="user-name" placeholder="e.g., Chiamaka">
+                    <input type="text" id="user-name" placeholder="e.g., Chiamaka" required>
                 </div>
                 <div class="form-group">
                     <label for="business-name">Business Name</label>
-                    <input type="text" id="business-name" placeholder="e.g., Amaka's Provisions">
+                    <input type="text" id="business-name" placeholder="e.g., Amaka's Provisions" required>
+                </div>
+                <div class="form-group">
+                    <label for="user-phone">Phone Number</label>
+                    <input type="tel" id="user-phone" placeholder="e.g., 08012345678" required>
+                </div>
+                 <div class="form-group">
+                    <label for="business-type">Business Type</label>
+                    <select id="business-type" required>
+                        <option value="" disabled selected>Select your business type</option>
+                        <option value="Wholesaler">Wholesaler</option>
+                        <option value="Retailer">Retailer</option>
+                    </select>
                 </div>
                  <div class="form-group">
                     <label for="business-location">Location</label>
-                    <select id="business-location">
+                    <select id="business-location" required>
                         <option value="" disabled selected>Select your area</option>
                         <option value="Lagos Island">Lagos Island</option>
                         <option value="Ikeja">Ikeja</option>
@@ -50,6 +59,17 @@
                 <button id="start-onboarding-btn" class="btn btn-primary">Get Started</button>
             </div>
         </div>
+        
+        <div id="location-permission-view" class="view">
+             <div class="onboarding-content">
+                <div class="permission-icon">
+                   <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                </div>
+                <h2>Location Access</h2>
+                <p>pika shot uses your location to provide relevant insights. Please allow access to continue.</p>
+                <button id="grant-location-btn" class="btn btn-primary">Allow Location</button>
+            </div>
+        </div>
 
         <div id="camera-permission-view" class="view">
             <div class="onboarding-content">
@@ -57,7 +77,7 @@
                     <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
                 </div>
                 <h2>Camera Access</h2>
-                <p>pika shot uses your camera to scan products instantly. This makes adding items and selling faster than ever. Please allow access to continue.</p>
+                <p>pika shot uses your camera to scan product barcodes instantly. This makes adding items and selling faster than ever. Please allow access to continue.</p>
                 <button id="grant-camera-btn" class="btn btn-primary">Allow Camera</button>
             </div>
         </div>
@@ -154,11 +174,10 @@
 
         <div id="camera-view" class="view camera-container">
             <video id="camera-feed" playsinline></video>
-            <canvas id="qr-canvas-helper" style="display:none;"></canvas>
             <div id="camera-overlay" class="camera-overlay">
                 <div class="scan-box"></div>
                 <p id="scan-feedback">Scanning...</p>
-                <div id="capture-countdown" class="capture-countdown"></div>
+                <div id="scan-timer-display" class="scan-timer-display">3</div>
             </div>
             <button id="cancel-scan-btn" class="btn btn-secondary cancel-scan-btn">Cancel</button>
         </div>
@@ -188,7 +207,7 @@
                 <p id="product-source-info" class="source-info"></p>
                 <p id="product-barcode-display" class="barcode-display" style="display: none;"></p>
                 <div class="form-group">
-                    <button type="button" id="change-picture-btn" class="btn btn-secondary" style="width: 100%; margin-bottom: 20px;">Change Picture</button>
+                    <button type="button" id="add-change-picture-btn" class="btn btn-secondary" style="width: 100%; margin-bottom: 20px;">Add / Change Picture</button>
                 </div>
                 <div class="form-group"><label for="product-name">Product Name</label><input type="text" id="product-name" required></div>
                 <div class="form-group"><label for="product-price">Price (₦)</label><input type="number" id="product-price" inputmode="decimal" required></div>

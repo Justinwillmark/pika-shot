@@ -38,7 +38,7 @@ self.addEventListener('activate', event => {
 
 self.addEventListener('fetch', event => {
     // For external CDN resources, try network first, but don't cache or fail.
-    if (event.request.url.includes('cdn.jsdelivr.net')) {
+    if (event.request.url.includes('cdn.jsdelivr.net') || event.request.url.includes('cdnjs.cloudflare.com')) {
         event.respondWith(
             fetch(event.request).catch(() => {
                 // If the network fails (offline), return a simple error response.

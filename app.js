@@ -19,7 +19,11 @@ document.addEventListener('DOMContentLoaded', () => {
             startOnboardingBtn: document.getElementById('start-onboarding-btn'),
             userNameInput: document.getElementById('user-name'),
             businessNameInput: document.getElementById('business-name'),
+            userPhoneInput: document.getElementById('user-phone'),
+            businessTypeInput: document.getElementById('business-type'),
             businessLocationInput: document.getElementById('business-location'),
+            locationPermissionView: document.getElementById('location-permission-view'),
+            grantLocationBtn: document.getElementById('grant-location-btn'),
             cameraPermissionView: document.getElementById('camera-permission-view'),
             grantCameraBtn: document.getElementById('grant-camera-btn'),
             homeView: document.getElementById('home-view'),
@@ -39,7 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
             cameraView: document.getElementById('camera-view'),
             cancelScanBtn: document.getElementById('cancel-scan-btn'),
             scanFeedback: document.getElementById('scan-feedback'),
-            captureCountdown: document.getElementById('capture-countdown'),
+            scanTimerDisplay: document.getElementById('scan-timer-display'),
             sellItemBtnMain: document.getElementById('sell-item-btn-main'),
             sellItemBtnText: document.getElementById('sell-item-btn-text'),
             modalContainer: document.getElementById('modal-container'),
@@ -55,7 +59,7 @@ document.addEventListener('DOMContentLoaded', () => {
             productForm: document.getElementById('product-form'),
             productFormTitle: document.getElementById('product-form-title'),
             productIdInput: document.getElementById('product-id'),
-            changePictureBtn: document.getElementById('change-picture-btn'),
+            addChangePictureBtn: document.getElementById('add-change-picture-btn'),
             productNameInput: document.getElementById('product-name'),
             productPriceInput: document.getElementById('product-price'),
             productStockInput: document.getElementById('product-stock'),
@@ -109,7 +113,6 @@ document.addEventListener('DOMContentLoaded', () => {
             currentView: 'home-view',
             cameraReady: false,
             capturedBlob: null,
-            capturedEmbedding: null,
             capturedBarcode: null,
             editingProduct: null,
             isChangingPicture: false, 
@@ -136,7 +139,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else {
                     await this.loadMainApp();
                 }
-                this.loadCameraModelInBackground();
+                this.loadCameraScannerInBackground();
             } catch (error) {
                 console.error("Critical initialization failed:", error);
                 alert("App could not start due to a storage issue. Please ensure you're not in private browsing mode and have available space.");
@@ -149,6 +152,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setupEventListeners() {
             this.elements.backBtn.addEventListener('click', this.navigateBack.bind(this));
             this.elements.startOnboardingBtn.addEventListener('click', this.handleOnboarding.bind(this));
+            this.elements.grantLocationBtn.addEventListener('click', this.handleLocationPermission.bind(this));
             this.elements.grantCameraBtn.addEventListener('click', this.handleCameraPermission.bind(this));
             this.elements.navButtons.forEach(btn => btn.addEventListener('click', () => this.navigateTo(btn.dataset.view)));
             this.elements.sellItemBtnMain.addEventListener('click', this.startSellScan.bind(this));
@@ -159,8 +163,8 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.cancelScanBtn.addEventListener('click', this.cancelScan.bind(this));
             this.elements.retakePictureBtn.addEventListener('click', this.handleRetakePicture.bind(this));
             this.elements.confirmPictureBtn.addEventListener('click', this.handleConfirmPicture.bind(this));
-            this.elements.changePictureBtn.addEventListener('click', this.handleChangePicture.bind(this));
-            this.elements.cancelPictureBtn.addEventListener('click', this.cancelScan.bind(this));
+            this.elements.addChangePictureBtn.addEventListener('click', this.handleAddOrChangePicture.bind(this));
+            this.elements.cancelPictureBtn.addEventListener('click', () => this.hideModal());
             this.elements.saleQuantityInput.addEventListener('input', this.updateSaleTotal.bind(this));
             this.elements.cancelSaleBtn.addEventListener('click', this.cancelScan.bind(this));
             this.elements.confirmSaleBtn.addEventListener('click', this.handleConfirmSale.bind(this));
@@ -191,7 +195,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // --- UI & NAVIGATION ---
         showLoader() { this.elements.loader.style.display = 'flex'; this.elements.appContainer.style.display = 'none'; },
         hideLoader() { this.elements.loaderSpinner.style.display = 'none'; this.elements.loaderCheck.style.display = 'block'; setTimeout(() => { this.elements.loader.style.opacity = '0'; this.elements.appContainer.style.display = 'flex'; setTimeout(() => { this.elements.loader.style.display = 'none'; }, 500); }, 500); },
-        showView(viewId) { this.elements.views.forEach(view => view.classList.remove('active')); const viewToShow = document.getElementById(viewId); if (viewToShow) { viewToShow.classList.add('active'); this.state.currentView = viewId; if (!['onboarding-view', 'camera-permission-view', 'camera-view'].includes(viewId)) { this.updateHeader(viewId); } } },
+        showView(viewId) { this.elements.views.forEach(view => view.classList.remove('active')); const viewToShow = document.getElementById(viewId); if (viewToShow) { viewToShow.classList.add('active'); this.state.currentView = viewId; if (!['onboarding-view', 'camera-permission-view', 'location-permission-view', 'camera-view'].includes(viewId)) { this.updateHeader(viewId); } } },
         showModal(modalId) { this.elements.modalContainer.style.display = 'flex'; this.elements.modalContainer.querySelectorAll('.modal-content').forEach(m => m.style.display = 'none'); const modalToShow = document.getElementById(modalId); if (modalToShow) { modalToShow.style.display = 'block'; } },
         hideModal() { this.elements.modalContainer.style.display = 'none'; this.elements.modalContainer.querySelectorAll('.modal-content').forEach(m => m.style.display = 'none'); },
         navigateTo(viewId, isBackNavigation = false) {
@@ -409,9 +413,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // --- CORE APP LOGIC ---
         async loadMainApp() { this.elements.appHeader.style.display = 'flex'; this.elements.mainContent.style.display = 'block'; this.elements.bottomNav.style.display = 'flex'; this.navigateTo('home-view'); await this.updateDashboard(); await this.renderProducts(); },
-        async handleOnboarding(e) { e.preventDefault(); const name = this.elements.userNameInput.value.trim(); const business = this.elements.businessNameInput.value.trim(); const location = this.elements.businessLocationInput.value; if (!name || !business || !location) { alert('Please fill in all fields.'); return; } this.state.user = { name, business, location }; await DB.saveUser(this.state.user); this.showView('camera-permission-view'); },
-        async handleCameraPermission() { try { const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }); stream.getTracks().forEach(track => track.stop()); await this.loadMainApp(); } catch (err) { console.error("Camera permission denied:", err); alert("Camera access is required. Please enable it in browser settings."); } },
-        async loadCameraModelInBackground() { 
+        async handleOnboarding(e) { e.preventDefault(); const name = this.elements.userNameInput.value.trim(); const business = this.elements.businessNameInput.value.trim(); const phone = this.elements.userPhoneInput.value.trim(); const type = this.elements.businessTypeInput.value; const location = this.elements.businessLocationInput.value; if (!name || !business || !phone || !type || !location) { alert('Please fill in all fields.'); return; } this.state.user = { id: 1, name, business, phone, type, location }; await DB.saveUser(this.state.user); this.showView('location-permission-view'); },
+        handleLocationPermission() {
+             navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    console.log('Location permission granted:', position.coords);
+                    this.showView('camera-permission-view');
+                },
+                (error) => {
+                    console.warn('Location permission denied:', error.message);
+                    alert("Location access is optional but recommended. You can enable it later in your browser settings.");
+                    this.showView('camera-permission-view');
+                },
+                { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+            );
+        },
+        async handleCameraPermission() { try { const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }); stream.getTracks().forEach(track => track.stop()); await this.loadMainApp(); } catch (err) { console.error("Camera permission denied:", err); alert("Camera access is required for barcode scanning. Please enable it in browser settings."); } },
+        async loadCameraScannerInBackground() { 
             try { 
                 this.elements.sellItemBtnText.textContent = 'Loading...'; 
                 this.elements.sellItemBtnMain.classList.add('loading');
@@ -420,9 +438,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.addNewProductBtn.classList.remove('disabled'); 
                 this.elements.sellItemBtnMain.classList.remove('disabled'); 
                 this.elements.sellItemBtnText.textContent = 'Sell Item'; 
-                console.log("Camera model ready."); 
+                console.log("Barcode scanner ready."); 
             } catch (error) { 
-                console.error("Failed to load camera model:", error); 
+                console.error("Failed to initialize scanner:", error); 
                 this.state.cameraReady = false; 
                 this.elements.sellItemBtnText.textContent = 'Offline'; 
             } finally {
@@ -432,12 +450,18 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // --- ADD PRODUCT FLOW ---
         startAddProduct() { 
-            if (!this.state.cameraReady) { alert("Camera is not ready yet. Please wait or check your connection."); return; }
-            if (!Camera.barcodeDetector && !Camera.model) { alert("Scanning is not available. Your browser might not be supported."); return; }
-            this.elements.scanFeedback.textContent = 'Scan barcode or product';
-            this.elements.captureCountdown.textContent = '';
+            if (!this.state.cameraReady) { alert("Scanner is not ready yet. Please wait or check your connection."); return; }
+            if (!Camera.barcodeDetector) { alert("Barcode scanning is not available on this browser."); return; }
+            this.elements.scanFeedback.textContent = 'Scan product barcode';
             this.showView('camera-view');
-            Camera.startAddScan(this.handleAddProductScanResult.bind(this), this.elements.captureCountdown);
+            Camera.startScan(
+                this.handleAddProductScanResult.bind(this), 
+                () => { // onTimeout callback
+                    this.elements.scanFeedback.textContent = 'No barcode found.';
+                    setTimeout(() => { this.cancelScan(); }, 1500);
+                },
+                this.elements.scanTimerDisplay
+            );
         },
         
         handleAddProductScanResult(result) {
@@ -445,15 +469,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 case 'barcode':
                     this.state.capturedBarcode = result.data;
                     this.state.capturedBlob = null;
-                    this.state.capturedEmbedding = null;
                     this.state.editingProduct = null;
                     this._openProductForm({ source: 'barcode' });
-                    break;
-                case 'capture':
-                    this.state.capturedBlob = result.blob;
-                    this.state.capturedEmbedding = result.embedding;
-                    this.elements.capturedImagePreview.src = URL.createObjectURL(result.blob);
-                    this.showModal('confirm-picture-modal');
                     break;
                 case 'qrlog':
                     this.handlePikaLogScanned(result.data);
@@ -463,75 +480,73 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // --- SELL ITEM FLOW ---
         startSellScan() {
-            if (!this.state.cameraReady) { alert("Camera is not ready yet. Please wait or check your connection."); return; }
-             if (!Camera.barcodeDetector && !Camera.model) { alert("Scanning is not available. Your browser might not be supported."); return; }
+            if (!this.state.cameraReady) { alert("Scanner is not ready yet. Please wait or check your connection."); return; }
+            if (!Camera.barcodeDetector) { alert("Barcode scanning is not available on this browser."); return; }
             this.elements.scanFeedback.textContent = 'Scanning for product...';
-            this.elements.captureCountdown.textContent = '';
             this.showView('camera-view');
-            Camera.startSellScan(
-                this.handleProductFound.bind(this),
-                this.handleSellScanNotFound.bind(this), // onNotFound callback
-                this.elements.captureCountdown
+            Camera.startScan(
+                async (result) => { // onResult
+                    if (result.type === 'barcode') {
+                        const product = await DB.getProductByBarcode(result.data);
+                        if (product) {
+                            this.handleProductFound(product);
+                        } else {
+                            this.handleSellScanNotFound();
+                        }
+                    } else if (result.type === 'qrlog') {
+                        this.handlePikaLogScanned(result.data);
+                    }
+                },
+                this.handleSellScanNotFound.bind(this), // onTimeout
+                this.elements.scanTimerDisplay
             );
         },
 
         handleSellScanNotFound() {
-            this.elements.entryChoiceTitle.textContent = 'Item not found';
-            this.showModal('entry-choice-modal');
+            this.elements.scanFeedback.textContent = 'Product not found.';
+            setTimeout(() => {
+                this.cancelScan();
+                this.elements.entryChoiceTitle.textContent = 'Item Not Found';
+                this.showModal('entry-choice-modal');
+            }, 1000);
         },
 
         cancelScan() { Camera.stop(); this.hideModal(); this.navigateBack(); },
-        handleRetakePicture() { this.hideModal(); this.startAddProduct(); },
+        async handleRetakePicture() { this.hideModal(); await this.handleAddOrChangePicture(); },
         
         handleConfirmPicture() {
-            this.state.capturedBarcode = null;
-            if (this.state.isChangingPicture) {
-                this.state.isChangingPicture = false;
-                this.hideModal();
-                this.showModal('product-form-modal'); // Re-show form with new picture data
-            } else {
-                this.state.editingProduct = null;
-                this._openProductForm({ source: 'photo' });
-            }
+            this.hideModal();
+            this.showModal('product-form-modal'); // Re-show form with new picture data ready in state
         },
         
         _openProductForm(options = {}) {
             this.elements.productForm.reset();
             this.elements.productFormTitle.textContent = 'Add New Product';
             this.elements.deleteProductBtn.style.display = 'none';
-            this.elements.changePictureBtn.style.display = 'none'; // Hide by default
+            this.elements.addChangePictureBtn.style.display = 'block';
             this.elements.productIdInput.value = '';
             this.elements.productBarcodeDisplay.style.display = 'none';
+            this.state.capturedBlob = null;
             
             if (options.source === 'barcode') {
-                this.elements.productSourceInfo.textContent = 'Added via barcode. No photo.';
+                this.elements.productSourceInfo.textContent = 'Product identified by barcode.';
                 this.elements.productSourceInfo.style.display = 'block';
-                // Show the captured barcode for the new product
                 if(this.state.capturedBarcode) {
                     this.elements.productBarcodeDisplay.textContent = this.state.capturedBarcode;
                     this.elements.productBarcodeDisplay.style.display = 'block';
                 }
-            } else if (options.source === 'photo') {
-                this.elements.productSourceInfo.textContent = 'Added via photo. No barcode.';
-                this.elements.productSourceInfo.style.display = 'block';
             } else {
                  this.elements.productSourceInfo.style.display = 'none';
             }
             
-            this.hideModal(); // Hide any other open modals
+            this.hideModal();
             this.showModal('product-form-modal');
         },
 
         async handleSaveProduct(e) { 
             e.preventDefault(); 
             const isEditing = !!this.state.editingProduct;
-            let source = isEditing ? this.state.editingProduct.source : (this.state.capturedBarcode ? 'barcode' : 'photo');
             
-            // Handle "Change Picture" case for a barcode-only product
-            if (isEditing && this.state.editingProduct.barcode && this.state.capturedBlob) {
-                source = 'hybrid';
-            }
-
             const productData = { 
                 id: isEditing ? this.state.editingProduct.id : Date.now(), 
                 name: this.elements.productNameInput.value.trim(), 
@@ -539,9 +554,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 stock: parseInt(this.elements.productStockInput.value), 
                 unit: this.elements.productUnitInput.value, 
                 image: this.state.capturedBlob || (isEditing ? this.state.editingProduct.image : null), 
-                embedding: this.state.capturedEmbedding || (isEditing ? this.state.editingProduct.embedding : null),
                 barcode: this.state.capturedBarcode || (isEditing ? this.state.editingProduct.barcode : null),
-                source: source,
                 createdAt: isEditing ? this.state.editingProduct.createdAt : new Date() 
             }; 
 
@@ -552,7 +565,6 @@ document.addEventListener('DOMContentLoaded', () => {
             
             this.hideModal(); 
             this.state.capturedBlob = null; 
-            this.state.capturedEmbedding = null; 
             this.state.capturedBarcode = null;
             this.state.editingProduct = null; 
             
@@ -564,27 +576,22 @@ document.addEventListener('DOMContentLoaded', () => {
             this.state.editingProduct = product; 
             this.elements.productFormTitle.textContent = 'Edit Product'; 
             this.elements.deleteProductBtn.style.display = 'flex'; 
-            this.elements.changePictureBtn.style.display = 'block';
+            this.elements.addChangePictureBtn.style.display = 'block';
             this.elements.productIdInput.value = product.id; 
             this.elements.productNameInput.value = product.name; 
             this.elements.productPriceInput.value = product.price; 
             this.elements.productStockInput.value = product.stock; 
             this.elements.productUnitInput.value = product.unit; 
+            this.state.capturedBlob = product.image; // Pre-load existing image blob
             
-            // Set source info and barcode text
-            if (product.source === 'hybrid' || (product.barcode && product.image)) {
-                this.elements.productSourceInfo.textContent = 'Barcode and photo active.';
-            } else if (product.source === 'barcode' || product.barcode) {
-                this.elements.productSourceInfo.textContent = 'Added via barcode. No photo.';
-            } else {
-                this.elements.productSourceInfo.textContent = 'Added via photo. No barcode.';
-            }
-            this.elements.productSourceInfo.style.display = 'block';
-
             if (product.barcode) {
+                this.elements.productSourceInfo.textContent = 'Product has a barcode.';
+                this.elements.productSourceInfo.style.display = 'block';
                 this.elements.productBarcodeDisplay.textContent = product.barcode;
                 this.elements.productBarcodeDisplay.style.display = 'block';
             } else {
+                this.elements.productSourceInfo.textContent = 'No barcode assigned.';
+                 this.elements.productSourceInfo.style.display = 'block';
                 this.elements.productBarcodeDisplay.style.display = 'none';
             }
 
@@ -593,17 +600,39 @@ document.addEventListener('DOMContentLoaded', () => {
 
         async handleDeleteProduct() {
             if (!this.state.editingProduct) return;
-            const confirmation = confirm(`Are you sure you want to permanently delete "${this.state.editingProduct.name}"? This action cannot be undone.`);
+            // A custom confirmation would be better, but for now `confirm` is used.
+            const confirmation = window.confirm(`Are you sure you want to permanently delete "${this.state.editingProduct.name}"? This action cannot be undone.`);
             if (confirmation) {
                 await DB.deleteProduct(this.state.editingProduct.id);
                 this.hideModal();
                 this.state.editingProduct = null;
                 await this.renderProducts();
                 this.navigateTo('products-view');
+                // A custom toast message would be better than an alert.
                 alert('Product deleted successfully.');
             }
         },
-        handleChangePicture() { this.state.isChangingPicture = true; this.hideModal(); this.startAddProduct(); },
+        
+        async handleAddOrChangePicture() {
+            this.hideModal(); // Hide the product form first
+            this.showView('camera-view');
+            try {
+                const { blob } = await Camera.capturePhoto();
+                if (blob) {
+                    this.state.capturedBlob = blob;
+                    this.elements.capturedImagePreview.src = URL.createObjectURL(blob);
+                    this.navigateBack(); // Go back to the previous view (which should be the product list)
+                    this.showModal('confirm-picture-modal');
+                } else {
+                    this.navigateBack();
+                }
+            } catch (error) {
+                console.error("Error capturing photo:", error);
+                alert("Could not capture photo.");
+                this.navigateBack();
+            }
+        },
+
         handleProductFound(product) { this.state.sellingProduct = product; this.elements.saleProductImage.src = product.image ? URL.createObjectURL(product.image) : 'icons/icon-192.png'; this.elements.saleProductName.textContent = product.name; this.elements.saleProductStock.textContent = `Stock: ${product.stock} ${product.unit}`; this.elements.saleQuantityInput.value = 1; this.elements.saleQuantityInput.max = product.stock; this.updateSaleTotal(); this.showModal('confirm-sale-modal'); },
         updateSaleTotal() { const quantity = parseInt(this.elements.saleQuantityInput.value) || 0; const price = this.state.sellingProduct?.price || 0; const total = quantity * price; this.elements.saleTotalPrice.textContent = `₦${total.toLocaleString()}`; },
         async _processSale() { const quantity = parseInt(this.elements.saleQuantityInput.value); const product = this.state.sellingProduct; if (quantity <= 0 || !product || quantity > product.stock) { alert('Invalid quantity or product not available.'); return false; } product.stock -= quantity; await DB.saveProduct(product); const sale = { id: Date.now(), productId: product.id, productName: product.name, quantity: quantity, price: product.price, total: quantity * product.price, timestamp: new Date(), image: product.image }; await DB.addSale(sale); return true; },
@@ -637,7 +666,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 productToSell.stock -= quantity;
             } else {
-                productToSell = { id: Date.now(), name, price, stock: 0, unit, image: null, embedding: null, barcode: null, source: 'manual', createdAt: new Date() };
+                productToSell = { id: Date.now(), name, price, stock: 0, unit, image: null, barcode: null, createdAt: new Date() };
                 alert(`${name} is a new item and will be added to your products list with 0 stock.`);
             }
 
@@ -770,7 +799,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     existingProduct.stock += item.quantity;
                     productUpdates.push(DB.saveProduct(existingProduct));
                 } else {
-                    const newProduct = { id: Date.now() + Math.random(), name: item.name, price: item.price, stock: item.quantity, unit: item.unit, image: null, embedding: null, barcode: null, source: 'log', createdAt: new Date() };
+                    const newProduct = { id: Date.now() + Math.random(), name: item.name, price: item.price, stock: item.quantity, unit: item.unit, image: null, barcode: null, createdAt: new Date() };
                     productUpdates.push(DB.saveProduct(newProduct));
                 }
             }
