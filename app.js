@@ -27,6 +27,8 @@ document.addEventListener('DOMContentLoaded', () => {
             cameraPermissionView: document.getElementById('camera-permission-view'),
             grantCameraBtn: document.getElementById('grant-camera-btn'),
             homeView: document.getElementById('home-view'),
+            homeContent: document.getElementById('home-content'),
+            homeDashboardContent: document.getElementById('home-dashboard-content'),
             totalSalesEl: document.getElementById('total-sales'),
             itemsSoldEl: document.getElementById('items-sold'),
             recentSalesList: document.getElementById('recent-sales-list'),
@@ -89,8 +91,10 @@ document.addEventListener('DOMContentLoaded', () => {
             closeQrBtn: document.getElementById('close-qr-btn'),
             entryChoiceModal: document.getElementById('entry-choice-modal'),
             entryChoiceTitle: document.getElementById('entry-choice-title'),
+            entryChoiceParagraph: document.getElementById('entry-choice-p'),
             cancelEntryChoiceBtn: document.getElementById('cancel-entry-choice-btn'),
             manualEntryBtn: document.getElementById('manual-entry-btn'),
+            retrySellScanBtn: document.getElementById('retry-sell-scan-btn'),
             selectFromProductsBtn: document.getElementById('select-from-products-btn'),
             manualSaleModal: document.getElementById('manual-sale-modal'),
             manualSaleForm: document.getElementById('manual-sale-form'),
@@ -104,6 +108,15 @@ document.addEventListener('DOMContentLoaded', () => {
             confirmLogContent: document.getElementById('confirm-log-content'),
             rejectLogBtn: document.getElementById('reject-log-btn'),
             acceptLogBtn: document.getElementById('accept-log-btn'),
+            addProductFailedModal: document.getElementById('add-product-failed-modal'),
+            retryAddScanBtn: document.getElementById('retry-add-scan-btn'),
+            cancelAddScanBtn: document.getElementById('cancel-add-scan-btn'),
+            productExistsModal: document.getElementById('product-exists-modal'),
+            productExistsMessage: document.getElementById('product-exists-message'),
+            productExistsOkBtn: document.getElementById('product-exists-ok-btn'),
+            wholesalerToggleContainer: document.getElementById('wholesaler-toggle-container'),
+            wholesalerViewToggle: document.getElementById('wholesaler-view-toggle'),
+            retailerStockView: document.getElementById('retailer-stock-view'),
         },
 
         // --- APP STATE ---
@@ -123,6 +136,7 @@ document.addEventListener('DOMContentLoaded', () => {
             isSelectionMode: false,
             selectedSales: new Set(),
             longPressTimer: null,
+            firebaseReady: false,
         },
 
         // --- INITIALIZATION ---
@@ -133,7 +147,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
             try {
                 await DB.init();
+                await this.initFirebase();
                 this.state.user = await DB.getUser();
+
                 if (!this.state.user) {
                     this.showView('onboarding-view');
                 } else {
@@ -145,6 +161,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 alert("App could not start due to a storage issue. Please ensure you're not in private browsing mode and have available space.");
             } finally {
                 this.hideLoader();
+            }
+        },
+
+        async initFirebase() {
+            try {
+                await window.fb.signInAnonymously(window.fb.auth);
+                this.state.firebaseReady = true;
+                console.log("Firebase anonymous sign-in successful. UID:", window.fb.auth.currentUser.uid);
+                const localUser = await DB.getUser();
+                if (localUser && !localUser.uid) {
+                    localUser.uid = window.fb.auth.currentUser.uid;
+                    await DB.saveUser(localUser);
+                    this.state.user = localUser;
+                }
+            } catch (error) {
+                console.error("Firebase initialization failed:", error);
+                this.state.firebaseReady = false;
+                alert("Could not connect to online services. Some features may be unavailable.");
             }
         },
 
@@ -168,11 +202,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.saleQuantityInput.addEventListener('input', this.updateSaleTotal.bind(this));
             this.elements.cancelSaleBtn.addEventListener('click', this.cancelScan.bind(this));
             this.elements.confirmSaleBtn.addEventListener('click', this.handleConfirmSale.bind(this));
-            this.elements.entrySaleBtn.addEventListener('click', () => { 
-                this.hideModal(); 
-                this.elements.entryChoiceTitle.textContent = 'New Sale Entry';
-                this.showModal('entry-choice-modal'); 
-            });
+            this.elements.entrySaleBtn.addEventListener('click', this.showNewSaleEntryChoice.bind(this));
             window.addEventListener('beforeinstallprompt', this.handleBeforeInstallPrompt.bind(this));
             this.elements.installBtn.addEventListener('click', this.promptInstall.bind(this));
             this.elements.generateReceiptBtn.addEventListener('click', this.generateReceipt.bind(this));
@@ -185,11 +215,16 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.productSearchInput.addEventListener('input', (e) => this.renderProducts(e.target.value));
             this.elements.cancelEntryChoiceBtn.addEventListener('click', () => this.hideModal());
             this.elements.manualEntryBtn.addEventListener('click', () => { this.hideModal(); this.elements.manualSaleForm.reset(); this.showModal('manual-sale-modal'); });
+            this.elements.retrySellScanBtn.addEventListener('click', () => { this.hideModal(); this.startSellScan(); });
             this.elements.cancelManualSaleBtn.addEventListener('click', () => this.hideModal());
             this.elements.manualSaleForm.addEventListener('submit', this.handleManualSale.bind(this));
             this.elements.selectFromProductsBtn.addEventListener('click', this.showProductSelection.bind(this));
             this.elements.rejectLogBtn.addEventListener('click', () => { this.hideModal(); this.state.scannedLogData = null; });
             this.elements.acceptLogBtn.addEventListener('click', this.acceptPikaLog.bind(this));
+            this.elements.retryAddScanBtn.addEventListener('click', () => { this.hideModal(); this.startAddProduct(); });
+            this.elements.cancelAddScanBtn.addEventListener('click', () => { this.hideModal(); this.navigateTo('products-view'); });
+            this.elements.productExistsOkBtn.addEventListener('click', () => { this.hideModal(); this.navigateTo('products-view'); });
+            this.elements.wholesalerViewToggle.addEventListener('change', this.toggleWholesalerView.bind(this));
         },
         
         // --- UI & NAVIGATION ---
@@ -243,6 +278,11 @@ document.addEventListener('DOMContentLoaded', () => {
         async updateDashboard() {
             if (this.state.user) {
                 this.elements.welcomeName.textContent = `Hello, ${this.state.user.name.split(' ')[0]}!`;
+                if (this.state.user.type === 'Wholesaler') {
+                    this.elements.wholesalerToggleContainer.style.display = 'flex';
+                } else {
+                    this.elements.wholesalerToggleContainer.style.display = 'none';
+                }
             }
             const date = new Date();
             this.elements.welcomeDate.textContent = date.toLocaleDateString('en-NG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
@@ -254,7 +294,6 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.itemsSoldEl.textContent = itemsSold;
             
             this.elements.seeAllContainer.style.display = sales.length > 6 ? 'block' : 'none';
-            // Only show the "Long press" hint if there are sales
             this.elements.selectionModeHint.style.display = sales.length > 0 ? 'block' : 'none';
 
             this.renderSalesList(sales, this.elements.recentSalesList, 6);
@@ -413,7 +452,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // --- CORE APP LOGIC ---
         async loadMainApp() { this.elements.appHeader.style.display = 'flex'; this.elements.mainContent.style.display = 'block'; this.elements.bottomNav.style.display = 'flex'; this.navigateTo('home-view'); await this.updateDashboard(); await this.renderProducts(); },
-        async handleOnboarding(e) { e.preventDefault(); const name = this.elements.userNameInput.value.trim(); const business = this.elements.businessNameInput.value.trim(); const phone = this.elements.userPhoneInput.value.trim(); const type = this.elements.businessTypeInput.value; const location = this.elements.businessLocationInput.value; if (!name || !business || !phone || !type || !location) { alert('Please fill in all fields.'); return; } this.state.user = { id: 1, name, business, phone, type, location }; await DB.saveUser(this.state.user); this.showView('location-permission-view'); },
+        async handleOnboarding(e) { e.preventDefault(); const name = this.elements.userNameInput.value.trim(); const business = this.elements.businessNameInput.value.trim(); const phone = this.elements.userPhoneInput.value.trim(); const type = this.elements.businessTypeInput.value; const location = this.elements.businessLocationInput.value; if (!name || !business || !phone || !type || !location) { alert('Please fill in all fields.'); return; } const uid = this.state.firebaseReady ? window.fb.auth.currentUser.uid : null; this.state.user = { id: 1, name, business, phone, type, location, uid }; await DB.saveUser(this.state.user); this.showView('location-permission-view'); },
         handleLocationPermission() {
              navigator.geolocation.getCurrentPosition(
                 (position) => {
@@ -458,19 +497,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.handleAddProductScanResult.bind(this), 
                 () => { // onTimeout callback
                     this.elements.scanFeedback.textContent = 'No barcode found.';
-                    setTimeout(() => { this.cancelScan(); }, 1500);
+                    setTimeout(() => { 
+                        this.cancelScan();
+                        this.showModal('add-product-failed-modal');
+                    }, 500);
                 },
                 this.elements.scanTimerDisplay
             );
         },
         
-        handleAddProductScanResult(result) {
+        async handleAddProductScanResult(result) {
             switch (result.type) {
                 case 'barcode':
-                    this.state.capturedBarcode = result.data;
-                    this.state.capturedBlob = null;
-                    this.state.editingProduct = null;
-                    this._openProductForm({ source: 'barcode' });
+                    const existingProduct = await DB.getProductByBarcode(result.data);
+                    if (existingProduct) {
+                        this.elements.productExistsMessage.textContent = `Product already exists as "${existingProduct.name}" in inventory.`;
+                        this.showModal('product-exists-modal');
+                    } else {
+                        this.state.capturedBarcode = result.data;
+                        this.state.capturedBlob = null;
+                        this.state.editingProduct = null;
+                        this._openProductForm({ source: 'barcode' });
+                    }
                     break;
                 case 'qrlog':
                     this.handlePikaLogScanned(result.data);
@@ -501,12 +549,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.scanTimerDisplay
             );
         },
+        
+        showNewSaleEntryChoice() {
+            this.hideModal();
+            this.elements.entryChoiceTitle.textContent = 'New Sale Entry';
+            this.elements.entryChoiceParagraph.textContent = 'How would you like to log this sale?';
+            this.elements.manualEntryBtn.style.display = 'block';
+            this.elements.retrySellScanBtn.style.display = 'none';
+            this.showModal('entry-choice-modal');
+        },
 
         handleSellScanNotFound() {
             this.elements.scanFeedback.textContent = 'Product not found.';
             setTimeout(() => {
                 this.cancelScan();
                 this.elements.entryChoiceTitle.textContent = 'Item Not Found';
+                this.elements.entryChoiceParagraph.textContent = 'This product is not in your inventory.';
+                this.elements.manualEntryBtn.style.display = 'none';
+                this.elements.retrySellScanBtn.style.display = 'block';
                 this.showModal('entry-choice-modal');
             }, 1000);
         },
@@ -600,7 +660,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         async handleDeleteProduct() {
             if (!this.state.editingProduct) return;
-            // A custom confirmation would be better, but for now `confirm` is used.
             const confirmation = window.confirm(`Are you sure you want to permanently delete "${this.state.editingProduct.name}"? This action cannot be undone.`);
             if (confirmation) {
                 await DB.deleteProduct(this.state.editingProduct.id);
@@ -608,7 +667,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.state.editingProduct = null;
                 await this.renderProducts();
                 this.navigateTo('products-view');
-                // A custom toast message would be better than an alert.
                 alert('Product deleted successfully.');
             }
         },
@@ -621,7 +679,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (blob) {
                     this.state.capturedBlob = blob;
                     this.elements.capturedImagePreview.src = URL.createObjectURL(blob);
-                    this.navigateBack(); // Go back to the previous view (which should be the product list)
+                    this.navigateBack(); 
                     this.showModal('confirm-picture-modal');
                 } else {
                     this.navigateBack();
@@ -637,7 +695,7 @@ document.addEventListener('DOMContentLoaded', () => {
         updateSaleTotal() { const quantity = parseInt(this.elements.saleQuantityInput.value) || 0; const price = this.state.sellingProduct?.price || 0; const total = quantity * price; this.elements.saleTotalPrice.textContent = `₦${total.toLocaleString()}`; },
         async _processSale() { const quantity = parseInt(this.elements.saleQuantityInput.value); const product = this.state.sellingProduct; if (quantity <= 0 || !product || quantity > product.stock) { alert('Invalid quantity or product not available.'); return false; } product.stock -= quantity; await DB.saveProduct(product); const sale = { id: Date.now(), productId: product.id, productName: product.name, quantity: quantity, price: product.price, total: quantity * product.price, timestamp: new Date(), image: product.image }; await DB.addSale(sale); return true; },
         async handleConfirmSale() { 
-            Camera.stop(); // Explicitly stop any potential scan, as a safeguard.
+            Camera.stop();
             const success = await this._processSale(); 
             if (success) { 
                 this.hideModal(); 
@@ -699,8 +757,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.state.selectedSales.clear();
             document.querySelectorAll('.sale-item').forEach(el => { el.classList.remove('selectable'); el.classList.remove('selected'); });
             this.elements.receiptActions.classList.remove('visible');
-             // Only show hint if there are sales today
-            if (this.elements.recentSalesList.children.length > 0 && this.elements.recentSalesList.children[0].className !== 'empty-state') {
+             if (this.elements.recentSalesList.children.length > 0 && this.elements.recentSalesList.children[0].className !== 'empty-state') {
                 this.elements.selectionModeHint.textContent = 'Long-press to select';
             }
         },
@@ -723,6 +780,10 @@ document.addEventListener('DOMContentLoaded', () => {
         },
         async shareReceipt() { const receiptElement = this.elements.receiptContent; try { const canvas = await html2canvas(receiptElement, { scale: 2 }); canvas.toBlob(async (blob) => { if (navigator.share && blob) { try { await navigator.share({ files: [new File([blob], 'pika-shot-receipt.png', { type: 'image/png' })], title: 'Your Receipt', text: 'Here is your receipt from ' + this.state.user.business, }); } catch (error) { console.error('Error sharing:', error); } } else { alert('Sharing is not supported on this browser, or there was an error creating the image.'); } }, 'image/png'); } catch (error) { console.error('Error generating receipt image:', error); alert('Could not generate receipt image.'); } },
         async generateQrLog() {
+            if (!this.state.firebaseReady || !this.state.user.uid) {
+                alert("Cannot generate log: not connected to online services.");
+                return;
+            }
             const allSales = await DB.getAllSales();
             const selectedSaleObjects = allSales.filter(s => this.state.selectedSales.has(s.id));
             if (selectedSaleObjects.length === 0) return;
@@ -730,6 +791,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const logData = {
                 pikaLogVersion: 1,
                 senderStore: this.state.user.business,
+                senderId: this.state.user.uid,
                 items: selectedSaleObjects.map(s => ({
                     name: s.productName,
                     price: s.price,
@@ -792,24 +854,108 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!this.state.scannedLogData) return;
             const allProducts = await DB.getAllProducts();
             const productUpdates = [];
+            let updatedProductsForFirebase = {};
 
             for (const item of this.state.scannedLogData.items) {
                 const existingProduct = allProducts.find(p => p.name.toLowerCase() === item.name.toLowerCase());
+                let finalProduct;
                 if (existingProduct) {
                     existingProduct.stock += item.quantity;
-                    productUpdates.push(DB.saveProduct(existingProduct));
+                    finalProduct = existingProduct;
                 } else {
                     const newProduct = { id: Date.now() + Math.random(), name: item.name, price: item.price, stock: item.quantity, unit: item.unit, image: null, barcode: null, createdAt: new Date() };
-                    productUpdates.push(DB.saveProduct(newProduct));
+                    finalProduct = newProduct;
+                }
+                productUpdates.push(DB.saveProduct(finalProduct));
+                updatedProductsForFirebase[finalProduct.name] = { stock: finalProduct.stock, unit: finalProduct.unit };
+            }
+
+            await Promise.all(productUpdates);
+
+            if (this.state.firebaseReady && this.state.scannedLogData.senderId && this.state.user.uid) {
+                try {
+                    const retailerDocRef = window.fb.doc(window.fb.db, `retailer_stocks/${this.state.scannedLogData.senderId}`, this.state.user.uid);
+                    const docSnap = await window.fb.getDoc(retailerDocRef);
+                    let existingProducts = docSnap.exists() ? docSnap.data().products : {};
+                    const finalProducts = { ...existingProducts, ...updatedProductsForFirebase };
+
+                    await window.fb.setDoc(retailerDocRef, {
+                        retailerName: this.state.user.business,
+                        retailerLocation: this.state.user.location,
+                        products: finalProducts,
+                        lastUpdate: window.fb.serverTimestamp()
+                    }, { merge: true });
+
+                    console.log("Retailer stock levels updated to Firebase.");
+                } catch (error) {
+                    console.error("Error updating stock to Firebase:", error);
+                    alert("Local inventory updated, but failed to sync online.");
                 }
             }
-            await Promise.all(productUpdates);
+            
             this.hideModal();
             this.state.scannedLogData = null;
             alert('Inventory updated successfully!');
             await this.renderProducts();
             this.navigateTo('products-view');
         },
+
+        // --- WHOLESALER VIEW ---
+        toggleWholesalerView(e) {
+            const isChecked = e.target.checked;
+            if (isChecked) {
+                this.elements.homeDashboardContent.style.display = 'none';
+                this.elements.retailerStockView.style.display = 'block';
+                this.renderRetailerStocks();
+            } else {
+                this.elements.homeDashboardContent.style.display = 'block';
+                this.elements.retailerStockView.style.display = 'none';
+            }
+        },
+
+        async renderRetailerStocks() {
+            this.elements.retailerStockView.innerHTML = '<div class="spinner"></div>';
+            if (!this.state.firebaseReady || !this.state.user.uid) {
+                this.elements.retailerStockView.innerHTML = `<p class="empty-state">Could not connect to online services.</p>`;
+                return;
+            }
+
+            try {
+                const retailersRef = window.fb.collection(window.fb.db, `retailer_stocks/${this.state.user.uid}`);
+                const querySnapshot = await window.fb.getDocs(retailersRef);
+                
+                if (querySnapshot.empty) {
+                    this.elements.retailerStockView.innerHTML = `<p class="empty-state">No retailer data found. Share a log with a retailer to see their stock here.</p>`;
+                    return;
+                }
+
+                let contentHtml = '';
+                querySnapshot.forEach(doc => {
+                    const retailer = doc.data();
+                    let productsHtml = '';
+                    if (retailer.products && Object.keys(retailer.products).length > 0) {
+                        for (const productName in retailer.products) {
+                            const product = retailer.products[productName];
+                            productsHtml += `<div class="retailer-product-item"><span>${productName}</span><strong>${product.stock} ${product.unit}</strong></div>`;
+                        }
+                    } else {
+                        productsHtml = `<div class="retailer-product-item"><span>No product data available.</span></div>`;
+                    }
+                    
+                    contentHtml += `
+                        <div class="card">
+                            <h4>${retailer.retailerName} (${retailer.retailerLocation})</h4>
+                            <div class="retailer-product-list">${productsHtml}</div>
+                        </div>
+                    `;
+                });
+                this.elements.retailerStockView.innerHTML = contentHtml;
+            } catch (error) {
+                console.error("Error fetching retailer stocks:", error);
+                this.elements.retailerStockView.innerHTML = `<p class="empty-state">Error loading retailer data.</p>`;
+            }
+        },
+
 
         // --- PWA FEATURES ---
         handleBeforeInstallPrompt(event) { event.preventDefault(); this.state.deferredInstallPrompt = event; this.elements.installBtn.style.display = 'block'; },

@@ -9,6 +9,39 @@
     <link rel="manifest" href="manifest.json">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcode@1.4.4/build/qrcode.min.js"></script>
+    
+    <!-- Firebase -->
+    <script type="module">
+        // Import the functions you need from the SDKs you need
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-app.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-auth.js";
+        import { getFirestore, collection, doc, getDoc, setDoc, getDocs, serverTimestamp, updateDoc } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore.js";
+        
+        // Your web app's Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyBKu623PDECcc1gYVe4xof6AVUxDlW7B_A",
+            authDomain: "pika-shot.firebaseapp.com",
+            projectId: "pika-shot",
+            storageBucket: "pika-shot.firebasestorage.app",
+            messagingSenderId: "221719282655",
+            appId: "1:221719282655:web:fefc576166eeb115077a6a"
+        };
+
+        // Initialize Firebase and attach to window for access in other scripts
+        const app = initializeApp(firebaseConfig);
+        window.fb = {
+            auth: getAuth(app),
+            db: getFirestore(app),
+            signInAnonymously,
+            collection,
+            doc,
+            getDoc,
+            setDoc,
+            getDocs,
+            updateDoc,
+            serverTimestamp
+        };
+    </script>
 </head>
 <body>
 
@@ -98,33 +131,47 @@
                     <h2 id="welcome-name">Welcome!</h2>
                 </div>
 
-                <div class="home-content">
-                    <div class="dashboard-grid">
-                        <div class="card stat-card">
-                            <div class="stat-icon sales">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="12" x="2" y="6" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
+                <div id="wholesaler-toggle-container" style="display: none;">
+                    <span class="toggle-label">My Dashboard</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="wholesaler-view-toggle">
+                        <span class="slider round"></span>
+                    </label>
+                    <span class="toggle-label">Retailer Stocks</span>
+                </div>
+
+                <div id="home-content" class="home-content">
+                    <div id="home-dashboard-content">
+                        <div class="dashboard-grid">
+                            <div class="card stat-card">
+                                <div class="stat-icon sales">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="12" x="2" y="6" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
+                                </div>
+                                <p>Today's Sales</p>
+                                <h3 id="total-sales">₦0</h3>
                             </div>
-                            <p>Today's Sales</p>
-                            <h3 id="total-sales">₦0</h3>
+                            <div class="card stat-card">
+                                <div class="stat-icon items">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><line x1="3" y1="6" x2="21" y2="6"></line><path d="M16 10a4 4 0 0 1-8 0"></path></svg>
+                                </div>
+                                <p>Items Sold</p>
+                                <h3 id="items-sold">0</h3>
+                            </div>
                         </div>
-                        <div class="card stat-card">
-                             <div class="stat-icon items">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><line x1="3" y1="6" x2="21" y2="6"></line><path d="M16 10a4 4 0 0 1-8 0"></path></svg>
+                        <div class="recent-sales-container">
+                            <div class="recent-sales-header">
+                                <h4>Recent Sales</h4>
+                                <p id="selection-mode-hint" class="selection-hint">Long-press to select</p>
                             </div>
-                            <p>Items Sold</p>
-                            <h3 id="items-sold">0</h3>
+                            <div id="recent-sales-list">
+                                </div>
+                            <div id="see-all-container" class="see-all-container" style="display: none;">
+                                <button id="see-all-sales-btn" class="see-all-btn">See All</button>
+                            </div>
                         </div>
                     </div>
-                    <div class="recent-sales-container">
-                        <div class="recent-sales-header">
-                            <h4>Recent Sales</h4>
-                            <p id="selection-mode-hint" class="selection-hint">Long-press to select</p>
-                        </div>
-                        <div id="recent-sales-list">
-                            </div>
-                        <div id="see-all-container" class="see-all-container" style="display: none;">
-                            <button id="see-all-sales-btn" class="see-all-btn">See All</button>
-                        </div>
+                    <div id="retailer-stock-view" style="display: none;">
+                        <!-- Retailer stock levels will be rendered here -->
                     </div>
                 </div>
             </div>
@@ -185,6 +232,24 @@
     </div> 
     
     <div id="modal-container" class="modal-container" style="display:none;">
+
+        <div id="add-product-failed-modal" class="modal-content" style="display:none;">
+            <h2>Scan Failed</h2>
+            <p>No barcode was detected. Please ensure the barcode is clear and well-lit.</p>
+            <div class="modal-actions modal-actions-inline">
+                <button id="cancel-add-scan-btn" class="btn btn-secondary">Cancel</button>
+                <button id="retry-add-scan-btn" class="btn btn-primary">Try Again</button>
+            </div>
+        </div>
+
+        <div id="product-exists-modal" class="modal-content" style="display:none;">
+            <h2>Product Exists</h2>
+            <p id="product-exists-message">This product is already in your inventory.</p>
+            <div class="modal-actions">
+                <button id="product-exists-ok-btn" class="btn btn-primary">OK</button>
+            </div>
+        </div>
+
         <div id="confirm-picture-modal" class="modal-content" style="display:none;">
             <h2>Confirm Picture</h2>
             <img id="captured-image-preview" src="" alt="Captured product image">
@@ -243,8 +308,9 @@
         
         <div id="entry-choice-modal" class="modal-content" style="display:none;">
             <h2 id="entry-choice-title">New Sale Entry</h2>
-            <p>How would you like to log this sale?</p>
+            <p id="entry-choice-p">How would you like to log this sale?</p>
             <div class="modal-actions">
+                <button id="retry-sell-scan-btn" class="btn btn-secondary" style="display: none;">Try Again</button>
                 <button id="manual-entry-btn" class="btn btn-secondary">Manual Entry</button>
                 <button id="select-from-products-btn" class="btn btn-primary">Select from Products</button>
             </div>
