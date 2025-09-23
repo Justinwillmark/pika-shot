@@ -10,7 +10,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcode@1.4.4/build/qrcode.min.js"></script>
     
-    <!-- Firebase -->
     <script type="module">
         // Import the functions you need from the SDKs you need
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-app.js";
@@ -192,9 +191,14 @@
             </div>
 
             <div id="stock-levels-view" class="view page">
-                <div id="retailer-stock-view" class="all-sales-container">
-                    <!-- Retailer stock levels will be rendered here via app.js -->
+                <div class="page-actions-header">
+                    <button id="refresh-stocks-btn" class="btn-icon-link">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+                        <span>Refresh</span>
+                    </button>
                 </div>
+                <div id="retailer-stock-view" class="all-sales-container">
+                    </div>
             </div>
 
         </main>
@@ -218,6 +222,7 @@
         <div id="receipt-actions" class="receipt-actions">
             <button id="cancel-selection-btn" class="btn btn-secondary">Cancel</button>
             <button id="generate-receipt-btn" class="btn btn-primary" disabled>Generate Receipt</button>
+            <button id="share-log-btn" class="btn btn-primary">Share as Log</button>
         </div>
 
         <div id="camera-view" class="view camera-container">
@@ -299,7 +304,6 @@
                 </div>
             <div class="modal-actions">
                 <button id="close-receipt-btn" class="btn btn-secondary">Close</button>
-                <button id="share-log-btn" class="btn btn-secondary">Share as Log</button>
                 <button id="share-receipt-btn" class="btn btn-primary">Share</button>
             </div>
         </div>

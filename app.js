@@ -117,6 +117,7 @@ document.addEventListener('DOMContentLoaded', () => {
             seeStockLevelsBtn: document.getElementById('see-stock-levels-btn'),
             stockLevelsView: document.getElementById('stock-levels-view'),
             retailerStockView: document.getElementById('retailer-stock-view'),
+            refreshStocksBtn: document.getElementById('refresh-stocks-btn'),
         },
 
         // --- APP STATE ---
@@ -225,6 +226,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.cancelAddScanBtn.addEventListener('click', () => { this.hideModal(); this.navigateTo('products-view'); });
             this.elements.productExistsOkBtn.addEventListener('click', () => { this.hideModal(); this.navigateTo('products-view'); });
             this.elements.seeStockLevelsBtn.addEventListener('click', () => this.navigateTo('stock-levels-view'));
+            this.elements.refreshStocksBtn.addEventListener('click', this.renderRetailerStocks.bind(this));
 
             // Phone number validation
             this.elements.userPhoneInput.addEventListener('input', (e) => {
@@ -640,7 +642,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 unit: this.elements.productUnitInput.value, 
                 image: this.state.capturedBlob || (isEditing ? this.state.editingProduct.image : null), 
                 barcode: this.state.capturedBarcode || (isEditing ? this.state.editingProduct.barcode : null),
-                createdAt: isEditing ? this.state.editingProduct.createdAt : new Date() 
+                createdAt: isEditing ? this.state.editingProduct.createdAt : new Date(),
+                supplierId: isEditing ? this.state.editingProduct.supplierId : null, // Preserve supplierId on edit
             }; 
 
             if (!productData.name || isNaN(productData.price) || isNaN(productData.stock)) { 
@@ -720,7 +723,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
         handleProductFound(product) { this.state.sellingProduct = product; this.elements.saleProductImage.src = product.image ? URL.createObjectURL(product.image) : 'icons/icon-192.png'; this.elements.saleProductName.textContent = product.name; this.elements.saleProductStock.textContent = `Stock: ${product.stock} ${product.unit}`; this.elements.saleQuantityInput.value = 1; this.elements.saleQuantityInput.max = product.stock; this.updateSaleTotal(); this.showModal('confirm-sale-modal'); },
         updateSaleTotal() { const quantity = parseInt(this.elements.saleQuantityInput.value) || 0; const price = this.state.sellingProduct?.price || 0; const total = quantity * price; this.elements.saleTotalPrice.textContent = `₦${total.toLocaleString()}`; },
-        async _processSale() { const quantity = parseInt(this.elements.saleQuantityInput.value); const product = this.state.sellingProduct; if (quantity <= 0 || !product || quantity > product.stock) { alert('Invalid quantity or product not available.'); return false; } product.stock -= quantity; await DB.saveProduct(product); const sale = { id: Date.now(), productId: product.id, productName: product.name, quantity: quantity, price: product.price, total: quantity * product.price, timestamp: new Date(), image: product.image }; await DB.addSale(sale); return true; },
+        async _processSale() { 
+            const quantity = parseInt(this.elements.saleQuantityInput.value); 
+            const product = this.state.sellingProduct; 
+            if (quantity <= 0 || !product || quantity > product.stock) { alert('Invalid quantity or product not available.'); return false; } 
+            
+            product.stock -= quantity; 
+            
+            await DB.saveProduct(product); 
+            const sale = { id: Date.now(), productId: product.id, productName: product.name, quantity: quantity, price: product.price, total: quantity * product.price, timestamp: new Date(), image: product.image }; 
+            await DB.addSale(sale); 
+
+            // --- REAL-TIME SYNC TO FIREBASE ---
+            if (this.state.firebaseReady && product.supplierId && this.state.user.uid) {
+                try {
+                    const retailerDocRef = window.fb.doc(window.fb.db, `retailer_stocks/${product.supplierId}/supplied_retailers/${this.state.user.uid}`);
+                    const updateData = {};
+                    updateData[`products.${product.name}.stock`] = product.stock; // new, decremented stock level
+                    updateData.lastUpdate = window.fb.serverTimestamp();
+                    
+                    await window.fb.updateDoc(retailerDocRef, updateData);
+                    console.log(`Real-time stock for '${product.name}' synced to Firebase.`);
+                } catch (error) {
+                    console.error("Failed to sync sale to Firebase:", error);
+                }
+            }
+            
+            return true; 
+        },
         async handleConfirmSale() { 
             Camera.stop();
             const success = await this._processSale(); 
@@ -751,13 +781,29 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 productToSell.stock -= quantity;
             } else {
-                productToSell = { id: Date.now(), name, price, stock: 0, unit, image: null, barcode: null, createdAt: new Date() };
+                productToSell = { id: Date.now(), name, price, stock: 0, unit, image: null, barcode: null, createdAt: new Date(), supplierId: null };
                 alert(`${name} is a new item and will be added to your products list with 0 stock.`);
             }
 
             await DB.saveProduct(productToSell);
             const sale = { id: Date.now() + 1, productId: productToSell.id, productName: name, quantity, price, total: price * quantity, timestamp: new Date(), image: productToSell.image };
             await DB.addSale(sale);
+
+            // --- REAL-TIME SYNC TO FIREBASE ---
+            if (this.state.firebaseReady && productToSell.supplierId && this.state.user.uid) {
+                try {
+                    const retailerDocRef = window.fb.doc(window.fb.db, `retailer_stocks/${productToSell.supplierId}/supplied_retailers/${this.state.user.uid}`);
+                    const updateData = {};
+                    updateData[`products.${productToSell.name}.stock`] = productToSell.stock; // new, decremented stock level
+                    updateData.lastUpdate = window.fb.serverTimestamp();
+    
+                    await window.fb.updateDoc(retailerDocRef, updateData);
+                    console.log(`Real-time stock for '${productToSell.name}' synced to Firebase.`);
+                } catch (error) {
+                    console.error("Failed to sync manual sale to Firebase:", error);
+                }
+            }
+
             this.hideModal();
             await this.updateDashboard();
             await this.renderProducts();
@@ -881,6 +927,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const allProducts = await DB.getAllProducts();
             const productUpdates = [];
             let updatedProductsForFirebase = {};
+            const supplierId = this.state.scannedLogData.senderId;
 
             for (const item of this.state.scannedLogData.items) {
                 const existingProduct = allProducts.find(p => p.name.toLowerCase() === item.name.toLowerCase());
@@ -890,6 +937,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (!existingProduct.barcode && item.barcode) {
                         existingProduct.barcode = item.barcode;
                     }
+                    existingProduct.supplierId = supplierId; // Tag product with supplier
                     finalProduct = existingProduct;
                 } else {
                     const newProduct = { 
@@ -900,7 +948,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         unit: item.unit, 
                         image: null, 
                         barcode: item.barcode || null, 
-                        createdAt: new Date() 
+                        createdAt: new Date(),
+                        supplierId: supplierId // Tag product with supplier
                     };
                     finalProduct = newProduct;
                 }
@@ -910,9 +959,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
             await Promise.all(productUpdates);
 
-            if (this.state.firebaseReady && this.state.scannedLogData.senderId && this.state.user.uid) {
+            if (this.state.firebaseReady && supplierId && this.state.user.uid) {
                 try {
-                    const retailerDocRef = window.fb.doc(window.fb.db, `retailer_stocks/${this.state.scannedLogData.senderId}/supplied_retailers/${this.state.user.uid}`);
+                    const retailerDocRef = window.fb.doc(window.fb.db, `retailer_stocks/${supplierId}/supplied_retailers/${this.state.user.uid}`);
                     await window.fb.setDoc(retailerDocRef, {
                         retailerName: this.state.user.business,
                         retailerLocation: this.state.user.location,
@@ -984,7 +1033,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <div class="retailer-header">
                                     <div style="flex-grow: 1;">
                                         <h4>${retailer.retailerName} (${retailer.retailerLocation})</h4>
-                                        ${lastUpdateDate ? `<p style="font-size: 0.8rem; color: var(--text-light); margin-top: 2px;">Last Sale: ${lastUpdateDate}</p>` : ''}
+                                        ${lastUpdateDate ? `<p style="font-size: 0.8rem; color: var(--text-light); margin-top: 2px;">Last Update: ${lastUpdateDate}</p>` : ''}
                                     </div>
                                     ${callButton}
                                 </div>

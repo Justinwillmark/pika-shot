@@ -95,6 +95,29 @@ html, body {
     top: 50%;
     transform: translateY(-50%);
 }
+.page-actions-header {
+    padding: 12px 20px;
+    background-color: var(--background-color);
+    border-bottom: 1px solid var(--border-color);
+    text-align: right;
+    position: sticky;
+    top: 0; /* Make it stick under the main header if needed */
+    z-index: 5;
+}
+.btn-icon-link {
+    background: none;
+    border: none;
+    color: var(--primary-color);
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.btn-icon-link:active {
+    color: var(--primary-dark);
+}
 
 /* === Onboarding & Permissions === */
 .onboarding-content { display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 30px; text-align: center; height: 100%; }
@@ -212,6 +235,9 @@ html, body {
 .sale-info span { font-size: clamp(0.75rem, 2vw, 0.8rem); color: var(--text-light); }
 .sale-price { font-weight: 700; font-size: clamp(1rem, 3vw, 1.1rem); margin-left: 8px; }
 .all-sales-container { padding: 20px; }
+#stock-levels-view .all-sales-container {
+    padding-top: 16px;
+}
 .sales-group-header {
     display: flex;
     justify-content: space-between;
