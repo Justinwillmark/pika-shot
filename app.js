@@ -75,7 +75,6 @@ document.addEventListener('DOMContentLoaded', () => {
             saleTotalPrice: document.getElementById('sale-total-price'),
             cancelSaleBtn: document.getElementById('cancel-sale-btn'),
             confirmSaleBtn: document.getElementById('confirm-sale-btn'),
-            entrySaleBtn: document.getElementById('entry-sale-btn'),
             installBtn: document.getElementById('add-to-homescreen-btn'),
             receiptActions: document.getElementById('receipt-actions'),
             generateReceiptBtn: document.getElementById('generate-receipt-btn'),
@@ -204,7 +203,6 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.saleQuantityInput.addEventListener('input', this.updateSaleTotal.bind(this));
             this.elements.cancelSaleBtn.addEventListener('click', this.cancelScan.bind(this));
             this.elements.confirmSaleBtn.addEventListener('click', this.handleConfirmSale.bind(this));
-            this.elements.entrySaleBtn.addEventListener('click', this.showNewSaleEntryChoice.bind(this));
             window.addEventListener('beforeinstallprompt', this.handleBeforeInstallPrompt.bind(this));
             this.elements.installBtn.addEventListener('click', this.promptInstall.bind(this));
             this.elements.generateReceiptBtn.addEventListener('click', this.generateReceipt.bind(this));
@@ -227,6 +225,16 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.cancelAddScanBtn.addEventListener('click', () => { this.hideModal(); this.navigateTo('products-view'); });
             this.elements.productExistsOkBtn.addEventListener('click', () => { this.hideModal(); this.navigateTo('products-view'); });
             this.elements.seeStockLevelsBtn.addEventListener('click', () => this.navigateTo('stock-levels-view'));
+
+            // Phone number validation
+            this.elements.userPhoneInput.addEventListener('input', (e) => {
+                const input = e.target;
+                let value = input.value.replace(/\D/g, ''); // Remove non-digit characters
+                if (value.length > 11) {
+                    value = value.slice(0, 11); // Truncate to 11 digits
+                }
+                input.value = value;
+            });
         },
         
         // --- UI & NAVIGATION ---
@@ -806,25 +814,24 @@ document.addEventListener('DOMContentLoaded', () => {
             const allSales = await DB.getAllSales();
             const selectedSaleObjects = allSales.filter(s => this.state.selectedSales.has(s.id));
             if (selectedSaleObjects.length === 0) return;
+
+            const allProducts = await DB.getAllProducts();
             
             const logData = {
                 pikaLogVersion: 1,
                 senderStore: this.state.user.business,
                 senderId: this.state.user.uid,
-                items: selectedSaleObjects.map(s => ({
-                    name: s.productName,
-                    price: s.price,
-                    quantity: s.quantity,
-                    unit: 'pieces'
-                }))
+                items: selectedSaleObjects.map(sale => {
+                    const product = allProducts.find(p => p.id === sale.productId);
+                    return {
+                        name: sale.productName,
+                        price: sale.price,
+                        quantity: sale.quantity,
+                        unit: product ? product.unit : 'pieces',
+                        barcode: product ? product.barcode : null
+                    };
+                })
             };
-            const productIds = selectedSaleObjects.map(s => s.productId);
-            const products = await DB.getAllProducts();
-            const relevantProducts = products.filter(p => productIds.includes(p.id));
-            logData.items.forEach(item => {
-                const product = relevantProducts.find(p => p.name === item.name);
-                if (product) item.unit = product.unit;
-            });
 
             QRCode.toCanvas(this.elements.qrCanvas, JSON.stringify(logData), { width: 250 }, (error) => {
                 if (error) console.error(error);
@@ -880,9 +887,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 let finalProduct;
                 if (existingProduct) {
                     existingProduct.stock += item.quantity;
+                    if (!existingProduct.barcode && item.barcode) {
+                        existingProduct.barcode = item.barcode;
+                    }
                     finalProduct = existingProduct;
                 } else {
-                    const newProduct = { id: Date.now() + Math.random(), name: item.name, price: item.price, stock: item.quantity, unit: item.unit, image: null, barcode: null, createdAt: new Date() };
+                    const newProduct = { 
+                        id: Date.now() + Math.random(), 
+                        name: item.name, 
+                        price: item.price, 
+                        stock: item.quantity, 
+                        unit: item.unit, 
+                        image: null, 
+                        barcode: item.barcode || null, 
+                        createdAt: new Date() 
+                    };
                     finalProduct = newProduct;
                 }
                 productUpdates.push(DB.saveProduct(finalProduct));
@@ -952,11 +971,21 @@ document.addEventListener('DOMContentLoaded', () => {
                         
                         const phoneIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>`;
                         const callButton = retailer.retailerPhone ? `<a href="tel:${retailer.retailerPhone}" class="retailer-call-btn" title="Call ${retailer.retailerName}">${phoneIcon}</a>` : '';
+                        
+                        let lastUpdateDate = '';
+                        if (retailer.lastUpdate && retailer.lastUpdate.toDate) {
+                            lastUpdateDate = retailer.lastUpdate.toDate().toLocaleDateString('en-NG', {
+                                day: 'numeric', month: 'short', year: 'numeric'
+                            });
+                        }
 
                         contentHtml += `
                             <div class="card">
                                 <div class="retailer-header">
-                                    <h4>${retailer.retailerName} (${retailer.retailerLocation})</h4>
+                                    <div style="flex-grow: 1;">
+                                        <h4>${retailer.retailerName} (${retailer.retailerLocation})</h4>
+                                        ${lastUpdateDate ? `<p style="font-size: 0.8rem; color: var(--text-light); margin-top: 2px;">Last Sale: ${lastUpdateDate}</p>` : ''}
+                                    </div>
                                     ${callButton}
                                 </div>
                                 <div class="retailer-product-list">${productsHtml}</div>

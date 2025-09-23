@@ -69,7 +69,7 @@
                 </div>
                 <div class="form-group">
                     <label for="user-phone">Phone Number</label>
-                    <input type="tel" id="user-phone" placeholder="e.g., 08012345678" required>
+                    <input type="tel" id="user-phone" placeholder="e.g., 08012345678" maxlength="11" required>
                 </div>
                  <div class="form-group">
                     <label for="business-type">Business Type</label>
@@ -288,11 +288,8 @@
             <div class="sale-item-details"><img id="sale-product-image" src="" alt="Product image"><div><h3 id="sale-product-name">Product Name</h3><p id="sale-product-stock">Stock: 50 sachets</p></div></div>
             <div class="form-group"><label for="sale-quantity">Quantity</label><input type="number" id="sale-quantity" inputmode="numeric" value="1" min="1"></div>
             <div class="sale-total"><p>Total</p><h2 id="sale-total-price">₦0</h2></div>
-            <div class="modal-actions">
-                <div class="modal-actions-inline">
-                    <button id="cancel-sale-btn" class="btn btn-secondary">Cancel</button>
-                    <button id="entry-sale-btn" class="btn btn-secondary">Entry</button>
-                </div>
+            <div class="modal-actions modal-actions-inline">
+                <button id="cancel-sale-btn" class="btn btn-secondary">Cancel</button>
                 <button id="confirm-sale-btn" class="btn btn-primary">Confirm Sale</button>
             </div>
         </div>
