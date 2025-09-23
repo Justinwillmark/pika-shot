@@ -62,6 +62,7 @@ document.addEventListener('DOMContentLoaded', () => {
             productFormTitle: document.getElementById('product-form-title'),
             productIdInput: document.getElementById('product-id'),
             addChangePictureBtn: document.getElementById('add-change-picture-btn'),
+            scanNewBarcodeBtn: document.getElementById('scan-new-barcode-btn'),
             productNameInput: document.getElementById('product-name'),
             productPriceInput: document.getElementById('product-price'),
             productStockInput: document.getElementById('product-stock'),
@@ -83,6 +84,7 @@ document.addEventListener('DOMContentLoaded', () => {
             receiptModal: document.getElementById('receipt-modal'),
             receiptContent: document.getElementById('receipt-content'),
             shareReceiptBtn: document.getElementById('share-receipt-btn'),
+            printReceiptBtn: document.getElementById('print-receipt-btn'),
             closeReceiptBtn: document.getElementById('close-receipt-btn'),
             shareLogBtn: document.getElementById('share-log-btn'),
             qrCodeModal: document.getElementById('qr-code-modal'),
@@ -206,6 +208,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.retakePictureBtn.addEventListener('click', this.handleRetakePicture.bind(this));
             this.elements.confirmPictureBtn.addEventListener('click', this.handleConfirmPicture.bind(this));
             this.elements.addChangePictureBtn.addEventListener('click', this.handleAddOrChangePicture.bind(this));
+            this.elements.scanNewBarcodeBtn.addEventListener('click', this.startBarcodeAssignmentScan.bind(this));
             this.elements.cancelPictureBtn.addEventListener('click', () => this.hideModal());
             this.elements.saleQuantityInput.addEventListener('input', this.updateSaleTotal.bind(this));
             this.elements.cancelSaleBtn.addEventListener('click', this.cancelScan.bind(this));
@@ -217,6 +220,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.cancelSelectionBtn.addEventListener('click', this.exitSelectionMode.bind(this));
             this.elements.closeReceiptBtn.addEventListener('click', () => this.hideModal());
             this.elements.shareReceiptBtn.addEventListener('click', this.shareReceipt.bind(this));
+            this.elements.printReceiptBtn.addEventListener('click', () => window.print());
             this.elements.shareLogBtn.addEventListener('click', this.generateQrLog.bind(this));
             this.elements.closeQrBtn.addEventListener('click', () => this.hideModal());
             this.elements.productSearchInput.addEventListener('input', (e) => this.renderProducts(e.target.value));
@@ -634,6 +638,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.deleteProductBtn.style.display = 'none';
             this.elements.addChangePictureBtn.style.display = 'block';
             this.elements.addChangePictureBtn.textContent = 'Add / Change Picture';
+            this.elements.scanNewBarcodeBtn.style.display = 'none';
             this.elements.productIdInput.value = '';
             this.elements.productBarcodeDisplay.style.display = 'none';
             this.state.capturedBlob = null;
@@ -727,6 +732,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         handleEditProduct(product) { 
             this.state.editingProduct = product; 
+            this.state.capturedBarcode = product.barcode; // Pre-fill state with current barcode
             this.elements.productFormTitle.textContent = 'Edit Product'; 
             this.elements.deleteProductBtn.style.display = 'flex'; 
             this.elements.addChangePictureBtn.style.display = 'block';
@@ -745,15 +751,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 cartonOption.style.display = 'none';
             }
             
-            if (product.barcode) {
-                this.elements.productSourceInfo.textContent = 'Product has a barcode.';
+            if (product.needsSetup === 'barcode-and-price') {
+                this.elements.scanNewBarcodeBtn.style.display = 'block';
+                this.elements.productSourceInfo.textContent = 'This product needs a barcode.';
                 this.elements.productSourceInfo.style.display = 'block';
-                this.elements.productBarcodeDisplay.textContent = product.barcode;
-                this.elements.productBarcodeDisplay.style.display = 'block';
-            } else {
-                this.elements.productSourceInfo.textContent = 'No barcode assigned.';
-                 this.elements.productSourceInfo.style.display = 'block';
                 this.elements.productBarcodeDisplay.style.display = 'none';
+            } else {
+                this.elements.scanNewBarcodeBtn.style.display = 'none';
+                if (product.barcode) {
+                    this.elements.productSourceInfo.textContent = 'Product has a barcode.';
+                    this.elements.productSourceInfo.style.display = 'block';
+                    this.elements.productBarcodeDisplay.textContent = product.barcode;
+                    this.elements.productBarcodeDisplay.style.display = 'block';
+                } else {
+                    this.elements.productSourceInfo.textContent = 'No barcode assigned.';
+                    this.elements.productSourceInfo.style.display = 'block';
+                    this.elements.productBarcodeDisplay.style.display = 'none';
+                }
             }
 
             this.showModal('product-form-modal'); 
@@ -790,6 +804,45 @@ document.addEventListener('DOMContentLoaded', () => {
                 alert("Could not capture photo.");
                 this.navigateBack();
             }
+        },
+
+        startBarcodeAssignmentScan() {
+            this.hideModal();
+            this.elements.scanFeedback.textContent = 'Scan new barcode...';
+            this.showView('camera-view');
+            Camera.startScan(
+                this.handleBarcodeAssignmentResult.bind(this),
+                () => {
+                    this.elements.scanFeedback.textContent = 'Scan failed.';
+                    setTimeout(() => {
+                        this.cancelScan();
+                        this.showModal('product-form-modal'); // Re-show form
+                        alert('No barcode found. Please try again.');
+                    }, 500);
+                },
+                this.elements.scanTimerDisplay
+            );
+        },
+
+        async handleBarcodeAssignmentResult(result) {
+            if (result.type !== 'barcode') return;
+
+            const existingProduct = await DB.getProductByBarcode(result.data);
+            if (existingProduct && existingProduct.id !== this.state.editingProduct.id) {
+                alert(`This barcode is already assigned to "${existingProduct.name}".`);
+                Camera.stop();
+                this.navigateBack();
+                this.showModal('product-form-modal');
+                return;
+            }
+
+            this.state.capturedBarcode = result.data;
+            Camera.stop();
+            this.navigateBack();
+            this.elements.productBarcodeDisplay.textContent = result.data;
+            this.elements.productBarcodeDisplay.style.display = 'block';
+            this.elements.productSourceInfo.textContent = 'New barcode scanned successfully.';
+            this.showModal('product-form-modal');
         },
 
         handleProductFound(product) { this.state.sellingProduct = product; this.elements.saleProductImage.src = product.image ? URL.createObjectURL(product.image) : 'icons/icon-192.png'; this.elements.saleProductName.textContent = product.name; this.elements.saleProductStock.textContent = `Stock: ${product.stock} ${product.unit}`; this.elements.saleQuantityInput.value = 1; this.elements.saleQuantityInput.max = product.stock; this.updateSaleTotal(); this.showModal('confirm-sale-modal'); },

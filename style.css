@@ -158,6 +158,10 @@ html, body {
 .wholesaler-only {
     display: none; /* Hidden by default */
 }
+.scan-new-barcode-btn {
+    margin-top: -10px;
+    margin-bottom: 10px;
+}
 
 /* === Buttons === */
 .btn { padding: 14px 20px; border: none; border-radius: var(--border-radius); font-size: clamp(0.9rem, 2.5vw, 1rem); font-weight: 600; cursor: pointer; width: 100%; transition: background-color 0.2s; min-height: 48px; }
@@ -298,7 +302,7 @@ html, body {
 .edit-btn-icon { position: absolute; top: 6px; left: 6px; z-index: 3; background: rgba(255, 255, 255, 0.6); backdrop-filter: blur(2px); border: none; border-radius: 50%; width: 30px; height: 30px; padding: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background-color 0.2s; }
 .edit-btn-icon:hover { background: rgba(255, 255, 255, 0.8); }
 .edit-btn-icon svg { width: 100%; height: 100%; stroke: var(--text-color); }
-.out-of-stock-badge + .edit-btn-icon, .restock-badge + .edit-btn-icon, .setup-badge + .edit-btn-icon { top: 40px; }
+.out-of-stock-badge + .edit-btn-icon, .restock-badge + .edit-btn-icon, .setup-badge + .edit-btn-icon { left: 6px; top: 42px; }
 
 .selection-mode .product-card { cursor: pointer; border: 2px solid var(--primary-color); }
 .selection-mode .product-card:hover { transform: scale(1.03); box-shadow: 0 6px 15px rgba(0,0,0,0.12); }
@@ -412,6 +416,36 @@ html, body {
 .log-details-cell.price { width: 30%; text-align: right; white-space: nowrap; }
 .log-details-cell.total { width: 35%; text-align: right; white-space: nowrap; }
 .log-details-row.footer .item { color: var(--text-color); }
+
+/* Print Styles */
+@media print {
+    body > *:not(#modal-container) {
+        display: none !important;
+    }
+    #modal-container, #receipt-modal {
+        display: block !important;
+        position: static;
+        background: white;
+        width: 100%;
+        height: auto;
+        padding: 0;
+    }
+    #receipt-modal {
+        max-width: 100%;
+        max-height: none;
+        box-shadow: none;
+        border: none;
+        padding: 0;
+    }
+    .modal-actions {
+        display: none !important;
+    }
+    .receipt-paper {
+        border: none;
+        box-shadow: none;
+    }
+}
+
 
 /* Responsiveness Tweaks */
 @media (max-width: 360px) {

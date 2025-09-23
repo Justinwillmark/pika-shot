@@ -278,7 +278,10 @@
                 <p id="product-source-info" class="source-info"></p>
                 <p id="product-barcode-display" class="barcode-display" style="display: none;"></p>
                 <div class="form-group">
-                    <button type="button" id="add-change-picture-btn" class="btn btn-secondary" style="width: 100%; margin-bottom: 20px;">Add / Change Picture</button>
+                     <button type="button" id="scan-new-barcode-btn" class="btn btn-secondary scan-new-barcode-btn" style="display: none;">Scan Barcode</button>
+                </div>
+                <div class="form-group">
+                    <button type="button" id="add-change-picture-btn" class="btn btn-secondary">Add / Change Picture</button>
                 </div>
                 <div class="form-group"><label for="product-name">Product Name</label><input type="text" id="product-name" required></div>
                 <div class="form-group"><label for="product-price">Price (₦)</label><input type="number" id="product-price" inputmode="decimal" required></div>
@@ -326,8 +329,9 @@
         <div id="receipt-modal" class="modal-content receipt-modal" style="display:none;">
             <div id="receipt-content" class="receipt-paper">
                 </div>
-            <div class="modal-actions">
+            <div class="modal-actions modal-actions-inline">
                 <button id="close-receipt-btn" class="btn btn-secondary">Close</button>
+                <button id="print-receipt-btn" class="btn btn-secondary">Print Receipt</button>
                 <button id="share-receipt-btn" class="btn btn-primary">Share</button>
             </div>
         </div>
