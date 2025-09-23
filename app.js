@@ -118,6 +118,11 @@ document.addEventListener('DOMContentLoaded', () => {
             stockLevelsView: document.getElementById('stock-levels-view'),
             retailerStockView: document.getElementById('retailer-stock-view'),
             refreshStocksBtn: document.getElementById('refresh-stocks-btn'),
+            cartonDetailsModal: document.getElementById('carton-details-modal'),
+            cartonDetailsForm: document.getElementById('carton-details-form'),
+            cancelCartonDetailsBtn: document.getElementById('cancel-carton-details-btn'),
+            cartonSubunitTypeInput: document.getElementById('carton-subunit-type'),
+            cartonSubunitQuantityInput: document.getElementById('carton-subunit-quantity'),
         },
 
         // --- APP STATE ---
@@ -139,6 +144,7 @@ document.addEventListener('DOMContentLoaded', () => {
             longPressTimer: null,
             firebaseReady: false,
             retailerListener: null, // For unsubscribing from Firestore listener
+            tempProductDataForCarton: null,
         },
 
         // --- INITIALIZATION ---
@@ -227,6 +233,8 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.productExistsOkBtn.addEventListener('click', () => { this.hideModal(); this.navigateTo('products-view'); });
             this.elements.seeStockLevelsBtn.addEventListener('click', () => this.navigateTo('stock-levels-view'));
             this.elements.refreshStocksBtn.addEventListener('click', this.renderRetailerStocks.bind(this));
+            this.elements.cartonDetailsForm.addEventListener('submit', this.handleSaveCartonDetails.bind(this));
+            this.elements.cancelCartonDetailsBtn.addEventListener('click', () => { this.hideModal(); this.showModal('product-form-modal'); });
 
             // Phone number validation
             this.elements.userPhoneInput.addEventListener('input', (e) => {
@@ -438,14 +446,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 const card = document.createElement('div');
                 card.className = 'product-card';
                 const imageUrl = product.image ? URL.createObjectURL(product.image) : 'icons/icon-192.png';
-                let outOfStockBadge = product.stock <= 0 ? '<div class="out-of-stock-badge">Out of Stock</div>' : '';
                 
+                let badgeHtml = '';
+                if (product.stock <= 0) {
+                    badgeHtml = '<div class="out-of-stock-badge">Out of Stock</div>';
+                } else if (product.needsSetup === 'barcode-and-price') {
+                    badgeHtml = '<div class="setup-badge">Set barcode & price</div>';
+                } else if (product.needsSetup === 'price') {
+                    badgeHtml = '<div class="setup-badge">Set price</div>';
+                } else if (product.stock < 7) {
+                    badgeHtml = '<div class="restock-badge">Restock now!</div>';
+                }
+
                 const words = product.name.split(' ');
                 const displayName = words.length > 2 ? words.slice(0, 2).join(' ') + '...' : product.name;
 
                 const pencilIconSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>`;
                 card.innerHTML = `
-                    ${outOfStockBadge}
+                    ${badgeHtml}
                     <button class="edit-btn-icon">${pencilIconSVG}</button>
                     <div class="product-card-image-wrapper">
                         <img src="${imageUrl}" alt="${product.name}">
@@ -468,6 +486,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         this.handleProductFound(product);
                         this.elements.productsView.classList.remove('selection-mode');
                         this.elements.addNewProductBtn.style.display = 'flex';
+                    } else {
+                        // Allow clicking to edit if a setup is needed
+                        if (product.needsSetup) {
+                            this.handleEditProduct(product);
+                        }
                     }
                 });
 
@@ -615,6 +638,14 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.productBarcodeDisplay.style.display = 'none';
             this.state.capturedBlob = null;
             
+            // Show/hide "cartons" option based on user type
+            const cartonOption = this.elements.productUnitInput.querySelector('.wholesaler-only');
+            if (this.state.user && this.state.user.type === 'Wholesaler') {
+                cartonOption.style.display = 'block';
+            } else {
+                cartonOption.style.display = 'none';
+            }
+            
             if (options.source === 'barcode') {
                 this.elements.productSourceInfo.textContent = 'Product identified by barcode.';
                 this.elements.productSourceInfo.style.display = 'block';
@@ -634,7 +665,7 @@ document.addEventListener('DOMContentLoaded', () => {
             e.preventDefault(); 
             const isEditing = !!this.state.editingProduct;
             
-            const productData = { 
+            let productData = { 
                 id: isEditing ? this.state.editingProduct.id : Date.now(), 
                 name: this.elements.productNameInput.value.trim(), 
                 price: parseFloat(this.elements.productPriceInput.value), 
@@ -643,12 +674,46 @@ document.addEventListener('DOMContentLoaded', () => {
                 image: this.state.capturedBlob || (isEditing ? this.state.editingProduct.image : null), 
                 barcode: this.state.capturedBarcode || (isEditing ? this.state.editingProduct.barcode : null),
                 createdAt: isEditing ? this.state.editingProduct.createdAt : new Date(),
-                supplierId: isEditing ? this.state.editingProduct.supplierId : null, // Preserve supplierId on edit
+                supplierId: isEditing ? this.state.editingProduct.supplierId : null,
+                needsSetup: null, // Clear setup flag on any edit/save
             }; 
 
             if (!productData.name || isNaN(productData.price) || isNaN(productData.stock)) { 
                 alert('Please fill out all fields correctly.'); return; 
             } 
+            
+            // If wholesaler selects "cartons", show the details modal
+            if (productData.unit === 'cartons' && this.state.user.type === 'Wholesaler') {
+                this.state.tempProductDataForCarton = productData;
+                this.hideModal();
+                this.showModal('carton-details-modal');
+                return; // Stop here and wait for carton details
+            }
+            
+            await this._commitProductSave(productData);
+        },
+
+        async handleSaveCartonDetails(e) {
+            e.preventDefault();
+            if (!this.state.tempProductDataForCarton) return;
+
+            const subUnitType = this.elements.cartonSubunitTypeInput.value;
+            const subUnitQuantity = parseInt(this.elements.cartonSubunitQuantityInput.value);
+
+            if (!subUnitType || isNaN(subUnitQuantity) || subUnitQuantity <= 0) {
+                alert('Please fill in the carton details correctly.');
+                return;
+            }
+            
+            let productData = this.state.tempProductDataForCarton;
+            productData.subUnitType = subUnitType;
+            productData.subUnitQuantity = subUnitQuantity;
+
+            await this._commitProductSave(productData);
+            this.state.tempProductDataForCarton = null;
+        },
+
+        async _commitProductSave(productData) {
             await DB.saveProduct(productData); 
             
             this.hideModal(); 
@@ -672,6 +737,13 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.productStockInput.value = product.stock; 
             this.elements.productUnitInput.value = product.unit; 
             this.state.capturedBlob = product.image;
+
+            const cartonOption = this.elements.productUnitInput.querySelector('.wholesaler-only');
+            if (this.state.user && this.state.user.type === 'Wholesaler') {
+                cartonOption.style.display = 'block';
+            } else {
+                cartonOption.style.display = 'none';
+            }
             
             if (product.barcode) {
                 this.elements.productSourceInfo.textContent = 'Product has a barcode.';
@@ -689,7 +761,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         async handleDeleteProduct() {
             if (!this.state.editingProduct) return;
-            // Not using window.confirm as it can be blocked in PWAs
             const confirmation = confirm(`Are you sure you want to permanently delete "${this.state.editingProduct.name}"? This action cannot be undone.`);
             if (confirmation) {
                 await DB.deleteProduct(this.state.editingProduct.id);
@@ -869,13 +940,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 senderId: this.state.user.uid,
                 items: selectedSaleObjects.map(sale => {
                     const product = allProducts.find(p => p.id === sale.productId);
-                    return {
+                    const item = {
                         name: sale.productName,
                         price: sale.price,
                         quantity: sale.quantity,
                         unit: product ? product.unit : 'pieces',
                         barcode: product ? product.barcode : null
                     };
+                    if (product && product.unit === 'cartons') {
+                        item.subUnitType = product.subUnitType;
+                        item.subUnitQuantity = product.subUnitQuantity;
+                    }
+                    return item;
                 })
             };
 
@@ -892,13 +968,19 @@ document.addEventListener('DOMContentLoaded', () => {
             const totalCost = logData.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
             const dateScanned = new Date().toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' });
 
-            const itemsHtml = logData.items.map(item => `
+            const itemsHtml = logData.items.map(item => {
+                const isCarton = item.unit === 'cartons' && item.subUnitType;
+                const displayName = isCarton 
+                    ? `${item.name} (${item.quantity} ${item.unit} -> ${item.quantity * item.subUnitQuantity} ${item.subUnitType})`
+                    : `${item.name} (${item.quantity} ${item.unit})`;
+                
+                return `
                 <div class="log-details-row">
-                    <div class="log-details-cell item">${item.name} (${item.quantity} ${item.unit})</div>
+                    <div class="log-details-cell item">${displayName}</div>
                     <div class="log-details-cell price">@ &#8358;${item.price.toLocaleString()}</div>
                     <div class="log-details-cell total">&#8358;${(item.quantity * item.price).toLocaleString()}</div>
                 </div>
-            `).join('');
+            `}).join('');
 
             const contentHtml = `
                 <div class="log-summary">
@@ -930,28 +1012,38 @@ document.addEventListener('DOMContentLoaded', () => {
             const supplierId = this.state.scannedLogData.senderId;
 
             for (const item of this.state.scannedLogData.items) {
+                const isCarton = item.unit === 'cartons' && item.subUnitType && item.subUnitQuantity > 0;
+                
+                // Use sub-unit details if it's a carton, otherwise use item details
+                const stockToAdd = isCarton ? item.quantity * item.subUnitQuantity : item.quantity;
+                const unitType = isCarton ? item.subUnitType : item.unit;
+                const costPrice = isCarton ? item.price / item.subUnitQuantity : item.price;
+                const needsSetup = isCarton ? 'barcode-and-price' : 'price';
+                const barcode = isCarton ? null : item.barcode;
+
                 const existingProduct = allProducts.find(p => p.name.toLowerCase() === item.name.toLowerCase());
                 let finalProduct;
+
                 if (existingProduct) {
-                    existingProduct.stock += item.quantity;
-                    if (!existingProduct.barcode && item.barcode) {
-                        existingProduct.barcode = item.barcode;
-                    }
-                    existingProduct.supplierId = supplierId; // Tag product with supplier
+                    existingProduct.stock += stockToAdd;
+                    existingProduct.supplierId = supplierId;
+                    existingProduct.needsSetup = needsSetup;
+                    // Retailer might get a non-barcoded version of something they already have, don't nullify existing barcode
+                    if (barcode) existingProduct.barcode = barcode; 
                     finalProduct = existingProduct;
                 } else {
-                    const newProduct = { 
+                    finalProduct = { 
                         id: Date.now() + Math.random(), 
                         name: item.name, 
-                        price: item.price, 
-                        stock: item.quantity, 
-                        unit: item.unit, 
+                        price: costPrice, // This is now cost price for the retailer
+                        stock: stockToAdd, 
+                        unit: unitType, 
                         image: null, 
-                        barcode: item.barcode || null, 
+                        barcode: barcode, 
                         createdAt: new Date(),
-                        supplierId: supplierId // Tag product with supplier
+                        supplierId: supplierId,
+                        needsSetup: needsSetup
                     };
-                    finalProduct = newProduct;
                 }
                 productUpdates.push(DB.saveProduct(finalProduct));
                 updatedProductsForFirebase[finalProduct.name] = { stock: finalProduct.stock, unit: finalProduct.unit };
@@ -979,7 +1071,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             this.hideModal();
             this.state.scannedLogData = null;
-            alert('Inventory updated successfully!');
+            alert('Inventory updated successfully! Check "My Products" to set prices.');
             await this.renderProducts();
             this.navigateTo('products-view');
         },
@@ -1006,8 +1098,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
 
                     let contentHtml = '';
-                    querySnapshot.forEach(doc => {
-                        const retailer = doc.data();
+                    const retailersData = [];
+                    querySnapshot.forEach(doc => retailersData.push(doc.data()));
+                    
+                    // Sort by most recently updated
+                    retailersData.sort((a, b) => (b.lastUpdate?.toDate() || 0) - (a.lastUpdate?.toDate() || 0));
+
+                    retailersData.forEach(retailer => {
                         let productsHtml = '';
                         if (retailer.products && Object.keys(retailer.products).length > 0) {
                             for (const productName in retailer.products) {

@@ -8,6 +8,8 @@
     --text-light: #888888;
     --border-color: #EAEAEA;
     --danger-color: #D0021B;
+    --warning-color: #f0ad4e;
+    --info-color: #5bc0de;
     --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     --border-radius: 12px;
     --box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
@@ -153,6 +155,9 @@ html, body {
     border-radius: 8px;
     word-break: break-all;
 }
+.wholesaler-only {
+    display: none; /* Hidden by default */
+}
 
 /* === Buttons === */
 .btn { padding: 14px 20px; border: none; border-radius: var(--border-radius); font-size: clamp(0.9rem, 2.5vw, 1rem); font-weight: 600; cursor: pointer; width: 100%; transition: background-color 0.2s; min-height: 48px; }
@@ -236,7 +241,7 @@ html, body {
 .sale-price { font-weight: 700; font-size: clamp(1rem, 3vw, 1.1rem); margin-left: 8px; }
 .all-sales-container { padding: 20px; }
 #stock-levels-view .all-sales-container {
-    padding-top: 16px;
+    padding: 16px 20px 20px;
 }
 .sales-group-header {
     display: flex;
@@ -273,7 +278,10 @@ html, body {
 .product-card { background-color: var(--surface-color); border-radius: var(--border-radius); box-shadow: var(--box-shadow); display: flex; flex-direction: column; position: relative; aspect-ratio: 3 / 4; overflow: hidden; }
 .product-card-image-wrapper { height: 70%; width: 100%; }
 .product-card-image-wrapper img { width: 100%; height: 100%; object-fit: cover; }
-.out-of-stock-badge { position: absolute; top: 8px; right: 8px; background-color: var(--danger-color); color: white; padding: 4px 8px; font-size: 0.75rem; font-weight: 600; border-radius: 6px; z-index: 4; }
+.out-of-stock-badge, .restock-badge, .setup-badge { position: absolute; top: 8px; right: 8px; color: white; padding: 4px 8px; font-size: 0.7rem; font-weight: 600; border-radius: 6px; z-index: 4; line-height: 1.2; text-align: center; }
+.out-of-stock-badge { background-color: var(--danger-color); }
+.restock-badge { background-color: var(--warning-color); }
+.setup-badge { background-color: var(--info-color); }
 .product-card-info { flex-grow: 1; padding: 8px 10px; display: flex; flex-direction: column; justify-content: center; min-height: 30%; }
 .product-card-info h4 {
     font-size: clamp(0.85rem, 2.5vw, 0.95rem);
@@ -287,10 +295,10 @@ html, body {
 .product-price { font-size: clamp(0.9rem, 3vw, 1rem); font-weight: 700; color: var(--primary-color); }
 .product-stock { font-size: clamp(0.7rem, 2vw, 0.75rem); color: var(--text-light); margin-top: auto; padding-top: 4px; }
 .empty-state { padding: 40px 20px; text-align: center; color: var(--text-light); grid-column: 1 / -1; }
-.edit-btn-icon { position: absolute; top: 6px; right: 6px; z-index: 3; background: rgba(255, 255, 255, 0.6); backdrop-filter: blur(2px); border: none; border-radius: 50%; width: 30px; height: 30px; padding: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background-color 0.2s; }
+.edit-btn-icon { position: absolute; top: 6px; left: 6px; z-index: 3; background: rgba(255, 255, 255, 0.6); backdrop-filter: blur(2px); border: none; border-radius: 50%; width: 30px; height: 30px; padding: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background-color 0.2s; }
 .edit-btn-icon:hover { background: rgba(255, 255, 255, 0.8); }
 .edit-btn-icon svg { width: 100%; height: 100%; stroke: var(--text-color); }
-.out-of-stock-badge + .edit-btn-icon { top: 40px; }
+.out-of-stock-badge + .edit-btn-icon, .restock-badge + .edit-btn-icon, .setup-badge + .edit-btn-icon { top: 40px; }
 
 .selection-mode .product-card { cursor: pointer; border: 2px solid var(--primary-color); }
 .selection-mode .product-card:hover { transform: scale(1.03); box-shadow: 0 6px 15px rgba(0,0,0,0.12); }
