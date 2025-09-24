@@ -58,37 +58,41 @@
             <div class="onboarding-content">
                 <h1>Welcome to pika shot</h1>
                 <p>The simplest way to track your sales and inventory.</p>
-                <div class="form-group">
-                    <label for="user-name">Your Name</label>
-                    <input type="text" id="user-name" placeholder="e.g., Chiamaka" required>
-                </div>
-                <div class="form-group">
-                    <label for="business-name">Business Name</label>
-                    <input type="text" id="business-name" placeholder="e.g., Amaka's Provisions" required>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="user-name">Your Name</label>
+                        <input type="text" id="user-name" placeholder="e.g., Chiamaka" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="business-name">Business Name</label>
+                        <input type="text" id="business-name" placeholder="e.g., Amaka's Provisions" required>
+                    </div>
                 </div>
                 <div class="form-group">
                     <label for="user-phone">Phone Number</label>
                     <input type="tel" id="user-phone" placeholder="e.g., 08012345678" maxlength="11" required>
                 </div>
-                 <div class="form-group">
-                    <label for="business-type">Business Type</label>
-                    <select id="business-type" required>
-                        <option value="" disabled selected>Select your business type</option>
-                        <option value="Wholesaler">Wholesaler</option>
-                        <option value="Retailer">Retailer</option>
-                    </select>
-                </div>
-                 <div class="form-group">
-                    <label for="business-location">Location</label>
-                    <select id="business-location" required>
-                        <option value="" disabled selected>Select your area</option>
-                        <option value="Lagos Island">Lagos Island</option>
-                        <option value="Ikeja">Ikeja</option>
-                        <option value="Yaba">Yaba</option>
-                        <option value="Surulere">Surulere</option>
-                        <option value="Lekki">Lekki</option>
-                        <option value="Apapa">Apapa</option>
-                    </select>
+                <div class="form-row">
+                     <div class="form-group">
+                        <label for="business-type">Business Type</label>
+                        <select id="business-type" required>
+                            <option value="" disabled selected>Select your type</option>
+                            <option value="Wholesaler">Wholesaler</option>
+                            <option value="Retailer">Retailer</option>
+                        </select>
+                    </div>
+                     <div class="form-group">
+                        <label for="business-location">Location</label>
+                        <select id="business-location" required>
+                            <option value="" disabled selected>Select your area</option>
+                            <option value="Lagos Island">Lagos Island</option>
+                            <option value="Ikeja">Ikeja</option>
+                            <option value="Yaba">Yaba</option>
+                            <option value="Surulere">Surulere</option>
+                            <option value="Lekki">Lekki</option>
+                            <option value="Apapa">Apapa</option>
+                        </select>
+                    </div>
                 </div>
                 <button id="start-onboarding-btn" class="btn btn-primary">Get Started</button>
                 <p class="privacy-policy-link">By using Pika-Shot, you agree to our <a href="#" id="privacy-link">Data & Privacy Policy</a>.</p>
@@ -276,7 +280,7 @@
             <h2 id="product-form-title">Add New Product</h2>
             <form id="product-form">
                 <input type="hidden" id="product-id">
-                <p id="product-source-info" class="source-info"></p>
+                <p id="product-source-info" class="source-info" style="display: none;"></p>
                 <p id="product-barcode-display" class="barcode-display" style="display: none;"></p>
                 <div class="form-group">
                      <button type="button" id="scan-new-barcode-btn" class="btn btn-secondary scan-new-barcode-btn" style="display: none;">Scan Barcode</button>
@@ -300,6 +304,7 @@
                 <div class="form-group">
                     <label for="carton-subunit-type">What's inside the carton?</label>
                     <select id="carton-subunit-type" required>
+                         <option value="" disabled selected>Select a unit...</option>
                          <option value="sachets">sachets</option>
                          <option value="bottles">bottles</option>
                          <option value="cans">cans</option>
@@ -308,7 +313,7 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label for="carton-subunit-quantity" id="carton-quantity-label">How many sachets per carton?</label>
+                    <label for="carton-subunit-quantity" id="carton-quantity-label">Quantity of items per carton</label>
                     <input type="text" id="carton-subunit-quantity" inputmode="numeric" required>
                 </div>
                 <div class="modal-actions">

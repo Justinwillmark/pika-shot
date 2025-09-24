@@ -248,7 +248,11 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.cancelCartonDetailsBtn.addEventListener('click', () => { this.hideModal(); this.showModal('product-form-modal'); });
             this.elements.cartonSubunitTypeInput.addEventListener('input', (e) => {
                 const selectedUnit = e.target.value;
-                this.elements.cartonQuantityLabel.textContent = `How many ${selectedUnit} per carton?`;
+                if (selectedUnit) {
+                    this.elements.cartonQuantityLabel.textContent = `How many ${selectedUnit} per carton?`;
+                } else {
+                    this.elements.cartonQuantityLabel.textContent = `Quantity of items per carton`;
+                }
             });
 
             // Number formatting listeners
@@ -532,7 +536,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         this.elements.productsView.classList.remove('selection-mode');
                         this.elements.addNewProductBtn.style.display = 'flex';
                     } else {
-                        // Allow clicking to edit if a setup is needed
                         if (product.needsSetup || this.state.user.type === 'Wholesaler') {
                             this.handleEditProduct(product);
                         }
@@ -695,6 +698,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.scanNewBarcodeBtn.style.display = 'none';
             this.elements.productIdInput.value = '';
             this.elements.productBarcodeDisplay.style.display = 'none';
+            this.elements.productSourceInfo.style.display = 'none';
             this.state.capturedBlob = null;
             
             const cartonOption = this.elements.productUnitInput.querySelector('.wholesaler-only');
@@ -704,15 +708,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 cartonOption.style.display = 'none';
             }
             
-            if (options.source === 'barcode') {
-                this.elements.productSourceInfo.textContent = 'Product identified by barcode.';
-                this.elements.productSourceInfo.style.display = 'block';
-                if(this.state.capturedBarcode) {
-                    this.elements.productBarcodeDisplay.textContent = this.state.capturedBarcode;
-                    this.elements.productBarcodeDisplay.style.display = 'block';
-                }
-            } else {
-                 this.elements.productSourceInfo.style.display = 'none';
+            if (options.source === 'barcode' && this.state.capturedBarcode) {
+                this.elements.productBarcodeDisplay.textContent = this.state.capturedBarcode;
+                this.elements.productBarcodeDisplay.style.display = 'block';
             }
             
             this.hideModal();
@@ -741,6 +739,8 @@ document.addEventListener('DOMContentLoaded', () => {
             } 
             
             if (productData.unit === 'cartons' && this.state.user.type === 'Wholesaler') {
+                this.elements.cartonDetailsForm.reset();
+                this.elements.cartonQuantityLabel.textContent = 'Quantity of items per carton';
                 this.state.tempProductDataForCarton = productData;
                 this.hideModal();
                 this.showModal('carton-details-modal');
@@ -804,6 +804,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 cartonOption.style.display = 'none';
             }
             
+            this.elements.productSourceInfo.style.display = 'none'; // Hide by default
             if (product.needsSetup === 'barcode-and-price') {
                 this.elements.scanNewBarcodeBtn.style.display = 'block';
                 this.elements.productSourceInfo.textContent = 'This product needs a barcode. Scan one now.';
@@ -812,7 +813,6 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 this.elements.scanNewBarcodeBtn.style.display = 'none';
                 if (product.barcode) {
-                    this.elements.productSourceInfo.style.display = 'none';
                     this.elements.productBarcodeDisplay.textContent = product.barcode;
                     this.elements.productBarcodeDisplay.style.display = 'block';
                 } else {
@@ -888,8 +888,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.state.capturedBarcode = result.data;
             this.elements.productBarcodeDisplay.textContent = result.data;
             this.elements.productBarcodeDisplay.style.display = 'block';
-            this.elements.productSourceInfo.textContent = 'New barcode scanned successfully.';
-            this.elements.productSourceInfo.style.display = 'block';
+            this.elements.productSourceInfo.style.display = 'none';
             this.showModal('product-form-modal');
         },
 
