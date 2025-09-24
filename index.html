@@ -91,6 +91,7 @@
                     </select>
                 </div>
                 <button id="start-onboarding-btn" class="btn btn-primary">Get Started</button>
+                <p class="privacy-policy-link">By using Pika-Shot, you agree to our <a href="#" id="privacy-link">Data & Privacy Policy</a>.</p>
             </div>
         </div>
         
@@ -222,7 +223,7 @@
         <div id="receipt-actions" class="receipt-actions">
             <button id="cancel-selection-btn" class="btn btn-secondary">Cancel</button>
             <button id="generate-receipt-btn" class="btn btn-primary" disabled>Generate Receipt</button>
-            <button id="share-log-btn" class="btn btn-primary">Share as Log</button>
+            <button id="share-log-btn" class="btn btn-primary" style="display: none;">Share as Log</button>
         </div>
 
         <div id="camera-view" class="view camera-container">
@@ -284,9 +285,11 @@
                     <button type="button" id="add-change-picture-btn" class="btn btn-secondary">Add / Change Picture</button>
                 </div>
                 <div class="form-group"><label for="product-name">Product Name</label><input type="text" id="product-name" required></div>
-                <div class="form-group"><label for="product-price">Price (₦)</label><input type="number" id="product-price" inputmode="decimal" required></div>
-                <div class="form-group"><label for="product-stock">Stock Quantity</label><input type="number" id="product-stock" inputmode="numeric" required></div>
-                <div class="form-group"><label for="product-unit">Unit Type</label><select id="product-unit" required><option value="sachets">sachets</option><option value="bottles">bottles</option><option value="cans">cans</option><option value="pieces">pieces</option><option value="packs">packs</option><option value="cartons" class="wholesaler-only">cartons</option></select></div>
+                <div class="form-group"><label for="product-price">Selling Price (₦)</label><input type="text" id="product-price" inputmode="decimal" required></div>
+                <div class="form-row">
+                    <div class="form-group"><label for="product-stock">Stock Quantity</label><input type="text" id="product-stock" inputmode="numeric" required></div>
+                    <div class="form-group"><label for="product-unit">Unit Type</label><select id="product-unit" required><option value="sachets">sachets</option><option value="bottles">bottles</option><option value="cans">cans</option><option value="pieces">pieces</option><option value="packs">packs</option><option value="cartons" class="wholesaler-only">cartons</option></select></div>
+                </div>
                 <div class="modal-actions"><button type="button" id="cancel-product-form-btn" class="btn btn-secondary">Cancel</button><button type="submit" class="btn btn-primary">Save Product</button></div>
             </form>
         </div>
@@ -305,8 +308,8 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label for="carton-subunit-quantity">Quantity in carton?</label>
-                    <input type="number" id="carton-subunit-quantity" inputmode="numeric" required>
+                    <label for="carton-subunit-quantity" id="carton-quantity-label">How many sachets per carton?</label>
+                    <input type="text" id="carton-subunit-quantity" inputmode="numeric" required>
                 </div>
                 <div class="modal-actions">
                      <button type="button" id="cancel-carton-details-btn" class="btn btn-secondary">Cancel</button>
@@ -318,7 +321,7 @@
         <div id="confirm-sale-modal" class="modal-content" style="display:none;">
             <h2>Confirm Sale</h2>
             <div class="sale-item-details"><img id="sale-product-image" src="" alt="Product image"><div><h3 id="sale-product-name">Product Name</h3><p id="sale-product-stock">Stock: 50 sachets</p></div></div>
-            <div class="form-group"><label for="sale-quantity">Quantity</label><input type="number" id="sale-quantity" inputmode="numeric" value="1" min="1"></div>
+            <div class="form-group"><label for="sale-quantity">Quantity</label><input type="text" id="sale-quantity" inputmode="numeric" value="1" min="1"></div>
             <div class="sale-total"><p>Total</p><h2 id="sale-total-price">₦0</h2></div>
             <div class="modal-actions modal-actions-inline">
                 <button id="cancel-sale-btn" class="btn btn-secondary">Cancel</button>
@@ -351,8 +354,8 @@
             <h2>Manual Sale</h2>
             <form id="manual-sale-form">
                 <div class="form-group"><label for="manual-product-name">Product Name</label><input type="text" id="manual-product-name" required></div>
-                <div class="form-group"><label for="manual-product-price">Price (₦)</label><input type="number" id="manual-product-price" inputmode="decimal" required></div>
-                <div class="form-group"><label for="manual-sale-quantity">Quantity</label><input type="number" id="manual-sale-quantity" value="1" inputmode="numeric" required></div>
+                <div class="form-group"><label for="manual-product-price">Selling Price (₦)</label><input type="text" id="manual-product-price" inputmode="decimal" required></div>
+                <div class="form-group"><label for="manual-sale-quantity">Quantity</label><input type="text" id="manual-sale-quantity" value="1" inputmode="numeric" required></div>
                 <div class="form-group"><label for="manual-product-unit">Unit Type</label><select id="manual-product-unit" required><option value="pieces">pieces</option><option value="sachets">sachets</option><option value="bottles">bottles</option><option value="cans">cans</option><option value="packs">packs</option></select></div>
                 <div class="modal-actions">
                     <button type="button" id="cancel-manual-sale-btn" class="btn btn-secondary">Cancel</button>
@@ -376,6 +379,16 @@
             <div class="modal-actions">
                 <button id="reject-log-btn" class="btn btn-secondary">Reject</button>
                 <button id="accept-log-btn" class="btn btn-primary">Accept & Add</button>
+            </div>
+        </div>
+
+        <div id="privacy-policy-modal" class="modal-content" style="display:none;">
+            <h2>Data & Privacy Policy</h2>
+            <p style="text-align: left;">
+                Hey there! To make pika-shot work smoothly, we save your business details (like your name, phone number, and location) and product data right on your device. We only use your location and business type to gather general insights that help us improve the app for everyone. Your data is for your benefit, helping you track everything effortlessly.
+            </p>
+            <div class="modal-actions">
+                <button id="privacy-ok-btn" class="btn btn-primary">Got it</button>
             </div>
         </div>
 

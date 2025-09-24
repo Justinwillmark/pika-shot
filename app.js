@@ -125,13 +125,15 @@ document.addEventListener('DOMContentLoaded', () => {
             cancelCartonDetailsBtn: document.getElementById('cancel-carton-details-btn'),
             cartonSubunitTypeInput: document.getElementById('carton-subunit-type'),
             cartonSubunitQuantityInput: document.getElementById('carton-subunit-quantity'),
+            cartonQuantityLabel: document.getElementById('carton-quantity-label'),
+            privacyLink: document.getElementById('privacy-link'),
+            privacyOkBtn: document.getElementById('privacy-ok-btn'),
         },
 
         // --- APP STATE ---
         state: {
-            navigationHistory: [],
             user: null,
-            currentView: 'home-view',
+            currentView: null,
             cameraReady: false,
             capturedBlob: null,
             capturedBarcode: null,
@@ -194,8 +196,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // --- EVENT LISTENERS ---
         setupEventListeners() {
-            this.elements.backBtn.addEventListener('click', this.navigateBack.bind(this));
+            this.elements.backBtn.addEventListener('click', () => history.back());
+            window.addEventListener('popstate', this.handlePopState.bind(this));
+
             this.elements.startOnboardingBtn.addEventListener('click', this.handleOnboarding.bind(this));
+            this.elements.privacyLink.addEventListener('click', (e) => { e.preventDefault(); this.showModal('privacy-policy-modal'); });
+            this.elements.privacyOkBtn.addEventListener('click', () => this.hideModal());
+
             this.elements.grantLocationBtn.addEventListener('click', this.handleLocationPermission.bind(this));
             this.elements.grantCameraBtn.addEventListener('click', this.handleCameraPermission.bind(this));
             this.elements.navButtons.forEach(btn => btn.addEventListener('click', () => this.navigateTo(btn.dataset.view)));
@@ -204,14 +211,14 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.productForm.addEventListener('submit', this.handleSaveProduct.bind(this));
             this.elements.deleteProductBtn.addEventListener('click', this.handleDeleteProduct.bind(this));
             this.elements.cancelProductFormBtn.addEventListener('click', () => this.hideModal());
-            this.elements.cancelScanBtn.addEventListener('click', this.cancelScan.bind(this));
+            this.elements.cancelScanBtn.addEventListener('click', () => { Camera.stop(); history.back(); });
             this.elements.retakePictureBtn.addEventListener('click', this.handleRetakePicture.bind(this));
             this.elements.confirmPictureBtn.addEventListener('click', this.handleConfirmPicture.bind(this));
             this.elements.addChangePictureBtn.addEventListener('click', this.handleAddOrChangePicture.bind(this));
             this.elements.scanNewBarcodeBtn.addEventListener('click', this.startBarcodeAssignmentScan.bind(this));
             this.elements.cancelPictureBtn.addEventListener('click', () => this.hideModal());
             this.elements.saleQuantityInput.addEventListener('input', this.updateSaleTotal.bind(this));
-            this.elements.cancelSaleBtn.addEventListener('click', this.cancelScan.bind(this));
+            this.elements.cancelSaleBtn.addEventListener('click', () => this.hideModal());
             this.elements.confirmSaleBtn.addEventListener('click', this.handleConfirmSale.bind(this));
             window.addEventListener('beforeinstallprompt', this.handleBeforeInstallPrompt.bind(this));
             this.elements.installBtn.addEventListener('click', this.promptInstall.bind(this));
@@ -233,12 +240,32 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.rejectLogBtn.addEventListener('click', () => { this.hideModal(); this.state.scannedLogData = null; });
             this.elements.acceptLogBtn.addEventListener('click', this.acceptPikaLog.bind(this));
             this.elements.retryAddScanBtn.addEventListener('click', () => { this.hideModal(); this.startAddProduct(); });
-            this.elements.cancelAddScanBtn.addEventListener('click', () => { this.hideModal(); this.navigateTo('products-view'); });
-            this.elements.productExistsOkBtn.addEventListener('click', () => { this.hideModal(); this.navigateTo('products-view'); });
+            this.elements.cancelAddScanBtn.addEventListener('click', () => this.hideModal());
+            this.elements.productExistsOkBtn.addEventListener('click', () => this.hideModal());
             this.elements.seeStockLevelsBtn.addEventListener('click', () => this.navigateTo('stock-levels-view'));
             this.elements.refreshStocksBtn.addEventListener('click', this.renderRetailerStocks.bind(this));
             this.elements.cartonDetailsForm.addEventListener('submit', this.handleSaveCartonDetails.bind(this));
             this.elements.cancelCartonDetailsBtn.addEventListener('click', () => { this.hideModal(); this.showModal('product-form-modal'); });
+            this.elements.cartonSubunitTypeInput.addEventListener('input', (e) => {
+                const selectedUnit = e.target.value;
+                this.elements.cartonQuantityLabel.textContent = `How many ${selectedUnit} per carton?`;
+            });
+
+            // Number formatting listeners
+            const fieldsToFormat = [
+                this.elements.productPriceInput, this.elements.productStockInput,
+                this.elements.saleQuantityInput, this.elements.manualProductPrice,
+                this.elements.manualSaleQuantity, this.elements.cartonSubunitQuantityInput
+            ];
+            fieldsToFormat.forEach(input => {
+                input.addEventListener('input', (e) => {
+                    const originalValue = this.unformatNumber(e.target.value);
+                    const formattedValue = this.formatNumber(originalValue);
+                    if (e.target.value !== formattedValue) {
+                        e.target.value = formattedValue;
+                    }
+                });
+            });
 
             // Phone number validation
             this.elements.userPhoneInput.addEventListener('input', (e) => {
@@ -254,12 +281,28 @@ document.addEventListener('DOMContentLoaded', () => {
         // --- UI & NAVIGATION ---
         showLoader() { this.elements.loader.style.display = 'flex'; this.elements.appContainer.style.display = 'none'; },
         hideLoader() { this.elements.loaderSpinner.style.display = 'none'; this.elements.loaderCheck.style.display = 'block'; setTimeout(() => { this.elements.loader.style.opacity = '0'; this.elements.appContainer.style.display = 'flex'; setTimeout(() => { this.elements.loader.style.display = 'none'; }, 500); }, 500); },
-        showView(viewId) { this.elements.views.forEach(view => view.classList.remove('active')); const viewToShow = document.getElementById(viewId); if (viewToShow) { viewToShow.classList.add('active'); this.state.currentView = viewId; if (!['onboarding-view', 'camera-permission-view', 'location-permission-view', 'camera-view'].includes(viewId)) { this.updateHeader(viewId); } } },
+        showView(viewId) { 
+            if (this.state.currentView === viewId) return;
+            this.elements.views.forEach(view => view.classList.remove('active')); 
+            const viewToShow = document.getElementById(viewId); 
+            if (viewToShow) { 
+                viewToShow.classList.add('active'); 
+                this.state.currentView = viewId; 
+                if (!['onboarding-view', 'camera-permission-view', 'location-permission-view'].includes(viewId)) { 
+                    this.updateHeader(viewId); 
+                } 
+            } 
+        },
         showModal(modalId) { this.elements.modalContainer.style.display = 'flex'; this.elements.modalContainer.querySelectorAll('.modal-content').forEach(m => m.style.display = 'none'); const modalToShow = document.getElementById(modalId); if (modalToShow) { modalToShow.style.display = 'block'; } },
         hideModal() { this.elements.modalContainer.style.display = 'none'; this.elements.modalContainer.querySelectorAll('.modal-content').forEach(m => m.style.display = 'none'); },
+        
         navigateTo(viewId, isBackNavigation = false) {
-            if (!isBackNavigation && viewId !== this.state.currentView) { this.state.navigationHistory.push(this.state.currentView); }
+            if (this.state.currentView === viewId && !isBackNavigation) return;
             
+            if (!isBackNavigation) {
+                history.pushState({ view: viewId }, '', `#${viewId}`);
+            }
+
             if (this.state.productSelectionMode && viewId !== 'products-view') {
                 this.state.productSelectionMode = false;
             }
@@ -271,9 +314,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (viewId === 'stock-levels-view') {
                 this.renderRetailerStocks();
             } else {
-                // If we navigate away from the stock view, unsubscribe from the listener
                 if (this.state.retailerListener) {
-                    this.state.retailerListener(); // This is the unsubscribe function returned by onSnapshot
+                    this.state.retailerListener(); 
                     this.state.retailerListener = null;
                 }
             }
@@ -281,23 +323,20 @@ document.addEventListener('DOMContentLoaded', () => {
             this.showView(viewId);
             this.elements.navButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.view === viewId));
             
-            if (viewId === 'home-view') {
-                this.elements.backBtn.style.display = 'none';
-                if (!isBackNavigation) this.state.navigationHistory = [];
-            } else {
-                this.elements.backBtn.style.display = 'block';
-            }
+            const isHomePage = viewId === 'home-view' || !document.getElementById(viewId)?.classList.contains('page');
+            this.elements.backBtn.style.display = isHomePage ? 'none' : 'block';
             
             this.elements.productsView.classList.toggle('selection-mode', this.state.productSelectionMode);
-            this.elements.addNewProductBtn.style.display = this.state.productSelectionMode ? 'none' : 'flex';
+            this.elements.addNewProductBtn.style.display = (this.state.productSelectionMode || viewId !== 'products-view') ? 'none' : 'flex';
             
             this.exitSelectionMode();
         },
-        navigateBack() {
-            this.state.productSelectionMode = false;
-            const previousView = this.state.navigationHistory.pop();
-            this.navigateTo(previousView || 'home-view', true);
+        
+        handlePopState(event) {
+            const viewId = (event.state && event.state.view) || 'home-view';
+            this.navigateTo(viewId, true);
         },
+
         updateHeader(viewId) {
             let title = 'pika shot';
             if (this.state.productSelectionMode && viewId === 'products-view') {
@@ -314,8 +353,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.welcomeName.textContent = `Hello, ${this.state.user.name.split(' ')[0]}!`;
                 if (this.state.user.type === 'Wholesaler') {
                     this.elements.seeStockLevelsContainer.style.display = 'block';
+                    this.elements.shareLogBtn.style.display = 'block';
                 } else {
                     this.elements.seeStockLevelsContainer.style.display = 'none';
+                    this.elements.shareLogBtn.style.display = 'none';
                 }
             }
             const date = new Date();
@@ -324,8 +365,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const sales = await DB.getSalesToday();
             const totalSales = sales.reduce((sum, sale) => sum + sale.total, 0);
             const itemsSold = sales.reduce((sum, sale) => sum + sale.quantity, 0);
-            this.elements.totalSalesEl.textContent = `₦${totalSales.toLocaleString()}`;
-            this.elements.itemsSoldEl.textContent = itemsSold;
+            this.elements.totalSalesEl.textContent = `₦${this.formatNumber(totalSales)}`;
+            this.elements.itemsSoldEl.textContent = this.formatNumber(itemsSold);
             
             this.elements.seeAllContainer.style.display = sales.length > 6 ? 'block' : 'none';
             this.elements.selectionModeHint.style.display = sales.length > 0 ? 'block' : 'none';
@@ -348,7 +389,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 saleEl.className = 'sale-item';
                 saleEl.dataset.saleId = sale.id;
                 const imageUrl = sale.image ? URL.createObjectURL(sale.image) : 'icons/icon-192.png';
-                saleEl.innerHTML = `<img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${sale.quantity} x &#8358;${sale.price.toLocaleString()}</span></div><p class="sale-price">&#8358;${sale.total.toLocaleString()}</p>`;
+                saleEl.innerHTML = `<img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${this.formatNumber(sale.quantity)} x &#8358;${this.formatNumber(sale.price)}</span></div><p class="sale-price">&#8358;${this.formatNumber(sale.total)}</p>`;
                 
                 this.addSaleItemEventListeners(saleEl, sale);
                 targetElement.appendChild(saleEl);
@@ -374,7 +415,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const groupHeader = document.createElement('div');
                 groupHeader.className = 'sales-group-header';
-                groupHeader.innerHTML = `<h3>${groupTitle}</h3><p class="sales-group-total">&#8358;${dailyTotal.toLocaleString()}</p>`;
+                groupHeader.innerHTML = `<h3>${groupTitle}</h3><p class="sales-group-total">&#8358;${this.formatNumber(dailyTotal)}</p>`;
                 groupContainer.appendChild(groupHeader);
 
                 groupedSales[groupTitle].forEach(sale => {
@@ -382,7 +423,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     saleEl.className = 'sale-item';
                     saleEl.dataset.saleId = sale.id;
                     const imageUrl = sale.image ? URL.createObjectURL(sale.image) : 'icons/icon-192.png';
-                    saleEl.innerHTML = `<img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${sale.quantity} x &#8358;${sale.price.toLocaleString()}</span></div><p class="sale-price">&#8358;${sale.total.toLocaleString()}</p>`;
+                    saleEl.innerHTML = `<img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${this.formatNumber(sale.quantity)} x &#8358;${this.formatNumber(sale.price)}</span></div><p class="sale-price">&#8358;${this.formatNumber(sale.total)}</p>`;
                     this.addSaleItemEventListeners(saleEl, sale);
                     groupContainer.appendChild(saleEl);
                 });
@@ -474,8 +515,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                     <div class="product-card-info">
                         <h4>${displayName}</h4>
-                        <p class="product-price">&#8358;${product.price.toLocaleString()}</p>
-                        <p class="product-stock">${product.stock > 0 ? `${product.stock} ${product.unit} left` : ''}</p>
+                        <p class="product-price">&#8358;${this.formatNumber(product.price)}</p>
+                        <p class="product-stock">${product.stock > 0 ? `${this.formatNumber(product.stock)} ${product.unit} left` : ''}</p>
                     </div>`;
                 
                 const editBtn = card.querySelector('.edit-btn-icon');
@@ -492,7 +533,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         this.elements.addNewProductBtn.style.display = 'flex';
                     } else {
                         // Allow clicking to edit if a setup is needed
-                        if (product.needsSetup) {
+                        if (product.needsSetup || this.state.user.type === 'Wholesaler') {
                             this.handleEditProduct(product);
                         }
                     }
@@ -503,7 +544,18 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         // --- CORE APP LOGIC ---
-        async loadMainApp() { this.elements.appHeader.style.display = 'flex'; this.elements.mainContent.style.display = 'block'; this.elements.bottomNav.style.display = 'flex'; this.navigateTo('home-view'); await this.updateDashboard(); await this.renderProducts(); },
+        async loadMainApp() {
+            this.elements.appHeader.style.display = 'flex';
+            this.elements.mainContent.style.display = 'block';
+            this.elements.bottomNav.style.display = 'flex';
+        
+            const initialView = window.location.hash.substring(1) || 'home-view';
+            history.replaceState({ view: initialView }, '', `#${initialView}`);
+            this.navigateTo(initialView, true);
+        
+            await this.updateDashboard();
+            await this.renderProducts();
+        },
         async handleOnboarding(e) { e.preventDefault(); const name = this.elements.userNameInput.value.trim(); const business = this.elements.businessNameInput.value.trim(); const phone = this.elements.userPhoneInput.value.trim(); const type = this.elements.businessTypeInput.value; const location = this.elements.businessLocationInput.value; if (!name || !business || !phone || !type || !location) { alert('Please fill in all fields.'); return; } const uid = this.state.firebaseReady ? window.fb.auth.currentUser.uid : null; this.state.user = { id: 1, name, business, phone, type, location, uid }; await DB.saveUser(this.state.user); this.showView('location-permission-view'); },
         handleLocationPermission() {
              navigator.geolocation.getCurrentPosition(
@@ -544,13 +596,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!this.state.cameraReady) { alert("Scanner is not ready yet. Please wait or check your connection."); return; }
             if (!Camera.barcodeDetector) { alert("Barcode scanning is not available on this browser."); return; }
             this.elements.scanFeedback.textContent = 'Scan product barcode';
-            this.showView('camera-view');
+            this.navigateTo('camera-view');
             Camera.startScan(
                 this.handleAddProductScanResult.bind(this), 
                 () => { // onTimeout callback
                     this.elements.scanFeedback.textContent = 'No barcode found.';
                     setTimeout(() => { 
-                        this.cancelScan();
+                        history.back();
                         this.showModal('add-product-failed-modal');
                     }, 500);
                 },
@@ -561,6 +613,7 @@ document.addEventListener('DOMContentLoaded', () => {
         async handleAddProductScanResult(result) {
             switch (result.type) {
                 case 'barcode':
+                    history.back();
                     const existingProduct = await DB.getProductByBarcode(result.data);
                     if (existingProduct) {
                         this.elements.productExistsMessage.textContent = `Product already exists as "${existingProduct.name}" in inventory.`;
@@ -573,6 +626,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     break;
                 case 'qrlog':
+                    history.back();
                     this.handlePikaLogScanned(result.data);
                     break;
             }
@@ -583,9 +637,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!this.state.cameraReady) { alert("Scanner is not ready yet. Please wait or check your connection."); return; }
             if (!Camera.barcodeDetector) { alert("Barcode scanning is not available on this browser."); return; }
             this.elements.scanFeedback.textContent = 'Scanning for product...';
-            this.showView('camera-view');
+            this.navigateTo('camera-view');
             Camera.startScan(
                 async (result) => { // onResult
+                    history.back();
                     if (result.type === 'barcode') {
                         const product = await DB.getProductByBarcode(result.data);
                         if (product) {
@@ -614,7 +669,7 @@ document.addEventListener('DOMContentLoaded', () => {
         handleSellScanNotFound() {
             this.elements.scanFeedback.textContent = 'Product not found.';
             setTimeout(() => {
-                this.cancelScan();
+                history.back();
                 this.elements.entryChoiceTitle.textContent = 'Item Not Found';
                 this.elements.entryChoiceParagraph.textContent = 'This product is not in your inventory.';
                 this.elements.manualEntryBtn.style.display = 'none';
@@ -623,13 +678,12 @@ document.addEventListener('DOMContentLoaded', () => {
             }, 1000);
         },
 
-        cancelScan() { Camera.stop(); this.hideModal(); this.navigateBack(); },
         async handleRetakePicture() { this.hideModal(); await this.handleAddOrChangePicture(); },
         
         handleConfirmPicture() {
             this.hideModal();
             this.elements.addChangePictureBtn.textContent = 'New product photo added';
-            this.showModal('product-form-modal'); // Re-show form with new picture data ready in state
+            this.showModal('product-form-modal');
         },
         
         _openProductForm(options = {}) {
@@ -643,7 +697,6 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.productBarcodeDisplay.style.display = 'none';
             this.state.capturedBlob = null;
             
-            // Show/hide "cartons" option based on user type
             const cartonOption = this.elements.productUnitInput.querySelector('.wholesaler-only');
             if (this.state.user && this.state.user.type === 'Wholesaler') {
                 cartonOption.style.display = 'block';
@@ -673,8 +726,8 @@ document.addEventListener('DOMContentLoaded', () => {
             let productData = { 
                 id: isEditing ? this.state.editingProduct.id : Date.now(), 
                 name: this.elements.productNameInput.value.trim(), 
-                price: parseFloat(this.elements.productPriceInput.value), 
-                stock: parseInt(this.elements.productStockInput.value), 
+                price: this.unformatNumber(this.elements.productPriceInput.value), 
+                stock: this.unformatNumber(this.elements.productStockInput.value), 
                 unit: this.elements.productUnitInput.value, 
                 image: this.state.capturedBlob || (isEditing ? this.state.editingProduct.image : null), 
                 barcode: this.state.capturedBarcode || (isEditing ? this.state.editingProduct.barcode : null),
@@ -687,12 +740,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 alert('Please fill out all fields correctly.'); return; 
             } 
             
-            // If wholesaler selects "cartons", show the details modal
             if (productData.unit === 'cartons' && this.state.user.type === 'Wholesaler') {
                 this.state.tempProductDataForCarton = productData;
                 this.hideModal();
                 this.showModal('carton-details-modal');
-                return; // Stop here and wait for carton details
+                return; 
             }
             
             await this._commitProductSave(productData);
@@ -703,7 +755,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!this.state.tempProductDataForCarton) return;
 
             const subUnitType = this.elements.cartonSubunitTypeInput.value;
-            const subUnitQuantity = parseInt(this.elements.cartonSubunitQuantityInput.value);
+            const subUnitQuantity = this.unformatNumber(this.elements.cartonSubunitQuantityInput.value);
 
             if (!subUnitType || isNaN(subUnitQuantity) || subUnitQuantity <= 0) {
                 alert('Please fill in the carton details correctly.');
@@ -732,15 +784,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         handleEditProduct(product) { 
             this.state.editingProduct = product; 
-            this.state.capturedBarcode = product.barcode; // Pre-fill state with current barcode
+            this.state.capturedBarcode = product.barcode;
+            this.elements.productForm.reset();
             this.elements.productFormTitle.textContent = 'Edit Product'; 
             this.elements.deleteProductBtn.style.display = 'flex'; 
             this.elements.addChangePictureBtn.style.display = 'block';
             this.elements.addChangePictureBtn.textContent = 'Add / Change Picture';
             this.elements.productIdInput.value = product.id; 
             this.elements.productNameInput.value = product.name; 
-            this.elements.productPriceInput.value = product.price; 
-            this.elements.productStockInput.value = product.stock; 
+            this.elements.productPriceInput.value = this.formatNumber(product.price); 
+            this.elements.productStockInput.value = this.formatNumber(product.stock); 
             this.elements.productUnitInput.value = product.unit; 
             this.state.capturedBlob = product.image;
 
@@ -753,14 +806,13 @@ document.addEventListener('DOMContentLoaded', () => {
             
             if (product.needsSetup === 'barcode-and-price') {
                 this.elements.scanNewBarcodeBtn.style.display = 'block';
-                this.elements.productSourceInfo.textContent = 'This product needs a barcode.';
+                this.elements.productSourceInfo.textContent = 'This product needs a barcode. Scan one now.';
                 this.elements.productSourceInfo.style.display = 'block';
                 this.elements.productBarcodeDisplay.style.display = 'none';
             } else {
                 this.elements.scanNewBarcodeBtn.style.display = 'none';
                 if (product.barcode) {
-                    this.elements.productSourceInfo.textContent = 'Product has a barcode.';
-                    this.elements.productSourceInfo.style.display = 'block';
+                    this.elements.productSourceInfo.style.display = 'none';
                     this.elements.productBarcodeDisplay.textContent = product.barcode;
                     this.elements.productBarcodeDisplay.style.display = 'block';
                 } else {
@@ -787,35 +839,33 @@ document.addEventListener('DOMContentLoaded', () => {
         },
         
         async handleAddOrChangePicture() {
-            this.hideModal(); // Hide the product form first
-            this.showView('camera-view');
+            this.hideModal();
+            this.navigateTo('camera-view');
             try {
                 const { blob } = await Camera.capturePhoto();
+                history.back();
                 if (blob) {
                     this.state.capturedBlob = blob;
                     this.elements.capturedImagePreview.src = URL.createObjectURL(blob);
-                    this.navigateBack(); 
                     this.showModal('confirm-picture-modal');
-                } else {
-                    this.navigateBack();
                 }
             } catch (error) {
                 console.error("Error capturing photo:", error);
                 alert("Could not capture photo.");
-                this.navigateBack();
+                history.back();
             }
         },
 
         startBarcodeAssignmentScan() {
             this.hideModal();
             this.elements.scanFeedback.textContent = 'Scan new barcode...';
-            this.showView('camera-view');
+            this.navigateTo('camera-view');
             Camera.startScan(
                 this.handleBarcodeAssignmentResult.bind(this),
                 () => {
                     this.elements.scanFeedback.textContent = 'Scan failed.';
                     setTimeout(() => {
-                        this.cancelScan();
+                        history.back();
                         this.showModal('product-form-modal'); // Re-show form
                         alert('No barcode found. Please try again.');
                     }, 500);
@@ -825,30 +875,28 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         async handleBarcodeAssignmentResult(result) {
+            history.back();
             if (result.type !== 'barcode') return;
 
             const existingProduct = await DB.getProductByBarcode(result.data);
             if (existingProduct && existingProduct.id !== this.state.editingProduct.id) {
                 alert(`This barcode is already assigned to "${existingProduct.name}".`);
-                Camera.stop();
-                this.navigateBack();
                 this.showModal('product-form-modal');
                 return;
             }
 
             this.state.capturedBarcode = result.data;
-            Camera.stop();
-            this.navigateBack();
             this.elements.productBarcodeDisplay.textContent = result.data;
             this.elements.productBarcodeDisplay.style.display = 'block';
             this.elements.productSourceInfo.textContent = 'New barcode scanned successfully.';
+            this.elements.productSourceInfo.style.display = 'block';
             this.showModal('product-form-modal');
         },
 
-        handleProductFound(product) { this.state.sellingProduct = product; this.elements.saleProductImage.src = product.image ? URL.createObjectURL(product.image) : 'icons/icon-192.png'; this.elements.saleProductName.textContent = product.name; this.elements.saleProductStock.textContent = `Stock: ${product.stock} ${product.unit}`; this.elements.saleQuantityInput.value = 1; this.elements.saleQuantityInput.max = product.stock; this.updateSaleTotal(); this.showModal('confirm-sale-modal'); },
-        updateSaleTotal() { const quantity = parseInt(this.elements.saleQuantityInput.value) || 0; const price = this.state.sellingProduct?.price || 0; const total = quantity * price; this.elements.saleTotalPrice.textContent = `₦${total.toLocaleString()}`; },
+        handleProductFound(product) { this.state.sellingProduct = product; this.elements.saleProductImage.src = product.image ? URL.createObjectURL(product.image) : 'icons/icon-192.png'; this.elements.saleProductName.textContent = product.name; this.elements.saleProductStock.textContent = `Stock: ${this.formatNumber(product.stock)} ${product.unit}`; this.elements.saleQuantityInput.value = '1'; this.updateSaleTotal(); this.showModal('confirm-sale-modal'); },
+        updateSaleTotal() { const quantity = this.unformatNumber(this.elements.saleQuantityInput.value); const price = this.state.sellingProduct?.price || 0; const total = quantity * price; this.elements.saleTotalPrice.textContent = `₦${this.formatNumber(total)}`; },
         async _processSale() { 
-            const quantity = parseInt(this.elements.saleQuantityInput.value); 
+            const quantity = this.unformatNumber(this.elements.saleQuantityInput.value); 
             const product = this.state.sellingProduct; 
             if (quantity <= 0 || !product || quantity > product.stock) { alert('Invalid quantity or product not available.'); return false; } 
             
@@ -858,16 +906,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const sale = { id: Date.now(), productId: product.id, productName: product.name, quantity: quantity, price: product.price, total: quantity * product.price, timestamp: new Date(), image: product.image }; 
             await DB.addSale(sale); 
 
-            // --- REAL-TIME SYNC TO FIREBASE ---
             if (this.state.firebaseReady && product.supplierId && this.state.user.uid) {
                 try {
                     const retailerDocRef = window.fb.doc(window.fb.db, `retailer_stocks/${product.supplierId}/supplied_retailers/${this.state.user.uid}`);
                     const updateData = {};
-                    updateData[`products.${product.name}.stock`] = product.stock; // new, decremented stock level
+                    updateData[`products.${product.name}.stock`] = product.stock;
                     updateData.lastUpdate = window.fb.serverTimestamp();
                     
                     await window.fb.updateDoc(retailerDocRef, updateData);
-                    console.log(`Real-time stock for '${product.name}' synced to Firebase.`);
                 } catch (error) {
                     console.error("Failed to sync sale to Firebase:", error);
                 }
@@ -876,7 +922,6 @@ document.addEventListener('DOMContentLoaded', () => {
             return true; 
         },
         async handleConfirmSale() { 
-            Camera.stop();
             const success = await this._processSale(); 
             if (success) { 
                 this.hideModal(); 
@@ -889,8 +934,8 @@ document.addEventListener('DOMContentLoaded', () => {
         async handleManualSale(e) {
             e.preventDefault();
             const name = this.elements.manualProductName.value.trim();
-            const price = parseFloat(this.elements.manualProductPrice.value);
-            const quantity = parseInt(this.elements.manualSaleQuantity.value);
+            const price = this.unformatNumber(this.elements.manualProductPrice.value);
+            const quantity = this.unformatNumber(this.elements.manualSaleQuantity.value);
             const unit = this.elements.manualProductUnit.value;
             if (!name || isNaN(price) || isNaN(quantity) || quantity <= 0) {
                 alert('Please fill in all fields correctly.'); return;
@@ -913,16 +958,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const sale = { id: Date.now() + 1, productId: productToSell.id, productName: name, quantity, price, total: price * quantity, timestamp: new Date(), image: productToSell.image };
             await DB.addSale(sale);
 
-            // --- REAL-TIME SYNC TO FIREBASE ---
             if (this.state.firebaseReady && productToSell.supplierId && this.state.user.uid) {
                 try {
                     const retailerDocRef = window.fb.doc(window.fb.db, `retailer_stocks/${productToSell.supplierId}/supplied_retailers/${this.state.user.uid}`);
                     const updateData = {};
-                    updateData[`products.${productToSell.name}.stock`] = productToSell.stock; // new, decremented stock level
+                    updateData[`products.${productToSell.name}.stock`] = productToSell.stock;
                     updateData.lastUpdate = window.fb.serverTimestamp();
     
                     await window.fb.updateDoc(retailerDocRef, updateData);
-                    console.log(`Real-time stock for '${productToSell.name}' synced to Firebase.`);
                 } catch (error) {
                     console.error("Failed to sync manual sale to Firebase:", error);
                 }
@@ -969,9 +1012,9 @@ document.addEventListener('DOMContentLoaded', () => {
             let itemsHtml = '';
             selectedSaleObjects.forEach(sale => {
                 totalAmount += sale.total;
-                itemsHtml += `<tr><td>${sale.productName}</td><td class="col-qty">${sale.quantity}</td><td class="col-price">&#8358;${sale.price.toLocaleString()}</td><td class="col-total">&#8358;${sale.total.toLocaleString()}</td></tr>`;
+                itemsHtml += `<tr><td>${sale.productName}</td><td class="col-qty">${this.formatNumber(sale.quantity)}</td><td class="col-price">&#8358;${this.formatNumber(sale.price)}</td><td class="col-total">&#8358;${this.formatNumber(sale.total)}</td></tr>`;
             });
-            const receiptHtml = `<div class="receipt-header"><h3>${this.state.user.business}</h3><p>${this.state.user.location}</p><p><strong>Receipt ID:</strong> ${receiptId}</p></div><div class="receipt-items"><table><thead><tr><th>Item</th><th class="col-qty">Qty</th><th class="col-price">Price</th><th class="col-total">Total</th></tr></thead><tbody>${itemsHtml}</tbody></table></div><div class="receipt-total"><div class="total-row"><span>TOTAL</span><span>&#8358;${totalAmount.toLocaleString()}</span></div></div><div class="receipt-footer"><p>Thank you for your patronage!</p><p>${now.toLocaleDateString('en-NG')} ${now.toLocaleTimeString('en-NG')}</p></div>`;
+            const receiptHtml = `<div class="receipt-header"><h3>${this.state.user.business}</h3><p>${this.state.user.location}</p><p><strong>Receipt ID:</strong> ${receiptId}</p></div><div class="receipt-items"><table><thead><tr><th>Item</th><th class="col-qty">Qty</th><th class="col-price">Price</th><th class="col-total">Total</th></tr></thead><tbody>${itemsHtml}</tbody></table></div><div class="receipt-total"><div class="total-row"><span>TOTAL</span><span>&#8358;${this.formatNumber(totalAmount)}</span></div></div><div class="receipt-footer"><p>Thank you for your patronage!</p><p>${now.toLocaleDateString('en-NG')} ${now.toLocaleTimeString('en-NG')}</p></div>`;
             this.elements.receiptContent.innerHTML = receiptHtml;
             this.showModal('receipt-modal');
         },
@@ -1024,14 +1067,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const itemsHtml = logData.items.map(item => {
                 const isCarton = item.unit === 'cartons' && item.subUnitType;
                 const displayName = isCarton 
-                    ? `${item.name} (${item.quantity} ${item.unit} -> ${item.quantity * item.subUnitQuantity} ${item.subUnitType})`
-                    : `${item.name} (${item.quantity} ${item.unit})`;
+                    ? `${item.name} (${this.formatNumber(item.quantity)} ${item.unit} -> ${this.formatNumber(item.quantity * item.subUnitQuantity)} ${item.subUnitType})`
+                    : `${item.name} (${this.formatNumber(item.quantity)} ${item.unit})`;
                 
                 return `
                 <div class="log-details-row">
                     <div class="log-details-cell item">${displayName}</div>
-                    <div class="log-details-cell price">@ &#8358;${item.price.toLocaleString()}</div>
-                    <div class="log-details-cell total">&#8358;${(item.quantity * item.price).toLocaleString()}</div>
+                    <div class="log-details-cell price">@ &#8358;${this.formatNumber(item.price)}</div>
+                    <div class="log-details-cell total">&#8358;${this.formatNumber(item.quantity * item.price)}</div>
                 </div>
             `}).join('');
 
@@ -1049,7 +1092,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     ${itemsHtml}
                     <div class="log-details-row footer">
                         <div class="log-details-cell item">TOTAL PURCHASE</div>
-                        <div class="log-details-cell total">&#8358;${totalCost.toLocaleString()}</div>
+                        <div class="log-details-cell total">&#8358;${this.formatNumber(totalCost)}</div>
                     </div>
                 </div>
             `;
@@ -1067,7 +1110,6 @@ document.addEventListener('DOMContentLoaded', () => {
             for (const item of this.state.scannedLogData.items) {
                 const isCarton = item.unit === 'cartons' && item.subUnitType && item.subUnitQuantity > 0;
                 
-                // Use sub-unit details if it's a carton, otherwise use item details
                 const stockToAdd = isCarton ? item.quantity * item.subUnitQuantity : item.quantity;
                 const unitType = isCarton ? item.subUnitType : item.unit;
                 const costPrice = isCarton ? item.price / item.subUnitQuantity : item.price;
@@ -1081,14 +1123,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     existingProduct.stock += stockToAdd;
                     existingProduct.supplierId = supplierId;
                     existingProduct.needsSetup = needsSetup;
-                    // Retailer might get a non-barcoded version of something they already have, don't nullify existing barcode
                     if (barcode) existingProduct.barcode = barcode; 
                     finalProduct = existingProduct;
                 } else {
                     finalProduct = { 
                         id: Date.now() + Math.random(), 
                         name: item.name, 
-                        price: costPrice, // This is now cost price for the retailer
+                        price: costPrice,
                         stock: stockToAdd, 
                         unit: unitType, 
                         image: null, 
@@ -1114,8 +1155,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         products: updatedProductsForFirebase,
                         lastUpdate: window.fb.serverTimestamp()
                     }, { merge: true });
-
-                    console.log("Retailer stock levels updated to Firebase.");
                 } catch (error) {
                     console.error("Error updating stock to Firebase:", error);
                     alert("Local inventory updated, but failed to sync online.");
@@ -1139,7 +1178,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             try {
                 if (this.state.retailerListener) {
-                    this.state.retailerListener(); // Unsubscribe from previous listener
+                    this.state.retailerListener();
                 }
                 const retailersRef = window.fb.collection(window.fb.db, `retailer_stocks/${this.state.user.uid}/supplied_retailers`);
                 const q = window.fb.query(retailersRef);
@@ -1154,7 +1193,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     const retailersData = [];
                     querySnapshot.forEach(doc => retailersData.push(doc.data()));
                     
-                    // Sort by most recently updated
                     retailersData.sort((a, b) => (b.lastUpdate?.toDate() || 0) - (a.lastUpdate?.toDate() || 0));
 
                     retailersData.forEach(retailer => {
@@ -1162,7 +1200,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (retailer.products && Object.keys(retailer.products).length > 0) {
                             for (const productName in retailer.products) {
                                 const product = retailer.products[productName];
-                                productsHtml += `<div class="retailer-product-item"><span>${productName}</span><strong>${product.stock} ${product.unit}</strong></div>`;
+                                productsHtml += `<div class="retailer-product-item"><span>${productName}</span><strong>${this.formatNumber(product.stock)} ${product.unit}</strong></div>`;
                             }
                         } else {
                             productsHtml = `<div class="retailer-product-item"><span>No product data available.</span></div>`;
@@ -1200,6 +1238,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.error("Error setting up retailer stocks listener:", error);
                 this.elements.retailerStockView.innerHTML = `<p class="empty-state">Error loading retailer data.</p>`;
             }
+        },
+        
+        // --- HELPERS ---
+        formatNumber(value) {
+            if (value === null || value === undefined) return '';
+            const num = parseFloat(this.unformatNumber(value));
+            if (isNaN(num)) return '';
+            return num.toLocaleString('en-US');
+        },
+        unformatNumber(value) {
+            if (typeof value !== 'string') {
+                value = String(value);
+            }
+            return parseFloat(value.replace(/,/g, '')) || 0;
         },
 
         // --- PWA FEATURES ---
