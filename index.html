@@ -372,20 +372,25 @@
         <div id="qr-code-modal" class="modal-content" style="display:none;">
             <h2>Share Log via QR</h2>
             <canvas id="qr-canvas"></canvas>
-            <p class="qr-help-text">Have the other retailer scan this QR code using their pika shot app to log this purchase.</p>
+            <p class="qr-help-text">As the wholesaler, have the purchasing retailer scan this QR code in their Pikashot app to auto-restock. </p>
             <div class="modal-actions">
                 <button id="close-qr-btn" class="btn btn-primary">Done</button>
             </div>
         </div>
         
+
         <div id="confirm-log-modal" class="modal-content" style="display:none;">
             <h2 id="confirm-log-title">Accept Log?</h2>
             <div id="confirm-log-content"></div>
             <div class="modal-actions">
+                <p style="font-size: 0.8rem; color: #6c757d; text-align: center; margin-bottom: 1rem;">
+                    Accept for instant restocking on your Pika Shot app. The wholesaler will see the stock level in real time and can phone call.
+                </p>
                 <button id="reject-log-btn" class="btn btn-secondary">Reject</button>
                 <button id="accept-log-btn" class="btn btn-primary">Accept & Add</button>
             </div>
         </div>
+
 
         <div id="privacy-policy-modal" class="modal-content" style="display:none;">
             <h2>Data & Privacy Policy</h2>
