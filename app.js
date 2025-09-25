@@ -502,7 +502,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else if (product.needsSetup === 'barcode-and-price') {
                     badgeHtml = '<div class="setup-badge">Set barcode & price</div>';
                 } else if (product.needsSetup === 'price') {
-                    badgeHtml = '<div class="setup-badge">Set price & picture</div>';
+                    badgeHtml = '<div class="setup-badge">Set price & image</div>';
                 } else if (product.stock < 7) {
                     badgeHtml = '<div class="restock-badge">Restock now!</div>';
                 }
@@ -694,7 +694,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.productFormTitle.textContent = 'Add New Product';
             this.elements.deleteProductBtn.style.display = 'none';
             this.elements.addChangePictureBtn.style.display = 'block';
-            this.elements.addChangePictureBtn.textContent = 'Add / Change Picture';
+            this.elements.addChangePictureBtn.textContent = 'Add / Change Image';
             this.elements.scanNewBarcodeBtn.style.display = 'none';
             this.elements.productIdInput.value = '';
             this.elements.productBarcodeDisplay.style.display = 'none';
@@ -789,7 +789,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.productFormTitle.textContent = 'Edit Product'; 
             this.elements.deleteProductBtn.style.display = 'flex'; 
             this.elements.addChangePictureBtn.style.display = 'block';
-            this.elements.addChangePictureBtn.textContent = 'Add / Change Picture';
+            this.elements.addChangePictureBtn.textContent = 'Add / Change Image';
             this.elements.productIdInput.value = product.id; 
             this.elements.productNameInput.value = product.name; 
             this.elements.productPriceInput.value = this.formatNumber(product.price); 
