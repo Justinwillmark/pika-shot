@@ -502,7 +502,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else if (product.needsSetup === 'barcode-and-price') {
                     badgeHtml = '<div class="setup-badge">Set barcode & price</div>';
                 } else if (product.needsSetup === 'price') {
-                    badgeHtml = '<div class="setup-badge">Set price</div>';
+                    badgeHtml = '<div class="setup-badge">Set price & picture</div>';
                 } else if (product.stock < 7) {
                     badgeHtml = '<div class="restock-badge">Restock now!</div>';
                 }
