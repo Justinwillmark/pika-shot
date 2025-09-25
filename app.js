@@ -685,7 +685,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         handleConfirmPicture() {
             this.hideModal();
-            this.elements.addChangePictureBtn.textContent = 'New product photo added';
+            this.elements.addChangePictureBtn.textContent = 'New product image added';
             this.showModal('product-form-modal');
         },
         
@@ -850,8 +850,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     this.showModal('confirm-picture-modal');
                 }
             } catch (error) {
-                console.error("Error capturing photo:", error);
-                alert("Could not capture photo.");
+                console.error("Error capturing image:", error);
+                alert("Could not capture image.");
                 history.back();
             }
         },
