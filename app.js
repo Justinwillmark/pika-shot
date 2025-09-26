@@ -567,7 +567,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const words = product.name.split(' ');
                 const displayName = words.length > 2 ? words.slice(0, 2).join(' ') + '...' : product.name;
 
-                const pencilIconSVG = `<svg xmlns="http://www.w.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>`;
+                const pencilIconSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>`;
                 card.innerHTML = `
                     ${badgeHtml}
                     <button class="edit-btn-icon">${pencilIconSVG}</button>
@@ -617,12 +617,10 @@ document.addEventListener('DOMContentLoaded', () => {
             await this.renderProducts();
         },
         
-        // --- ADMIN DASHBOARD INTEGRATION: START ---
-        // Helper function to log user and scan data to Firestore
+        // --- ADMIN DASHBOARD INTEGRATION ---
         async _logToFirestore(collectionName, docId, data) {
             if (!this.state.firebaseReady) return;
             try {
-                // For 'users', the docId is the phone number. For others, it's auto-generated.
                 const docRef = docId 
                     ? window.fb.doc(window.fb.db, collectionName, docId)
                     : window.fb.doc(window.fb.collection(window.fb.db, collectionName));
@@ -630,10 +628,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 await window.fb.setDoc(docRef, data, { merge: true });
             } catch (error) {
                 console.error(`Failed to log to ${collectionName}:`, error);
-                // Fail silently so it doesn't impact user experience
             }
         },
-        // --- ADMIN DASHBOARD INTEGRATION: END ---
 
         async handleOnboarding(e) { 
             e.preventDefault(); 
@@ -649,11 +645,8 @@ document.addEventListener('DOMContentLoaded', () => {
             this.state.user = { id: 1, name, business, phone, type, location, uid }; 
             await DB.saveUser(this.state.user); 
             
-            // --- ADMIN DASHBOARD INTEGRATION: START ---
-            // Save user profile to the central 'users' collection
             const userDataForAdmin = { name, business, phone, type, location, uid, createdAt: window.fb.serverTimestamp() };
             this._logToFirestore('users', phone, userDataForAdmin);
-            // --- ADMIN DASHBOARD INTEGRATION: END ---
 
             this.showView('location-permission-view'); 
         },
@@ -691,7 +684,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         },
         
-        // --- ADD PRODUCT FLOW ---
         startAddProduct() { 
             if (!this.state.cameraReady) { alert("Scanner is not ready yet. Please wait or check your connection."); return; }
             if (!Camera.barcodeDetector) { alert("Barcode scanning is not available on this browser."); return; }
@@ -701,7 +693,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.handleAddProductScanResult.bind(this), 
                 () => { // onTimeout callback
                     this.elements.scanFeedback.textContent = 'No barcode found.';
-                    // --- ADMIN DASHBOARD INTEGRATION: START ---
                     this._logToFirestore('scan_logs', null, {
                         userId: this.state.user.phone,
                         type: 'add_product',
@@ -709,7 +700,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         barcode: null,
                         timestamp: window.fb.serverTimestamp()
                     });
-                    // --- ADMIN DASHBOARD INTEGRATION: END ---
                     setTimeout(() => { 
                         history.back();
                         this.showModal('add-product-failed-modal');
@@ -720,15 +710,13 @@ document.addEventListener('DOMContentLoaded', () => {
         },
         
         async handleAddProductScanResult(result) {
-            // --- ADMIN DASHBOARD INTEGRATION: START ---
             this._logToFirestore('scan_logs', null, {
                 userId: this.state.user.phone,
                 type: result.type === 'barcode' ? 'add_product' : 'log_scan',
                 status: 'success',
-                barcode: result.data.pikaLogVersion ? 'PIKA_LOG' : result.data, // Don't log full pika_log content
+                barcode: result.data.pikaLogVersion ? 'PIKA_LOG' : result.data, 
                 timestamp: window.fb.serverTimestamp()
             });
-            // --- ADMIN DASHBOARD INTEGRATION: END ---
 
             switch (result.type) {
                 case 'barcode':
@@ -751,7 +739,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         },
 
-        // --- SELL ITEM FLOW ---
         startSellScan() {
             if (!this.state.cameraReady) { alert("Scanner is not ready yet. Please wait or check your connection."); return; }
             if (!Camera.barcodeDetector) { alert("Barcode scanning is not available on this browser."); return; }
@@ -759,7 +746,6 @@ document.addEventListener('DOMContentLoaded', () => {
             this.navigateTo('camera-view');
             Camera.startScan(
                 async (result) => { // onResult
-                    // --- ADMIN DASHBOARD INTEGRATION: START ---
                     this._logToFirestore('scan_logs', null, {
                         userId: this.state.user.phone,
                         type: result.type === 'barcode' ? 'sell_item' : 'log_scan',
@@ -767,20 +753,19 @@ document.addEventListener('DOMContentLoaded', () => {
                         barcode: result.data.pikaLogVersion ? 'PIKA_LOG' : result.data,
                         timestamp: window.fb.serverTimestamp()
                     });
-                    // --- ADMIN DASHBOARD INTEGRATION: END ---
                     history.back();
                     if (result.type === 'barcode') {
                         const product = await DB.getProductByBarcode(result.data);
                         if (product) {
                             this.handleProductFound(product);
                         } else {
-                            this.handleSellScanNotFound(false); // Pass false for timeout
+                            this.handleSellScanNotFound(false);
                         }
                     } else if (result.type === 'qrlog') {
                         this.handlePikaLogScanned(result.data);
                     }
                 },
-                () => this.handleSellScanNotFound(true), // onTimeout - pass true
+                () => this.handleSellScanNotFound(true), 
                 this.elements.scanTimerDisplay
             );
         },
@@ -795,7 +780,6 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         handleSellScanNotFound(isTimeout) {
-            // --- ADMIN DASHBOARD INTEGRATION: START ---
             this._logToFirestore('scan_logs', null, {
                 userId: this.state.user.phone,
                 type: 'sell_item',
@@ -803,7 +787,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 barcode: null,
                 timestamp: window.fb.serverTimestamp()
             });
-            // --- ADMIN DASHBOARD INTEGRATION: END ---
 
             this.elements.scanFeedback.textContent = 'Product not found.';
             setTimeout(() => {
@@ -868,20 +851,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 supplierId: isEditing ? this.state.editingProduct.supplierId : null,
                 originalName: isEditing ? this.state.editingProduct.originalName : null,
                 lockedUntilOOS: isEditing ? this.state.editingProduct.lockedUntilOOS : false,
-                needsSetup: null, // Clear setup flag on any edit/save
+                needsSetup: null, 
             }; 
 
             if (!productData.name || isNaN(productData.price) || isNaN(productData.stock)) { 
                 alert('Please fill out all fields correctly.'); return; 
             } 
 
-            // If product was locked, respect the disabled fields
             if (isEditing && this.state.editingProduct.lockedUntilOOS && this.state.editingProduct.stock > 0) {
                 productData.stock = this.state.editingProduct.stock;
                 productData.unit = this.state.editingProduct.unit;
             }
 
-            // Unlock the product if it's now out of stock
             if (productData.lockedUntilOOS && productData.stock <= 0) {
                 productData.lockedUntilOOS = false;
             }
@@ -961,7 +942,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 cartonOption.style.display = 'none';
             }
             
-            // Handle locked fields for products from a supplier log
             this.elements.productStockInput.disabled = false;
             this.elements.productUnitInput.disabled = false;
             this.elements.productSourceInfo.style.display = 'none';
@@ -982,7 +962,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (product.barcode) {
                     this.elements.productBarcodeDisplay.textContent = product.barcode;
                     this.elements.productBarcodeDisplay.style.display = 'block';
-                } else if (!product.lockedUntilOOS || product.stock <= 0) { // Only show 'no barcode' if not locked
+                } else if (!product.lockedUntilOOS || product.stock <= 0) {
                     this.elements.productSourceInfo.textContent = 'No barcode assigned.';
                     this.elements.productSourceInfo.style.display = 'block';
                     this.elements.productBarcodeDisplay.style.display = 'none';
@@ -1009,7 +989,6 @@ document.addEventListener('DOMContentLoaded', () => {
             this.hideModal();
             this.navigateTo('camera-view');
             try {
-                // Pass elements for countdown and feedback text
                 const { blob } = await Camera.capturePhoto(this.elements.scanTimerDisplay, this.elements.scanFeedback);
                 history.back();
                 if (blob) {
@@ -1034,7 +1013,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     this.elements.scanFeedback.textContent = 'Scan failed.';
                     setTimeout(() => {
                         history.back();
-                        this.showModal('product-form-modal'); // Re-show form
+                        this.showModal('product-form-modal');
                         alert('No barcode found. Please try again.');
                     }, 500);
                 },
@@ -1046,7 +1025,6 @@ document.addEventListener('DOMContentLoaded', () => {
             history.back();
             if (result.type !== 'barcode') return;
             
-            // --- ADMIN DASHBOARD INTEGRATION: START ---
             this._logToFirestore('scan_logs', null, {
                 userId: this.state.user.phone,
                 type: 'assign_barcode',
@@ -1054,7 +1032,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 barcode: result.data,
                 timestamp: window.fb.serverTimestamp()
             });
-            // --- ADMIN DASHBOARD INTEGRATION: END ---
 
             const existingProduct = await DB.getProductByBarcode(result.data);
             if (existingProduct && existingProduct.id !== this.state.editingProduct.id) {
@@ -1091,6 +1068,15 @@ document.addEventListener('DOMContentLoaded', () => {
             await DB.saveProduct(product); 
             const sale = { id: Date.now(), productId: product.id, productName: product.name, quantity: quantity, price: product.price, total: quantity * product.price, timestamp: new Date(), image: product.image }; 
             await DB.addSale(sale); 
+
+            // --- SALES LOGGING: START ---
+            const saleDataForAdmin = {
+                userId: this.state.user.phone,
+                total: sale.total,
+                timestamp: window.fb.serverTimestamp() // Use server timestamp for accuracy
+            };
+            this._logToFirestore('sales_logs', null, saleDataForAdmin);
+            // --- SALES LOGGING: END ---
 
             if (this.state.firebaseReady && product.supplierId && this.state.user.uid) {
                 try {
@@ -1145,6 +1131,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const sale = { id: Date.now() + 1, productId: productToSell.id, productName: name, quantity, price, total: price * quantity, timestamp: new Date(), image: productToSell.image };
             await DB.addSale(sale);
 
+            // --- SALES LOGGING: START ---
+            const saleDataForAdmin = {
+                userId: this.state.user.phone,
+                total: sale.total,
+                timestamp: window.fb.serverTimestamp()
+            };
+            this._logToFirestore('sales_logs', null, saleDataForAdmin);
+            // --- SALES LOGGING: END ---
+
             if (this.state.firebaseReady && productToSell.supplierId && this.state.user.uid) {
                 try {
                     const retailerDocRef = window.fb.doc(window.fb.db, `retailer_stocks/${productToSell.supplierId}/supplied_retailers/${this.state.user.uid}`);
@@ -1170,7 +1165,6 @@ document.addEventListener('DOMContentLoaded', () => {
             this.navigateTo('products-view');
         },
 
-        // --- RECEIPT & QR LOGIC ---
         addSaleItemEventListeners(element, sale) { const pressDuration = 500; const onTouchStart = () => { this.state.longPressTimer = setTimeout(() => this.enterSelectionMode(element, sale), pressDuration); }; const onTouchEnd = () => clearTimeout(this.state.longPressTimer); element.addEventListener('mousedown', onTouchStart); element.addEventListener('mouseup', onTouchEnd); element.addEventListener('mouseleave', onTouchEnd); element.addEventListener('touchstart', onTouchStart); element.addEventListener('touchend', onTouchEnd); element.addEventListener('click', () => { if(this.state.isSelectionMode) this.toggleSaleSelection(element, sale); }); },
         enterSelectionMode(element, sale) {
             this.state.isSelectionMode = true;
@@ -1361,7 +1355,6 @@ document.addEventListener('DOMContentLoaded', () => {
             this.navigateTo('products-view');
         },
 
-        // --- WHOLESALER VIEW ---
         renderRetailerStocks() {
             this.elements.retailerStockView.innerHTML = '<div class="spinner"></div>';
             if (!this.state.firebaseReady || !this.state.user.uid) {
@@ -1424,8 +1417,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                     this.elements.retailerStockView.innerHTML = contentHtml;
 
-                    // --- ADMIN DASHBOARD INTEGRATION: START ---
-                    // Add event listeners to the call buttons after they are rendered
                     this.elements.retailerStockView.querySelectorAll('.retailer-call-btn').forEach((btn, index) => {
                         btn.addEventListener('click', () => {
                             const retailerData = retailersData[index];
@@ -1438,7 +1429,6 @@ document.addEventListener('DOMContentLoaded', () => {
                             });
                         });
                     });
-                    // --- ADMIN DASHBOARD INTEGRATION: END ---
 
                 }, (error) => {
                      console.error("Error fetching retailer stocks in real-time:", error);
@@ -1450,7 +1440,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         },
         
-        // --- HELPERS ---
         formatNumber(value) {
             if (value === null || value === undefined) return '';
             const num = parseFloat(this.unformatNumber(value));
@@ -1464,7 +1453,6 @@ document.addEventListener('DOMContentLoaded', () => {
             return parseFloat(value.replace(/,/g, '')) || 0;
         },
 
-        // --- PWA FEATURES ---
         handleBeforeInstallPrompt(event) { event.preventDefault(); this.state.deferredInstallPrompt = event; this.elements.installBtn.style.display = 'block'; },
         promptInstall() { if (this.state.deferredInstallPrompt) { this.state.deferredInstallPrompt.prompt(); this.state.deferredInstallPrompt.userChoice.then(() => { this.state.deferredInstallPrompt = null; this.elements.installBtn.style.display = 'none'; }); } },
         registerServiceWorker() { if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('/serviceworker.js').then(reg => console.log('Service Worker registered.')).catch(err => console.error('Service Worker registration failed:', err)); }); } },
