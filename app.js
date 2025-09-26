@@ -616,7 +616,47 @@ document.addEventListener('DOMContentLoaded', () => {
             await this.updateDashboard();
             await this.renderProducts();
         },
-        async handleOnboarding(e) { e.preventDefault(); const name = this.elements.userNameInput.value.trim(); const business = this.elements.businessNameInput.value.trim(); const phone = this.elements.userPhoneInput.value.trim(); const type = this.elements.businessTypeInput.value; const location = this.elements.businessLocationInput.value; if (!name || !business || !phone || !type || !location) { alert('Please fill in all fields.'); return; } const uid = this.state.firebaseReady ? window.fb.auth.currentUser.uid : null; this.state.user = { id: 1, name, business, phone, type, location, uid }; await DB.saveUser(this.state.user); this.showView('location-permission-view'); },
+        
+        // --- ADMIN DASHBOARD INTEGRATION: START ---
+        // Helper function to log user and scan data to Firestore
+        async _logToFirestore(collectionName, docId, data) {
+            if (!this.state.firebaseReady) return;
+            try {
+                // For 'users', the docId is the phone number. For 'scan_logs', it's auto-generated.
+                const docRef = docId 
+                    ? window.fb.doc(window.fb.db, collectionName, docId)
+                    : window.fb.doc(window.fb.collection(window.fb.db, collectionName));
+                
+                await window.fb.setDoc(docRef, data, { merge: true });
+            } catch (error) {
+                console.error(`Failed to log to ${collectionName}:`, error);
+                // Fail silently so it doesn't impact user experience
+            }
+        },
+        // --- ADMIN DASHBOARD INTEGRATION: END ---
+
+        async handleOnboarding(e) { 
+            e.preventDefault(); 
+            const name = this.elements.userNameInput.value.trim(); 
+            const business = this.elements.businessNameInput.value.trim(); 
+            const phone = this.elements.userPhoneInput.value.trim(); 
+            const type = this.elements.businessTypeInput.value; 
+            const location = this.elements.businessLocationInput.value; 
+            if (!name || !business || !phone || !type || !location) { 
+                alert('Please fill in all fields.'); return; 
+            } 
+            const uid = this.state.firebaseReady ? window.fb.auth.currentUser.uid : null; 
+            this.state.user = { id: 1, name, business, phone, type, location, uid }; 
+            await DB.saveUser(this.state.user); 
+            
+            // --- ADMIN DASHBOARD INTEGRATION: START ---
+            // Save user profile to the central 'users' collection
+            const userDataForAdmin = { name, business, phone, type, location, uid, createdAt: window.fb.serverTimestamp() };
+            this._logToFirestore('users', phone, userDataForAdmin);
+            // --- ADMIN DASHBOARD INTEGRATION: END ---
+
+            this.showView('location-permission-view'); 
+        },
         handleLocationPermission() {
              navigator.geolocation.getCurrentPosition(
                 (position) => {
@@ -661,6 +701,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.handleAddProductScanResult.bind(this), 
                 () => { // onTimeout callback
                     this.elements.scanFeedback.textContent = 'No barcode found.';
+                    // --- ADMIN DASHBOARD INTEGRATION: START ---
+                    this._logToFirestore('scan_logs', null, {
+                        userId: this.state.user.phone,
+                        type: 'add_product',
+                        status: 'failed_timeout',
+                        barcode: null,
+                        timestamp: window.fb.serverTimestamp()
+                    });
+                    // --- ADMIN DASHBOARD INTEGRATION: END ---
                     setTimeout(() => { 
                         history.back();
                         this.showModal('add-product-failed-modal');
@@ -671,6 +720,16 @@ document.addEventListener('DOMContentLoaded', () => {
         },
         
         async handleAddProductScanResult(result) {
+            // --- ADMIN DASHBOARD INTEGRATION: START ---
+            this._logToFirestore('scan_logs', null, {
+                userId: this.state.user.phone,
+                type: result.type === 'barcode' ? 'add_product' : 'log_scan',
+                status: 'success',
+                barcode: result.data.pikaLogVersion ? 'PIKA_LOG' : result.data, // Don't log full pika_log content
+                timestamp: window.fb.serverTimestamp()
+            });
+            // --- ADMIN DASHBOARD INTEGRATION: END ---
+
             switch (result.type) {
                 case 'barcode':
                     history.back();
@@ -700,19 +759,28 @@ document.addEventListener('DOMContentLoaded', () => {
             this.navigateTo('camera-view');
             Camera.startScan(
                 async (result) => { // onResult
+                    // --- ADMIN DASHBOARD INTEGRATION: START ---
+                    this._logToFirestore('scan_logs', null, {
+                        userId: this.state.user.phone,
+                        type: result.type === 'barcode' ? 'sell_item' : 'log_scan',
+                        status: 'success',
+                        barcode: result.data.pikaLogVersion ? 'PIKA_LOG' : result.data,
+                        timestamp: window.fb.serverTimestamp()
+                    });
+                    // --- ADMIN DASHBOARD INTEGRATION: END ---
                     history.back();
                     if (result.type === 'barcode') {
                         const product = await DB.getProductByBarcode(result.data);
                         if (product) {
                             this.handleProductFound(product);
                         } else {
-                            this.handleSellScanNotFound();
+                            this.handleSellScanNotFound(false); // Pass false for timeout
                         }
                     } else if (result.type === 'qrlog') {
                         this.handlePikaLogScanned(result.data);
                     }
                 },
-                this.handleSellScanNotFound.bind(this), // onTimeout
+                () => this.handleSellScanNotFound(true), // onTimeout - pass true
                 this.elements.scanTimerDisplay
             );
         },
@@ -726,7 +794,17 @@ document.addEventListener('DOMContentLoaded', () => {
             this.showModal('entry-choice-modal');
         },
 
-        handleSellScanNotFound() {
+        handleSellScanNotFound(isTimeout) {
+            // --- ADMIN DASHBOARD INTEGRATION: START ---
+            this._logToFirestore('scan_logs', null, {
+                userId: this.state.user.phone,
+                type: 'sell_item',
+                status: isTimeout ? 'failed_timeout' : 'failed_not_found',
+                barcode: null,
+                timestamp: window.fb.serverTimestamp()
+            });
+            // --- ADMIN DASHBOARD INTEGRATION: END ---
+
             this.elements.scanFeedback.textContent = 'Product not found.';
             setTimeout(() => {
                 history.back();
@@ -967,6 +1045,16 @@ document.addEventListener('DOMContentLoaded', () => {
         async handleBarcodeAssignmentResult(result) {
             history.back();
             if (result.type !== 'barcode') return;
+            
+            // --- ADMIN DASHBOARD INTEGRATION: START ---
+            this._logToFirestore('scan_logs', null, {
+                userId: this.state.user.phone,
+                type: 'assign_barcode',
+                status: 'success',
+                barcode: result.data,
+                timestamp: window.fb.serverTimestamp()
+            });
+            // --- ADMIN DASHBOARD INTEGRATION: END ---
 
             const existingProduct = await DB.getProductByBarcode(result.data);
             if (existingProduct && existingProduct.id !== this.state.editingProduct.id) {

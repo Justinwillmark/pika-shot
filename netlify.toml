@@ -1,0 +1,13 @@
+# Rule for the admin dashboard.
+# This tells Netlify to show the admin.html file when someone goes to /admin.
+[[redirects]]
+  from = "/admin"
+  to = "/admin.html"
+  status = 200 # A 200 status makes it a rewrite, not a redirect.
+
+# Rule for your main single-page app.
+# This ensures that if a user refreshes any page, the app still loads correctly.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

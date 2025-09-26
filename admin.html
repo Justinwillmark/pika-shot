@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - pika shot</title>
+    <link rel="stylesheet" href="admin.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-app.js";
+        import { getFirestore, collection, getDocs, query, where, Timestamp } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore.js";
+        
+        const firebaseConfig = {
+            apiKey: "AIzaSyBKu623PDECcc1gYVe4xof6AVUxDlW7B_A",
+            authDomain: "pika-shot.firebaseapp.com",
+            projectId: "pika-shot",
+            storageBucket: "pika-shot.firebasestorage.app",
+            messagingSenderId: "221719282655",
+            appId: "1:221719282655:web:fefc576166eeb115077a6a"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        window.fb = {
+            db: getFirestore(app),
+            collection,
+            getDocs,
+            query,
+            where,
+            Timestamp
+        };
+    </script>
+</head>
+<body>
+
+    <div id="password-modal" class="modal-overlay">
+        <div class="modal-content">
+            <h2>Admin Access</h2>
+            <p>Please enter the password to view the dashboard.</p>
+            <input type="password" id="password-input" placeholder="Password">
+            <button id="password-submit">Login</button>
+            <p id="error-message" class="error"></p>
+        </div>
+    </div>
+
+    <div id="dashboard-container" class="dashboard-container" style="display: none;">
+        <header class="header">
+            <h1>pika shot | Admin Dashboard</h1>
+            <p>Real-time user adoption overview</p>
+        </header>
+
+        <main class="main-content">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h4>Total Users</h4>
+                    <p id="total-users">0</p>
+                </div>
+                <div class="stat-card">
+                    <h4>Total Scans</h4>
+                    <p id="total-scans">0</p>
+                </div>
+                <div class="stat-card">
+                    <h4>Unique Barcodes</h4>
+                    <p id="unique-barcodes">0</p>
+                </div>
+            </div>
+
+            <div class="chart-container card">
+                 <h3>Scans Over Last 7 Days</h3>
+                 <canvas id="scans-chart"></canvas>
+            </div>
+
+            <div class="table-container card">
+                <div class="table-header">
+                    <h2>User Overview</h2>
+                    <div class="table-controls">
+                        <input type="text" id="user-search" placeholder="Search users...">
+                        <button id="export-csv-btn">Export CSV</button>
+                    </div>
+                </div>
+                <div class="table-wrapper">
+                    <table id="users-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Business Name</th>
+                                <th>Location</th>
+                                <th>Category</th>
+                                <th>Phone (User ID)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="users-table-body">
+                            </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="grid-container">
+                <div class="leaderboard-container card">
+                    <h3>User Leaderboard (by Scans)</h3>
+                    <div class="table-wrapper">
+                        <table id="leaderboard-table">
+                            <thead>
+                                <tr>
+                                    <th>Rank</th>
+                                    <th>User</th>
+                                    <th>Scans</th>
+                                    <th>Last Scan</th>
+                                </tr>
+                            </thead>
+                            <tbody id="leaderboard-table-body">
+                                </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="barcodes-container card">
+                    <h3>All Barcodes Scanned</h3>
+                    <ul id="barcodes-list">
+                        </ul>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="admin.js"></script>
+
+</body>
+</html>
