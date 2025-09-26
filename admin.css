@@ -162,7 +162,7 @@ body {
     margin-bottom: 10px;
 }
 .stat-card p {
-    font-size: clamp(1.25rem, 4vw, 1.75rem); /* Adjusted responsive font size */
+    font-size: clamp(1.1rem, 3.5vw, 1.5rem); /* Adjusted responsive font size */
     font-weight: 700;
     color: var(--primary-color);
     word-wrap: break-word; /* Fallback for very long numbers */
