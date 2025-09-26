@@ -35,7 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
             callLogs: [],
             salesLogs: [],
             chart: null,
-            dateOptions: { weekday: 'long', month: 'short', year: 'numeric' },
+            dateOptions: { weekday: 'short', month: 'short', day: 'numeric' },
         },
 
         init() {
@@ -190,7 +190,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             this.state.callLogs.forEach(log => {
                 const row = document.createElement('tr');
-                const callDate = log.timestamp ? log.timestamp.toDate().toLocaleDateString('en-GB', this.state.dateOptions) : 'Invalid Date';
+                const callDate = log.timestamp ? log.timestamp.toDate().toLocaleDateString('en-US', this.state.dateOptions) : 'Invalid Date';
                 row.innerHTML = `<td>${log.wholesalerName||'N/A'}</td><td>${log.retailerName||'N/A'}</td><td>${callDate}</td>`;
                 this.elements.callsTableBody.appendChild(row);
             });
@@ -216,7 +216,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             leaderboardData.forEach((item, index) => {
                 const row = document.createElement('tr');
-                const lastScanFormatted = item.lastScan.getTime() > 0 ? item.lastScan.toLocaleDateString('en-GB', this.state.dateOptions) : 'N/A';
+                const lastScanFormatted = item.lastScan.getTime() > 0 ? item.lastScan.toLocaleDateString('en-US', this.state.dateOptions) : 'N/A';
                 row.innerHTML = `<td>${index + 1}</td><td>${item.name}</td><td>${item.count}</td><td>${lastScanFormatted}</td>`;
                 this.elements.leaderboardTableBody.appendChild(row);
             });
@@ -248,7 +248,7 @@ document.addEventListener('DOMContentLoaded', () => {
         exportTableToCsv(filename, data, headers, fields) {
             const rows = data.map(item => fields.map(field => {
                 let val = item[field] || '';
-                if (field === 'timestamp' && val.toDate) val = val.toDate().toLocaleDateString('en-GB', this.state.dateOptions);
+                if (field === 'timestamp' && val.toDate) val = val.toDate().toLocaleDateString('en-US', this.state.dateOptions);
                 return `"${(val).toString().replace(/"/g, '""')}"`;
             }).join(','));
             const csvContent = "data:text/csv;charset=utf-8," + headers.join(',') + "\n" + rows.join("\n");
