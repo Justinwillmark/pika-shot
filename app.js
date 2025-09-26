@@ -557,9 +557,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (product.stock <= 0) {
                     badgeHtml = '<div class="out-of-stock-badge">Out of Stock</div>';
                 } else if (product.needsSetup === 'barcode-and-price') {
-                    badgeHtml = '<div class="setup-badge">Set barcode & price</div>';
+                    badgeHtml = '<div class="setup-badge">Add barcode & price</div>';
                 } else if (product.needsSetup === 'price') {
-                    badgeHtml = '<div class="setup-badge">Set price & image</div>';
+                    badgeHtml = '<div class="setup-badge">Add price & image</div>';
                 } else if (product.stock < 7) {
                     badgeHtml = '<div class="restock-badge">Restock now!</div>';
                 }
@@ -1268,7 +1268,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             this.hideModal();
             this.state.scannedLogData = null;
-            alert('Inventory updated successfully! Check "My Products" to set prices.');
+            alert('Inventory updated successfully! Check "My Products" to set your prices.');
             await this.renderProducts();
             this.navigateTo('products-view');
         },
