@@ -180,13 +180,16 @@
                 <div class="product-header">
                     <p id="product-sku-count" class="sku-count"></p>
                 </div>
-                <div id="product-search-container" style="display: none;">
-                    <input type="search" id="product-search-input" placeholder="Search my products...">
-                </div>
-                <div id="product-filter-tabs" class="product-filter-tabs">
-                    <button class="filter-tab-btn active" data-filter="all">All</button>
-                    <button class="filter-tab-btn" data-filter="restock">Restock now</button>
-                    <button class="filter-tab-btn" data-filter="outofstock">Out of stock</button>
+                <!-- This new wrapper makes the search and filter controls stick together at the top -->
+                <div class="product-controls-sticky-header">
+                    <div id="product-search-container" style="display: none;">
+                        <input type="search" id="product-search-input" placeholder="Search my products...">
+                    </div>
+                    <div id="product-filter-tabs" class="product-filter-tabs">
+                        <button class="filter-tab-btn active" data-filter="all">All</button>
+                        <button class="filter-tab-btn" data-filter="restock">Restock now</button>
+                        <button class="filter-tab-btn" data-filter="outofstock">Out of stock</button>
+                    </div>
                 </div>
                 <div id="product-grid" class="product-grid">
                      <p class="empty-state">No products added yet. Tap "Add Product" to get started!</p>

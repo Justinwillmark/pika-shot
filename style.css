@@ -299,28 +299,45 @@ html, body {
 /* === Products View === */
 .product-header { padding: 16px 20px 0; }
 .sku-count { text-align: right; font-size: 0.9rem; font-weight: 500; color: var(--text-light); }
-#product-search-container { 
-    padding: 8px 20px 8px; 
-    background-color: var(--background-color); 
-    position: sticky; 
-    top: 0; 
-    z-index: 6; 
+
+/* This new wrapper makes the search and filter controls stick together at the top */
+.product-controls-sticky-header {
+    background-color: var(--background-color);
+    position: sticky;
+    top: 0;
+    z-index: 6;
+    border-bottom: 1px solid var(--border-color);
 }
-#product-search-input { width: 100%; padding: 12px 16px; border: 1px solid var(--border-color); border-radius: var(--border-radius); font-size: clamp(0.9rem, 2.5vw, 1rem); background-color: var(--surface-color); }
-#product-search-input:focus { outline: none; border-color: var(--primary-color); box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2); }
+
+/* Container for the search bar, padding adjusted for the new layout */
+#product-search-container { 
+    padding: 8px 20px 0;
+}
+
+/* Search input now has a bottom margin to space it from the filters */
+#product-search-input { 
+    width: 100%; 
+    padding: 12px 16px; 
+    border: 1px solid var(--border-color); 
+    border-radius: var(--border-radius); 
+    font-size: clamp(0.9rem, 2.5vw, 1rem); 
+    background-color: var(--surface-color);
+    margin-bottom: 12px; 
+}
+#product-search-input:focus { 
+    outline: none; 
+    border-color: var(--primary-color); 
+    box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2); 
+}
+
+/* Filters are no longer sticky on their own and have adjusted padding */
 .product-filter-tabs {
     display: flex;
-    justify-content: center;
-    gap: 8px;
-    padding: 8px 20px 12px;
-    background-color: var(--background-color);
+    gap: 12px;
+    padding: 0 20px 12px;
     overflow-x: auto;
     -ms-overflow-style: none;
     scrollbar-width: none;
-    position: sticky;
-    top: 64px; /* Adjusted from 57px to account for search bar height */
-    z-index: 5;
-    border-bottom: 1px solid var(--border-color); /* Added to create visual separation */
 }
 .product-filter-tabs::-webkit-scrollbar {
     display: none;
