@@ -296,6 +296,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 input.value = value;
             });
+            
+            // Listen for clicks on disabled stock/unit fields
+            const pointToInfoMessage = (e) => {
+                if (e.target.disabled) {
+                    const sourceInfo = this.elements.productSourceInfo;
+                    sourceInfo.classList.add('input-error-shake');
+                    setTimeout(() => sourceInfo.classList.remove('input-error-shake'), 600);
+                }
+            };
+            this.elements.productStockInput.addEventListener('click', pointToInfoMessage);
+            this.elements.productUnitInput.addEventListener('click', pointToInfoMessage);
         },
         
         // --- UI & NAVIGATION ---
@@ -872,6 +883,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 const addPicBtn = this.elements.addChangePictureBtn;
                 addPicBtn.classList.add('input-error-shake');
                 setTimeout(() => addPicBtn.classList.remove('input-error-shake'), 600);
+                return;
+            }
+            
+            if (isEditing && this.state.editingProduct.needsSetup === 'barcode-and-price' && !productData.barcode) {
+                alert('Please scan a barcode for this product before saving.');
+                const scanBarcodeBtn = this.elements.scanNewBarcodeBtn;
+                scanBarcodeBtn.classList.add('input-error-shake');
+                setTimeout(() => scanBarcodeBtn.classList.remove('input-error-shake'), 600);
                 return;
             }
             
