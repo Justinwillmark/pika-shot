@@ -299,7 +299,7 @@ html, body {
 /* === Products View === */
 .product-header { padding: 16px 20px 0; }
 .sku-count { text-align: right; font-size: 0.9rem; font-weight: 500; color: var(--text-light); }
-#product-search-container { padding: 8px 20px 8px; background-color: var(--background-color); }
+#product-search-container { padding: 8px 20px 8px; background-color: var(--background-color); position: sticky; top: 0; z-index: 6; }
 #product-search-input { width: 100%; padding: 12px 16px; border: 1px solid var(--border-color); border-radius: var(--border-radius); font-size: clamp(0.9rem, 2.5vw, 1rem); background-color: var(--surface-color); }
 #product-search-input:focus { outline: none; border-color: var(--primary-color); box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2); }
 .product-filter-tabs {
@@ -311,6 +311,9 @@ html, body {
     overflow-x: auto;
     -ms-overflow-style: none;
     scrollbar-width: none;
+    position: sticky;
+    top: 57px;
+    z-index: 5;
 }
 .product-filter-tabs::-webkit-scrollbar {
     display: none;
