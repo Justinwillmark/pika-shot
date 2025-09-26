@@ -9,6 +9,7 @@
     
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-app.js";
+        import { getAuth, onAuthStateChanged, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-auth.js";
         import { getFirestore, collection, getDocs, query, where, Timestamp, orderBy } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore.js";
         
         const firebaseConfig = {
@@ -22,7 +23,10 @@
 
         const app = initializeApp(firebaseConfig);
         window.fb = {
+            auth: getAuth(app),
             db: getFirestore(app),
+            onAuthStateChanged,
+            signInWithEmailAndPassword,
             collection,
             getDocs,
             query,
@@ -34,14 +38,14 @@
 </head>
 <body>
 
-    <div id="password-modal" class="modal-overlay">
-        <div class="modal-content">
-            <h2>Admin Access</h2>
-            <p>Please enter the password to view the dashboard.</p>
-            <input type="password" id="password-input" placeholder="Password">
-            <button id="password-submit">Login</button>
+    <div id="login-modal" class="modal-overlay">
+        <form id="login-form" class="modal-content">
+            <h2>Admin Login</h2>
+            <input type="email" id="email-input" placeholder="Email" required>
+            <input type="password" id="password-input" placeholder="Password" required>
+            <button type="submit">Login</button>
             <p id="error-message" class="error"></p>
-        </div>
+        </form>
     </div>
 
     <div id="dashboard-container" class="dashboard-container" style="display: none;">
@@ -103,8 +107,7 @@
                                 <th>Phone (User ID)</th>
                             </tr>
                         </thead>
-                        <tbody id="users-table-body">
-                            </tbody>
+                        <tbody id="users-table-body"></tbody>
                     </table>
                 </div>
             </div>
@@ -122,8 +125,7 @@
                                 <th>Date of Call</th>
                             </tr>
                         </thead>
-                        <tbody id="calls-table-body">
-                            </tbody>
+                        <tbody id="calls-table-body"></tbody>
                     </table>
                 </div>
             </div>
@@ -141,16 +143,14 @@
                                     <th>Last Scan</th>
                                 </tr>
                             </thead>
-                            <tbody id="leaderboard-table-body">
-                                </tbody>
+                            <tbody id="leaderboard-table-body"></tbody>
                         </table>
                     </div>
                 </div>
 
                 <div class="barcodes-container card">
                     <h3>All Barcodes Scanned</h3>
-                    <ul id="barcodes-list">
-                        </ul>
+                    <ul id="barcodes-list"></ul>
                 </div>
             </div>
         </main>

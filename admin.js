@@ -1,9 +1,10 @@
 document.addEventListener('DOMContentLoaded', () => {
     const App = {
         elements: {
-            passwordModal: document.getElementById('password-modal'),
+            loginModal: document.getElementById('login-modal'),
+            loginForm: document.getElementById('login-form'),
+            emailInput: document.getElementById('email-input'),
             passwordInput: document.getElementById('password-input'),
-            passwordSubmit: document.getElementById('password-submit'),
             errorMessage: document.getElementById('error-message'),
             dashboardContainer: document.getElementById('dashboard-container'),
             refreshBtn: document.getElementById('refresh-btn'),
@@ -32,27 +33,44 @@ document.addEventListener('DOMContentLoaded', () => {
 
         init() {
             this.setupEventListeners();
+            this.checkAuthState();
+        },
+        
+        // Checks if the admin is already logged in
+        checkAuthState() {
+            window.fb.onAuthStateChanged(window.fb.auth, (user) => {
+                if (user) {
+                    // User is signed in.
+                    this.elements.loginModal.style.display = 'none';
+                    this.elements.dashboardContainer.style.display = 'block';
+                    this.loadDashboardData();
+                } else {
+                    // User is signed out.
+                    this.elements.loginModal.style.display = 'flex';
+                    this.elements.dashboardContainer.style.display = 'none';
+                }
+            });
         },
 
         setupEventListeners() {
-            this.elements.passwordSubmit.addEventListener('click', this.handleLogin.bind(this));
-            this.elements.passwordInput.addEventListener('keyup', (e) => {
-                if (e.key === 'Enter') this.handleLogin();
-            });
+            this.elements.loginForm.addEventListener('submit', this.handleLogin.bind(this));
             this.elements.refreshBtn.addEventListener('click', this.handleRefresh.bind(this));
             this.elements.userSearch.addEventListener('input', this.filterUserTable.bind(this));
             this.elements.exportCsvBtn.addEventListener('click', this.exportUsersToCsv.bind(this));
         },
 
-        handleLogin() {
-            const pass = this.elements.passwordInput.value;
-            if (pass === 'readyshot') {
-                this.elements.passwordModal.style.display = 'none';
-                this.elements.dashboardContainer.style.display = 'block';
-                this.loadDashboardData();
-            } else {
-                this.elements.errorMessage.textContent = 'Incorrect password. Please try again.';
-                this.elements.passwordInput.value = '';
+        async handleLogin(e) {
+            e.preventDefault();
+            const email = this.elements.emailInput.value;
+            const password = this.elements.passwordInput.value;
+            
+            try {
+                await window.fb.signInWithEmailAndPassword(window.fb.auth, email, password);
+                // Auth state change will be handled by checkAuthState
+                this.elements.errorMessage.textContent = '';
+            } catch (error) {
+                console.error("Login failed:", error);
+                this.elements.errorMessage.textContent = 'Login failed. Please check email and password.';
             }
         },
 
@@ -101,13 +119,11 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         renderStats() {
-            // Scan and User Stats
             const uniqueBarcodes = new Set(this.state.scanLogs.map(log => log.barcode));
             this.elements.totalUsers.textContent = this.state.users.length.toLocaleString();
             this.elements.totalScans.textContent = this.state.scanLogs.length.toLocaleString();
             this.elements.uniqueBarcodes.textContent = uniqueBarcodes.size.toLocaleString();
 
-            // Sales Stats
             const totalSales = this.state.salesLogs.reduce((sum, sale) => sum + (sale.total || 0), 0);
 
             const today = new Date();
