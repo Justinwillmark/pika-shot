@@ -58,15 +58,13 @@
             <div class="onboarding-content">
                 <h1>Welcome to pika shot</h1>
                 <p>The simplest way to track your sales and inventory.</p>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="user-name">Your Name</label>
-                        <input type="text" id="user-name" placeholder="e.g., Chiamaka" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="business-name">Business Name</label>
-                        <input type="text" id="business-name" placeholder="e.g., Amaka's Provisions" required>
-                    </div>
+                <div class="form-group">
+                    <label for="user-name">Your Name</label>
+                    <input type="text" id="user-name" placeholder="e.g., Chiamaka" required>
+                </div>
+                <div class="form-group">
+                    <label for="business-name">Business Name</label>
+                    <input type="text" id="business-name" placeholder="e.g., Amaka's Provisions" required>
                 </div>
                 <div class="form-group">
                     <label for="user-phone">Phone Number</label>
@@ -182,6 +180,11 @@
                 <div id="product-search-container" style="display: none;">
                     <input type="search" id="product-search-input" placeholder="Search my products...">
                 </div>
+                <div id="product-filter-tabs" class="product-filter-tabs">
+                    <button class="filter-tab-btn active" data-filter="all">All</button>
+                    <button class="filter-tab-btn" data-filter="restock">Restock now</button>
+                    <button class="filter-tab-btn" data-filter="outofstock">Out of stock</button>
+                </div>
                 <div id="product-grid" class="product-grid">
                      <p class="empty-state">No products added yet. Tap "Add Product" to get started!</p>
                 </div>
@@ -292,7 +295,7 @@
                 <div class="form-group"><label for="product-price">Selling Price (₦)</label><input type="text" id="product-price" inputmode="decimal" required></div>
                 <div class="form-row">
                     <div class="form-group"><label for="product-stock">Stock Quantity</label><input type="text" id="product-stock" inputmode="numeric" required></div>
-                    <div class="form-group"><label for="product-unit">Unit Type</label><select id="product-unit" required><option value="sachets">sachets</option><option value="bottles">bottles</option><option value="cans">cans</option><option value="pieces">pieces</option><option value="packs">packs</option><option value="cartons" class="wholesaler-only">cartons</option></select></div>
+                    <div class="form-group"><label for="product-unit">Unit Type</label><select id="product-unit" required><option value="sachets">sachets</option><option value="bottles">bottles</option><option value="cans">cans</option><option value="tubes">tubes</option><option value="pieces">pieces</option><option value="packs">packs</option><option value="cartons" class="wholesaler-only">cartons</option></select></div>
                 </div>
                 <div class="modal-actions"><button type="button" id="cancel-product-form-btn" class="btn btn-secondary">Cancel</button><button type="submit" class="btn btn-primary">Save Product</button></div>
             </form>
@@ -302,12 +305,13 @@
             <h2>Carton Details</h2>
             <form id="carton-details-form">
                 <div class="form-group">
-                    <label for="carton-subunit-type">What's inside the carton?</label>
+                    <label for="carton-subunit-type" id="carton-product-name-label">What's inside the carton?</label>
                     <select id="carton-subunit-type" required>
                          <option value="" disabled selected>Select a unit...</option>
                          <option value="sachets">sachets</option>
                          <option value="bottles">bottles</option>
                          <option value="cans">cans</option>
+                         <option value="tubes">tubes</option>
                          <option value="pieces">pieces</option>
                          <option value="packs">packs</option>
                     </select>
@@ -326,7 +330,7 @@
         <div id="confirm-sale-modal" class="modal-content" style="display:none;">
             <h2>Confirm Sale</h2>
             <div class="sale-item-details"><img id="sale-product-image" src="" alt="Product image"><div><h3 id="sale-product-name">Product Name</h3><p id="sale-product-stock">Stock: 50 sachets</p></div></div>
-            <div class="form-group"><label for="sale-quantity">Quantity</label><input type="text" id="sale-quantity" inputmode="numeric" value="1" min="1"></div>
+            <div class="form-group"><label for="sale-quantity" id="sale-quantity-label">Quantity</label><input type="text" id="sale-quantity" inputmode="numeric" value="1" min="1"></div>
             <div class="sale-total"><p>Total</p><h2 id="sale-total-price">₦0</h2></div>
             <div class="modal-actions modal-actions-inline">
                 <button id="cancel-sale-btn" class="btn btn-secondary">Cancel</button>
@@ -361,7 +365,7 @@
                 <div class="form-group"><label for="manual-product-name">Product Name</label><input type="text" id="manual-product-name" required></div>
                 <div class="form-group"><label for="manual-product-price">Selling Price (₦)</label><input type="text" id="manual-product-price" inputmode="decimal" required></div>
                 <div class="form-group"><label for="manual-sale-quantity">Quantity</label><input type="text" id="manual-sale-quantity" value="1" inputmode="numeric" required></div>
-                <div class="form-group"><label for="manual-product-unit">Unit Type</label><select id="manual-product-unit" required><option value="pieces">pieces</option><option value="sachets">sachets</option><option value="bottles">bottles</option><option value="cans">cans</option><option value="packs">packs</option></select></div>
+                <div class="form-group"><label for="manual-product-unit">Unit Type</label><select id="manual-product-unit" required><option value="pieces">pieces</option><option value="sachets">sachets</option><option value="bottles">bottles</option><option value="cans">cans</option><option value="tubes">tubes</option><option value="packs">packs</option></select></div>
                 <div class="modal-actions">
                     <button type="button" id="cancel-manual-sale-btn" class="btn btn-secondary">Cancel</button>
                     <button type="submit" class="btn btn-primary">Complete Sale</button>

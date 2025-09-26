@@ -41,6 +41,7 @@ document.addEventListener('DOMContentLoaded', () => {
             productGrid: document.getElementById('product-grid'),
             productSearchContainer: document.getElementById('product-search-container'),
             productSearchInput: document.getElementById('product-search-input'),
+            productFilterTabs: document.getElementById('product-filter-tabs'),
             addNewProductBtn: document.getElementById('add-new-product-btn'),
             cameraView: document.getElementById('camera-view'),
             cancelScanBtn: document.getElementById('cancel-scan-btn'),
@@ -73,6 +74,7 @@ document.addEventListener('DOMContentLoaded', () => {
             saleProductName: document.getElementById('sale-product-name'),
             saleProductStock: document.getElementById('sale-product-stock'),
             saleQuantityInput: document.getElementById('sale-quantity'),
+            saleQuantityLabel: document.getElementById('sale-quantity-label'),
             saleTotalPrice: document.getElementById('sale-total-price'),
             cancelSaleBtn: document.getElementById('cancel-sale-btn'),
             confirmSaleBtn: document.getElementById('confirm-sale-btn'),
@@ -123,6 +125,7 @@ document.addEventListener('DOMContentLoaded', () => {
             cartonDetailsModal: document.getElementById('carton-details-modal'),
             cartonDetailsForm: document.getElementById('carton-details-form'),
             cancelCartonDetailsBtn: document.getElementById('cancel-carton-details-btn'),
+            cartonProductNameLabel: document.getElementById('carton-product-name-label'),
             cartonSubunitTypeInput: document.getElementById('carton-subunit-type'),
             cartonSubunitQuantityInput: document.getElementById('carton-subunit-quantity'),
             cartonQuantityLabel: document.getElementById('carton-quantity-label'),
@@ -149,6 +152,7 @@ document.addEventListener('DOMContentLoaded', () => {
             firebaseReady: false,
             retailerListener: null, // For unsubscribing from Firestore listener
             tempProductDataForCarton: null,
+            productFilter: 'all',
         },
 
         // --- INITIALIZATION ---
@@ -255,6 +259,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
 
+            this.elements.productFilterTabs.addEventListener('click', (e) => {
+                if (e.target.classList.contains('filter-tab-btn')) {
+                    this.elements.productFilterTabs.querySelectorAll('.filter-tab-btn').forEach(btn => btn.classList.remove('active'));
+                    e.target.classList.add('active');
+                    this.state.productFilter = e.target.dataset.filter;
+                    this.renderProducts(this.elements.productSearchInput.value);
+                }
+            });
+
             // Number formatting listeners
             const fieldsToFormat = [
                 this.elements.productPriceInput, this.elements.productStockInput,
@@ -322,6 +335,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     this.state.retailerListener(); 
                     this.state.retailerListener = null;
                 }
+            }
+
+            if (viewId === 'products-view' && !this.state.productSelectionMode) {
+                this.elements.productSearchInput.value = '';
+                this.state.productFilter = 'all';
+                this.elements.productFilterTabs.querySelectorAll('.filter-tab-btn').forEach(btn => {
+                    btn.classList.toggle('active', btn.dataset.filter === 'all');
+                });
+                this.renderProducts();
             }
 
             this.showView(viewId);
@@ -467,24 +489,41 @@ document.addEventListener('DOMContentLoaded', () => {
             return groups;
         },
 
-        async renderProducts(filter = '') {
+        async renderProducts(searchText = '') {
+            const filterType = this.state.productFilter;
             const allProducts = await DB.getAllProducts();
             this.elements.productGrid.innerHTML = '';
             this.elements.productSkuCount.textContent = `${allProducts.length} SKUs`;
 
-            const products = filter ? allProducts.filter(p => p.name.toLowerCase().includes(filter.toLowerCase())) : allProducts;
+            let filteredProducts = allProducts;
+
+            // Apply tab filter first
+            if (filterType === 'restock') {
+                filteredProducts = allProducts.filter(p => p.stock > 0 && p.stock < 7);
+            } else if (filterType === 'outofstock') {
+                filteredProducts = allProducts.filter(p => p.stock <= 0);
+            }
+
+            // Then apply search text filter
+            const products = searchText 
+                ? filteredProducts.filter(p => p.name.toLowerCase().includes(searchText.toLowerCase())) 
+                : filteredProducts;
             
             if (allProducts.length > 0) {
                 this.elements.productSearchContainer.style.display = 'block';
+                this.elements.productFilterTabs.style.display = 'flex';
                 this.elements.productSkuCount.style.display = 'block';
             } else {
                 this.elements.productSearchContainer.style.display = 'none';
+                 this.elements.productFilterTabs.style.display = 'none';
                 this.elements.productSkuCount.style.display = 'none';
             }
 
             if (products.length === 0) {
-                if (filter) {
+                if (searchText) {
                     this.elements.productGrid.innerHTML = '<p class="empty-state">No products match your search.</p>';
+                } else if (filterType !== 'all') {
+                    this.elements.productGrid.innerHTML = '<p class="empty-state">No products in this filter.</p>';
                 } else {
                     this.elements.productGrid.innerHTML = '<p class="empty-state">No products added yet. Tap the "+" button to add your first product!</p>';
                 }
@@ -737,9 +776,18 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!productData.name || isNaN(productData.price) || isNaN(productData.stock)) { 
                 alert('Please fill out all fields correctly.'); return; 
             } 
+
+            if (!productData.image) {
+                alert('Please add a product image before saving.');
+                const addPicBtn = this.elements.addChangePictureBtn;
+                addPicBtn.classList.add('input-error-shake');
+                setTimeout(() => addPicBtn.classList.remove('input-error-shake'), 600);
+                return;
+            }
             
             if (productData.unit === 'cartons' && this.state.user.type === 'Wholesaler') {
                 this.elements.cartonDetailsForm.reset();
+                this.elements.cartonProductNameLabel.textContent = `What's inside the ${productData.name} carton?`;
                 this.elements.cartonQuantityLabel.textContent = 'Quantity of items per carton';
                 this.state.tempProductDataForCarton = productData;
                 this.hideModal();
@@ -892,7 +940,16 @@ document.addEventListener('DOMContentLoaded', () => {
             this.showModal('product-form-modal');
         },
 
-        handleProductFound(product) { this.state.sellingProduct = product; this.elements.saleProductImage.src = product.image ? URL.createObjectURL(product.image) : 'icons/icon-192.png'; this.elements.saleProductName.textContent = product.name; this.elements.saleProductStock.textContent = `Stock: ${this.formatNumber(product.stock)} ${product.unit}`; this.elements.saleQuantityInput.value = '1'; this.updateSaleTotal(); this.showModal('confirm-sale-modal'); },
+        handleProductFound(product) { 
+            this.state.sellingProduct = product; 
+            this.elements.saleProductImage.src = product.image ? URL.createObjectURL(product.image) : 'icons/icon-192.png'; 
+            this.elements.saleProductName.textContent = product.name; 
+            this.elements.saleProductStock.textContent = `Stock: ${this.formatNumber(product.stock)} ${product.unit} left`; 
+            this.elements.saleQuantityLabel.textContent = `How many ${product.unit} are you selling?`;
+            this.elements.saleQuantityInput.value = '1'; 
+            this.updateSaleTotal(); 
+            this.showModal('confirm-sale-modal'); 
+        },
         updateSaleTotal() { const quantity = this.unformatNumber(this.elements.saleQuantityInput.value); const price = this.state.sellingProduct?.price || 0; const total = quantity * price; this.elements.saleTotalPrice.textContent = `₦${this.formatNumber(total)}`; },
         async _processSale() { 
             const quantity = this.unformatNumber(this.elements.saleQuantityInput.value); 
