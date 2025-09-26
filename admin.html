@@ -93,7 +93,7 @@
                     <h2>User Overview</h2>
                     <div class="table-controls">
                         <input type="text" id="user-search" placeholder="Search users...">
-                        <button id="export-csv-btn">Export CSV</button>
+                        <button id="export-users-btn">Export CSV</button>
                     </div>
                 </div>
                 <div class="table-wrapper">
@@ -115,6 +115,10 @@
             <div class="table-container card">
                 <div class="table-header">
                     <h2>Phone Call Log</h2>
+                     <div class="table-controls">
+                        <input type="text" id="calls-search" placeholder="Search calls...">
+                        <button id="export-calls-btn">Export CSV</button>
+                    </div>
                 </div>
                 <div class="table-wrapper">
                     <table id="calls-table">
@@ -132,7 +136,13 @@
 
             <div class="grid-container">
                 <div class="leaderboard-container card">
-                    <h3>User Leaderboard (by Scans)</h3>
+                    <div class="table-header">
+                        <h3>User Leaderboard (by Scans)</h3>
+                        <div class="table-controls">
+                            <input type="text" id="leaderboard-search" placeholder="Search leaderboard...">
+                            <button id="export-leaderboard-btn">Export CSV</button>
+                        </div>
+                    </div>
                     <div class="table-wrapper">
                         <table id="leaderboard-table">
                             <thead>
@@ -149,8 +159,23 @@
                 </div>
 
                 <div class="barcodes-container card">
-                    <h3>All Barcodes Scanned</h3>
-                    <ul id="barcodes-list"></ul>
+                     <div class="table-header">
+                        <h3>All Barcodes Scanned</h3>
+                        <div class="table-controls">
+                            <input type="text" id="barcodes-search" placeholder="Search barcodes...">
+                            <button id="export-barcodes-btn">Export CSV</button>
+                        </div>
+                    </div>
+                    <div class="table-wrapper">
+                        <table id="barcodes-table">
+                            <thead>
+                                <tr>
+                                    <th>Barcode</th>
+                                </tr>
+                            </thead>
+                            <tbody id="barcodes-table-body"></tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </main>
