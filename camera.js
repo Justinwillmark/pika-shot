@@ -30,6 +30,7 @@ const Camera = {
             countdownElement.textContent = count > 0 ? count : '';
             if (count <= 0) {
                  countdownElement.style.display = 'none';
+                 clearInterval(this.countdownInterval);
             }
         }, 1000);
     },
@@ -119,11 +120,14 @@ const Camera = {
         this.videoElement.srcObject = null;
     },
 
-    async capturePhoto() {
+    async capturePhoto(countdownElement, feedbackElement) {
          if (!await this._startStream()) return { blob: null };
 
         return new Promise(async (resolve) => {
-            // Give the camera a moment to adjust focus and exposure
+            if (feedbackElement) feedbackElement.textContent = 'Snapping Image';
+            this._startCountdown(3, countdownElement);
+
+            // Give the camera a moment to adjust focus and exposure, and for the countdown to finish
             setTimeout(async () => {
                 if (!this.videoElement.videoWidth) {
                     this.stop();
@@ -139,7 +143,7 @@ const Camera = {
                 
                 this.stop();
                 resolve({ blob });
-            }, 500); // 500ms delay for auto-focus
+            }, 3000); // 3000ms delay for countdown
         });
     },
 };

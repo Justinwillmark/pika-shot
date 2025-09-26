@@ -304,6 +304,7 @@ html, body {
 #product-search-input:focus { outline: none; border-color: var(--primary-color); box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2); }
 .product-filter-tabs {
     display: flex;
+    justify-content: center;
     gap: 8px;
     padding: 0 20px 12px;
     background-color: var(--background-color);
@@ -325,6 +326,7 @@ html, body {
     cursor: pointer;
     transition: all 0.2s ease;
     white-space: nowrap;
+    flex-shrink: 0;
 }
 .filter-tab-btn.active {
     background-color: var(--primary-color);

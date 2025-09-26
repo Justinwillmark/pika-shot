@@ -34,6 +34,8 @@ document.addEventListener('DOMContentLoaded', () => {
             recentSalesList: document.getElementById('recent-sales-list'),
             seeAllContainer: document.getElementById('see-all-container'),
             seeAllSalesBtn: document.getElementById('see-all-sales-btn'),
+            seeLastSalesContainer: document.getElementById('see-last-sales-container'),
+            seeLastSalesBtn: document.getElementById('see-last-sales-btn'),
             allSalesView: document.getElementById('all-sales-view'),
             allSalesList: document.getElementById('all-sales-list'),
             productsView: document.getElementById('products-view'),
@@ -228,6 +230,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.installBtn.addEventListener('click', this.promptInstall.bind(this));
             this.elements.generateReceiptBtn.addEventListener('click', this.generateReceipt.bind(this));
             this.elements.seeAllSalesBtn.addEventListener('click', () => this.navigateTo('all-sales-view'));
+            this.elements.seeLastSalesBtn.addEventListener('click', () => this.navigateTo('all-sales-view'));
             this.elements.cancelSelectionBtn.addEventListener('click', this.exitSelectionMode.bind(this));
             this.elements.closeReceiptBtn.addEventListener('click', () => this.hideModal());
             this.elements.shareReceiptBtn.addEventListener('click', this.shareReceipt.bind(this));
@@ -388,16 +391,28 @@ document.addEventListener('DOMContentLoaded', () => {
             const date = new Date();
             this.elements.welcomeDate.textContent = date.toLocaleDateString('en-NG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
             
-            const sales = await DB.getSalesToday();
-            const totalSales = sales.reduce((sum, sale) => sum + sale.total, 0);
-            const itemsSold = sales.reduce((sum, sale) => sum + sale.quantity, 0);
+            const todaysSales = await DB.getSalesToday();
+            const totalSales = todaysSales.reduce((sum, sale) => sum + sale.total, 0);
+            const itemsSold = todaysSales.reduce((sum, sale) => sum + sale.quantity, 0);
             this.elements.totalSalesEl.textContent = `₦${this.formatNumber(totalSales)}`;
             this.elements.itemsSoldEl.textContent = this.formatNumber(itemsSold);
             
-            this.elements.seeAllContainer.style.display = sales.length > 6 ? 'block' : 'none';
-            this.elements.selectionModeHint.style.display = sales.length > 0 ? 'block' : 'none';
+            this.elements.seeAllContainer.style.display = todaysSales.length > 6 ? 'block' : 'none';
+            this.elements.selectionModeHint.style.display = todaysSales.length > 0 ? 'block' : 'none';
 
-            this.renderSalesList(sales, this.elements.recentSalesList, 6);
+            // Logic for "See last sales" button
+            const allSales = await DB.getAllSales();
+            const previousSalesExist = allSales.length > todaysSales.length;
+            if (todaysSales.length === 0 && previousSalesExist) {
+                this.elements.seeLastSalesContainer.style.display = 'block';
+            } else {
+                this.elements.seeLastSalesContainer.style.display = 'none';
+            }
+             if (todaysSales.length > 6) {
+                this.elements.seeLastSalesContainer.style.display = 'none';
+            }
+
+            this.renderSalesList(todaysSales, this.elements.recentSalesList, 6);
         },
         
         renderSalesList(sales, targetElement, limit) {
@@ -465,6 +480,7 @@ document.addEventListener('DOMContentLoaded', () => {
             yesterday.setDate(today.getDate() - 1);
             const startOfWeek = new Date(today);
             startOfWeek.setDate(today.getDate() - today.getDay());
+            const dateOptions = { month: 'short', day: 'numeric' };
 
             sales.forEach(sale => {
                 const saleDate = new Date(sale.timestamp);
@@ -472,13 +488,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 let groupTitle;
                 if (saleDate.getTime() === today.getTime()) {
-                    groupTitle = 'Today';
+                    groupTitle = `Today, ${today.toLocaleDateString('en-NG', dateOptions)}`;
                 } else if (saleDate.getTime() === yesterday.getTime()) {
-                    groupTitle = 'Yesterday';
+                    groupTitle = `Yesterday, ${yesterday.toLocaleDateString('en-NG', dateOptions)}`;
                 } else if (saleDate >= startOfWeek) {
-                    groupTitle = 'This Week';
+                    groupTitle = saleDate.toLocaleDateString('en-NG', { weekday: 'long', month: 'short', day: 'numeric' });
                 } else {
-                    groupTitle = saleDate.toLocaleDateString('en-NG', { month: 'long', year: 'numeric' });
+                    groupTitle = saleDate.toLocaleDateString('en-NG', { month: 'long', day: 'numeric', year: 'numeric' });
                 }
 
                 if (!groups[groupTitle]) {
@@ -492,6 +508,8 @@ document.addEventListener('DOMContentLoaded', () => {
         async renderProducts(searchText = '') {
             const filterType = this.state.productFilter;
             const allProducts = await DB.getAllProducts();
+            allProducts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)); // Sort by newest first
+            
             this.elements.productGrid.innerHTML = '';
             this.elements.productSkuCount.textContent = `${allProducts.length} SKUs`;
 
@@ -575,7 +593,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         this.elements.productsView.classList.remove('selection-mode');
                         this.elements.addNewProductBtn.style.display = 'flex';
                     } else {
-                        if (product.needsSetup || this.state.user.type === 'Wholesaler') {
+                        if (product.needsSetup || this.state.user.type === 'Wholesaler' || product.lockedUntilOOS) {
                             this.handleEditProduct(product);
                         }
                     }
@@ -770,12 +788,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 barcode: this.state.capturedBarcode || (isEditing ? this.state.editingProduct.barcode : null),
                 createdAt: isEditing ? this.state.editingProduct.createdAt : new Date(),
                 supplierId: isEditing ? this.state.editingProduct.supplierId : null,
+                originalName: isEditing ? this.state.editingProduct.originalName : null,
+                lockedUntilOOS: isEditing ? this.state.editingProduct.lockedUntilOOS : false,
                 needsSetup: null, // Clear setup flag on any edit/save
             }; 
 
             if (!productData.name || isNaN(productData.price) || isNaN(productData.stock)) { 
                 alert('Please fill out all fields correctly.'); return; 
             } 
+
+            // If product was locked, respect the disabled fields
+            if (isEditing && this.state.editingProduct.lockedUntilOOS && this.state.editingProduct.stock > 0) {
+                productData.stock = this.state.editingProduct.stock;
+                productData.unit = this.state.editingProduct.unit;
+            }
+
+            // Unlock the product if it's now out of stock
+            if (productData.lockedUntilOOS && productData.stock <= 0) {
+                productData.lockedUntilOOS = false;
+            }
 
             if (!productData.image) {
                 alert('Please add a product image before saving.');
@@ -852,7 +883,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 cartonOption.style.display = 'none';
             }
             
-            this.elements.productSourceInfo.style.display = 'none'; // Hide by default
+            // Handle locked fields for products from a supplier log
+            this.elements.productStockInput.disabled = false;
+            this.elements.productUnitInput.disabled = false;
+            this.elements.productSourceInfo.style.display = 'none';
+            if (product.lockedUntilOOS && product.stock > 0) {
+                this.elements.productStockInput.disabled = true;
+                this.elements.productUnitInput.disabled = true;
+                this.elements.productSourceInfo.textContent = 'Stock for this item is managed by your supplier and cannot be edited until it runs out.';
+                this.elements.productSourceInfo.style.display = 'block';
+            }
+
             if (product.needsSetup === 'barcode-and-price') {
                 this.elements.scanNewBarcodeBtn.style.display = 'block';
                 this.elements.productSourceInfo.textContent = 'This product needs a barcode. Scan one now.';
@@ -863,7 +904,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (product.barcode) {
                     this.elements.productBarcodeDisplay.textContent = product.barcode;
                     this.elements.productBarcodeDisplay.style.display = 'block';
-                } else {
+                } else if (!product.lockedUntilOOS || product.stock <= 0) { // Only show 'no barcode' if not locked
                     this.elements.productSourceInfo.textContent = 'No barcode assigned.';
                     this.elements.productSourceInfo.style.display = 'block';
                     this.elements.productBarcodeDisplay.style.display = 'none';
@@ -890,7 +931,8 @@ document.addEventListener('DOMContentLoaded', () => {
             this.hideModal();
             this.navigateTo('camera-view');
             try {
-                const { blob } = await Camera.capturePhoto();
+                // Pass elements for countdown and feedback text
+                const { blob } = await Camera.capturePhoto(this.elements.scanTimerDisplay, this.elements.scanFeedback);
                 history.back();
                 if (blob) {
                     this.state.capturedBlob = blob;
@@ -966,7 +1008,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 try {
                     const retailerDocRef = window.fb.doc(window.fb.db, `retailer_stocks/${product.supplierId}/supplied_retailers/${this.state.user.uid}`);
                     const updateData = {};
-                    updateData[`products.${product.name}.stock`] = product.stock;
+                    const firebaseProductName = product.originalName || product.name;
+                    updateData[`products.${firebaseProductName}.stock`] = product.stock;
                     updateData.lastUpdate = window.fb.serverTimestamp();
                     
                     await window.fb.updateDoc(retailerDocRef, updateData);
@@ -1018,7 +1061,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 try {
                     const retailerDocRef = window.fb.doc(window.fb.db, `retailer_stocks/${productToSell.supplierId}/supplied_retailers/${this.state.user.uid}`);
                     const updateData = {};
-                    updateData[`products.${productToSell.name}.stock`] = productToSell.stock;
+                    const firebaseProductName = productToSell.originalName || productToSell.name;
+                    updateData[`products.${firebaseProductName}.stock`] = productToSell.stock;
                     updateData.lastUpdate = window.fb.serverTimestamp();
     
                     await window.fb.updateDoc(retailerDocRef, updateData);
@@ -1171,6 +1215,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const costPrice = isCarton ? item.price / item.subUnitQuantity : item.price;
                 const needsSetup = isCarton ? 'barcode-and-price' : 'price';
                 const barcode = isCarton ? null : item.barcode;
+                const originalName = item.name;
 
                 const existingProduct = allProducts.find(p => p.name.toLowerCase() === item.name.toLowerCase());
                 let finalProduct;
@@ -1179,12 +1224,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     existingProduct.stock += stockToAdd;
                     existingProduct.supplierId = supplierId;
                     existingProduct.needsSetup = needsSetup;
+                    existingProduct.lockedUntilOOS = true;
+                    existingProduct.originalName = originalName;
                     if (barcode) existingProduct.barcode = barcode; 
                     finalProduct = existingProduct;
                 } else {
                     finalProduct = { 
                         id: Date.now() + Math.random(), 
                         name: item.name, 
+                        originalName: originalName,
                         price: costPrice,
                         stock: stockToAdd, 
                         unit: unitType, 
@@ -1192,11 +1240,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         barcode: barcode, 
                         createdAt: new Date(),
                         supplierId: supplierId,
+                        lockedUntilOOS: true,
                         needsSetup: needsSetup
                     };
                 }
                 productUpdates.push(DB.saveProduct(finalProduct));
-                updatedProductsForFirebase[finalProduct.name] = { stock: finalProduct.stock, unit: finalProduct.unit };
+                updatedProductsForFirebase[finalProduct.originalName] = { stock: finalProduct.stock, unit: finalProduct.unit };
             }
 
             await Promise.all(productUpdates);
@@ -1256,7 +1305,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (retailer.products && Object.keys(retailer.products).length > 0) {
                             for (const productName in retailer.products) {
                                 const product = retailer.products[productName];
-                                productsHtml += `<div class="retailer-product-item"><span>${productName}</span><strong>${this.formatNumber(product.stock)} ${product.unit}</strong></div>`;
+                                productsHtml += `<div class="retailer-product-item"><span>${productName}</span><strong>${this.formatNumber(product.stock)} ${product.unit} left</strong></div>`;
                             }
                         } else {
                             productsHtml = `<div class="retailer-product-item"><span>No product data available.</span></div>`;
