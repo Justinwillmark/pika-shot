@@ -890,7 +890,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (product.lockedUntilOOS && product.stock > 0) {
                 this.elements.productStockInput.disabled = true;
                 this.elements.productUnitInput.disabled = true;
-                this.elements.productSourceInfo.textContent = 'Stock for this item is managed by your supplier and cannot be edited until it runs out.';
+                this.elements.productSourceInfo.textContent = 'Stock quantity and unit type for this item cannot be edited until it runs out.';
                 this.elements.productSourceInfo.style.display = 'block';
             }
 
