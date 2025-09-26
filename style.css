@@ -333,6 +333,7 @@ html, body {
 /* Filters are no longer sticky on their own and have adjusted padding */
 .product-filter-tabs {
     display: flex;
+    justify-content: center;
     gap: 12px;
     padding: 0 20px 12px;
     overflow-x: auto;
@@ -545,3 +546,4 @@ html, body {
     .page { padding-bottom: 75px; }
     .modal-content { padding: 16px; }
 }
+
