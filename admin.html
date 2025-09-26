@@ -9,7 +9,7 @@
     
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-app.js";
-        import { getFirestore, collection, getDocs, query, where, Timestamp } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore.js";
+        import { getFirestore, collection, getDocs, query, where, Timestamp, orderBy } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore.js";
         
         const firebaseConfig = {
             apiKey: "AIzaSyBKu623PDECcc1gYVe4xof6AVUxDlW7B_A",
@@ -27,7 +27,8 @@
             getDocs,
             query,
             where,
-            Timestamp
+            Timestamp,
+            orderBy
         };
     </script>
 </head>
@@ -45,8 +46,13 @@
 
     <div id="dashboard-container" class="dashboard-container" style="display: none;">
         <header class="header">
-            <h1>pika shot | Admin Dashboard</h1>
-            <p>Real-time user adoption overview</p>
+            <div class="header-content">
+                <h1>pika shot | Admin Dashboard</h1>
+                <p>Real-time user adoption overview</p>
+            </div>
+            <button id="refresh-btn" class="refresh-btn" title="Refresh Data">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+            </button>
         </header>
 
         <main class="main-content">
@@ -66,7 +72,7 @@
             </div>
 
             <div class="chart-container card">
-                 <h3>Scans Over Last 7 Days</h3>
+                 <h3>Scans Over Last 30 Days</h3>
                  <canvas id="scans-chart"></canvas>
             </div>
 
@@ -90,6 +96,25 @@
                             </tr>
                         </thead>
                         <tbody id="users-table-body">
+                            </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <div class="table-container card">
+                <div class="table-header">
+                    <h2>Phone Call Log</h2>
+                </div>
+                <div class="table-wrapper">
+                    <table id="calls-table">
+                        <thead>
+                            <tr>
+                                <th>Wholesaler</th>
+                                <th>Retailer Called</th>
+                                <th>Date of Call</th>
+                            </tr>
+                        </thead>
+                        <tbody id="calls-table-body">
                             </tbody>
                     </table>
                 </div>

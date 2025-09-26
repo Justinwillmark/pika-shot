@@ -567,7 +567,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const words = product.name.split(' ');
                 const displayName = words.length > 2 ? words.slice(0, 2).join(' ') + '...' : product.name;
 
-                const pencilIconSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>`;
+                const pencilIconSVG = `<svg xmlns="http://www.w.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>`;
                 card.innerHTML = `
                     ${badgeHtml}
                     <button class="edit-btn-icon">${pencilIconSVG}</button>
@@ -622,7 +622,7 @@ document.addEventListener('DOMContentLoaded', () => {
         async _logToFirestore(collectionName, docId, data) {
             if (!this.state.firebaseReady) return;
             try {
-                // For 'users', the docId is the phone number. For 'scan_logs', it's auto-generated.
+                // For 'users', the docId is the phone number. For others, it's auto-generated.
                 const docRef = docId 
                     ? window.fb.doc(window.fb.db, collectionName, docId)
                     : window.fb.doc(window.fb.collection(window.fb.db, collectionName));
@@ -1202,7 +1202,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 totalAmount += sale.total;
                 itemsHtml += `<tr><td>${sale.productName}</td><td class="col-qty">${this.formatNumber(sale.quantity)}</td><td class="col-price">&#8358;${this.formatNumber(sale.price)}</td><td class="col-total">&#8358;${this.formatNumber(sale.total)}</td></tr>`;
             });
-            const receiptHtml = `<div class="receipt-header"><h3>${this.state.user.business}</h3><p>${this.state.user.location}</p><p><strong>Receipt ID:</strong> ${receiptId}</p></div><div class="receipt-items"><table><thead><tr><th>Item</th><th class="col-qty">Qty</th><th class="col-price">Price</th><th class="col-total">Total</th></tr></thead><tbody>${itemsHtml}</tbody></table></div><div class="receipt-total"><div class="total-row"><span>TOTAL</span><span>&#8358;${this.formatNumber(totalAmount)}</span></div></div><div class="receipt-footer"><p>Thank you for your patronage!</p><p>${now.toLocaleDateString('en-NG')} ${now.toLocaleTimeString('en-NG')}</p></div>`;
+            const receiptHtml = `<div class="receipt-header"><h3>${this.state.user.business}</h3><p>${this.state.user.location}</p><p><strong>Receipt ID:</strong> ${receiptId}</p></div><div class.receipt-items"><table><thead><tr><th>Item</th><th class="col-qty">Qty</th><th class="col-price">Price</th><th class="col-total">Total</th></tr></thead><tbody>${itemsHtml}</tbody></table></div><div class="receipt-total"><div class="total-row"><span>TOTAL</span><span>&#8358;${this.formatNumber(totalAmount)}</span></div></div><div class="receipt-footer"><p>Thank you for your patronage!</p><p>${now.toLocaleDateString('en-NG')} ${now.toLocaleTimeString('en-NG')}</p></div>`;
             this.elements.receiptContent.innerHTML = receiptHtml;
             this.showModal('receipt-modal');
         },
@@ -1423,6 +1423,23 @@ document.addEventListener('DOMContentLoaded', () => {
                         `;
                     });
                     this.elements.retailerStockView.innerHTML = contentHtml;
+
+                    // --- ADMIN DASHBOARD INTEGRATION: START ---
+                    // Add event listeners to the call buttons after they are rendered
+                    this.elements.retailerStockView.querySelectorAll('.retailer-call-btn').forEach((btn, index) => {
+                        btn.addEventListener('click', () => {
+                            const retailerData = retailersData[index];
+                            this._logToFirestore('call_logs', null, {
+                                wholesalerId: this.state.user.phone,
+                                wholesalerName: this.state.user.business,
+                                retailerId: retailerData.retailerPhone,
+                                retailerName: retailerData.retailerName,
+                                timestamp: window.fb.serverTimestamp()
+                            });
+                        });
+                    });
+                    // --- ADMIN DASHBOARD INTEGRATION: END ---
+
                 }, (error) => {
                      console.error("Error fetching retailer stocks in real-time:", error);
                      this.elements.retailerStockView.innerHTML = `<p class="empty-state">Error loading retailer data.</p>`;
