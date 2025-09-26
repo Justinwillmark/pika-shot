@@ -1290,7 +1290,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 this.state.retailerListener = window.fb.onSnapshot(q, (querySnapshot) => {
                     if (querySnapshot.empty) {
-                        this.elements.retailerStockView.innerHTML = `<p class="empty-state">No retailer data found. Share a log with a retailer to see their stock here.</p>`;
+                        this.elements.retailerStockView.innerHTML = `<p class="empty-state">No retailer data found. As a wholesaler, share a log with a retailer to see their real-time stock level here.</p>`;
                         return;
                     }
 

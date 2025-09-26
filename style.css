@@ -339,7 +339,7 @@ html, body {
 .filter-tab-btn:not(.active):hover {
     background-color: #f0f0f0;
 }
-.product-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 16px; padding: 20px; margin-top: 7px; }
+.product-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 16px; padding: 20px; }
 .product-card { background-color: var(--surface-color); border-radius: var(--border-radius); box-shadow: var(--box-shadow); display: flex; flex-direction: column; position: relative; aspect-ratio: 3 / 4; overflow: hidden; }
 .product-card-image-wrapper { height: 70%; width: 100%; }
 .product-card-image-wrapper img { width: 100%; height: 100%; object-fit: cover; }
