@@ -776,7 +776,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         this.handlePikaLogScanned(result.data);
                     }
                 },
-                () => this.handleSellScanNotFound(true), 
+                () => { // onTimeout
+                    history.back();
+                    this.handleSellScanNotFound(true);
+                }, 
                 this.elements.scanTimerDisplay
             );
         },
@@ -806,7 +809,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.manualEntryBtn.style.display = 'none';
                 this.elements.retrySellScanBtn.style.display = 'block';
                 this.showModal('entry-choice-modal');
-            }, 1000);
+            }, isTimeout ? 0 : 1000); // Show modal immediately on timeout
         },
 
         async handleRetakePicture() { this.hideModal(); await this.handleAddOrChangePicture(); },
