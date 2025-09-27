@@ -801,7 +801,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
             this.elements.scanFeedback.textContent = 'Product not found.';
             setTimeout(() => {
-                history.back();
                 this.elements.entryChoiceTitle.textContent = 'Item Not Found';
                 this.elements.entryChoiceParagraph.textContent = 'This product is not in your inventory.';
                 this.elements.manualEntryBtn.style.display = 'none';
