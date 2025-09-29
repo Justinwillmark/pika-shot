@@ -124,6 +124,7 @@ document.addEventListener('DOMContentLoaded', () => {
             stockLevelsView: document.getElementById('stock-levels-view'),
             retailerStockView: document.getElementById('retailer-stock-view'),
             refreshStocksBtn: document.getElementById('refresh-stocks-btn'),
+            internetNotice: document.getElementById('internet-notice'),
             cartonDetailsModal: document.getElementById('carton-details-modal'),
             cartonDetailsForm: document.getElementById('carton-details-form'),
             cancelCartonDetailsBtn: document.getElementById('cancel-carton-details-btn'),
@@ -161,6 +162,7 @@ document.addEventListener('DOMContentLoaded', () => {
         async init() {
             this.showLoader();
             this.registerServiceWorker();
+            this.handleOnlineStatusChange = this.handleOnlineStatusChange.bind(this);
             this.setupEventListeners();
 
             try {
@@ -345,7 +347,11 @@ document.addEventListener('DOMContentLoaded', () => {
             
             if (viewId === 'stock-levels-view') {
                 this.renderRetailerStocks();
+                window.addEventListener('online', this.handleOnlineStatusChange);
+                window.addEventListener('offline', this.handleOnlineStatusChange);
             } else {
+                window.removeEventListener('online', this.handleOnlineStatusChange);
+                window.removeEventListener('offline', this.handleOnlineStatusChange);
                 if (this.state.retailerListener) {
                     this.state.retailerListener(); 
                     this.state.retailerListener = null;
@@ -376,6 +382,12 @@ document.addEventListener('DOMContentLoaded', () => {
         handlePopState(event) {
             const viewId = (event.state && event.state.view) || 'home-view';
             this.navigateTo(viewId, true);
+        },
+
+        handleOnlineStatusChange() {
+            if (this.state.currentView === 'stock-levels-view') {
+                this.renderRetailerStocks();
+            }
         },
 
         updateHeader(viewId) {
@@ -1310,14 +1322,27 @@ document.addEventListener('DOMContentLoaded', () => {
             const supplierId = this.state.scannedLogData.senderId;
 
             for (const item of this.state.scannedLogData.items) {
-                const isCarton = item.unit === 'cartons' && item.subUnitType && item.subUnitQuantity > 0;
-                
-                const stockToAdd = isCarton ? item.quantity * item.subUnitQuantity : item.quantity;
-                const unitType = isCarton ? item.subUnitType : item.unit;
-                const costPrice = isCarton ? item.price / item.subUnitQuantity : item.price;
-                const needsSetup = isCarton ? 'barcode-and-price' : 'price';
-                const barcode = isCarton ? null : item.barcode;
-                const originalName = item.name;
+                let stockToAdd, unitType, costPrice, needsSetup, barcode, originalName;
+
+                // CHANGE: Wholesalers now accept cartons as cartons, not as sub-units.
+                if (this.state.user.type === 'Wholesaler' && item.unit === 'cartons') {
+                    stockToAdd = item.quantity;
+                    unitType = item.unit; // Keep it as 'cartons'
+                    costPrice = item.price; // Keep the price per carton
+                    needsSetup = 'price'; // They only need to set their selling price
+                    barcode = item.barcode; // Transfer the barcode as is
+                    originalName = item.name;
+                } else {
+                    // Original logic for Retailers, or for non-carton items for Wholesalers
+                    const isCarton = item.unit === 'cartons' && item.subUnitType && item.subUnitQuantity > 0;
+                    
+                    stockToAdd = isCarton ? item.quantity * item.subUnitQuantity : item.quantity;
+                    unitType = isCarton ? item.subUnitType : item.unit;
+                    costPrice = isCarton ? item.price / item.subUnitQuantity : item.price;
+                    needsSetup = isCarton ? 'barcode-and-price' : 'price';
+                    barcode = isCarton ? null : item.barcode; // Barcode is nulled for retailers receiving cartons
+                    originalName = item.name;
+                }
 
                 const existingProduct = allProducts.find(p => p.name.toLowerCase() === item.name.toLowerCase());
                 let finalProduct;
@@ -1376,6 +1401,13 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         renderRetailerStocks() {
+            if (!navigator.onLine) {
+                this.elements.internetNotice.style.display = 'flex';
+                this.elements.retailerStockView.innerHTML = ''; // Clear view if offline
+                return;
+            }
+            this.elements.internetNotice.style.display = 'none';
+
             this.elements.retailerStockView.innerHTML = '<div class="spinner"></div>';
             if (!this.state.firebaseReady || !this.state.user.uid) {
                 this.elements.retailerStockView.innerHTML = `<p class="empty-state">Could not connect to online services.</p>`;
@@ -1415,19 +1447,14 @@ document.addEventListener('DOMContentLoaded', () => {
                         const phoneIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>`;
                         const callButton = retailer.retailerPhone ? `<a href="tel:${retailer.retailerPhone}" class="retailer-call-btn" title="Call ${retailer.retailerName}">${phoneIcon}</a>` : '';
                         
-                        let lastUpdateDate = '';
-                        if (retailer.lastUpdate && retailer.lastUpdate.toDate) {
-                            lastUpdateDate = retailer.lastUpdate.toDate().toLocaleDateString('en-NG', {
-                                day: 'numeric', month: 'short', year: 'numeric'
-                            });
-                        }
+                        const status = this.formatTimeAgo(retailer.lastUpdate?.toDate());
 
                         contentHtml += `
                             <div class="card">
                                 <div class="retailer-header">
                                     <div style="flex-grow: 1;">
                                         <h4>${retailer.retailerName} (${retailer.retailerLocation})</h4>
-                                        ${lastUpdateDate ? `<p style="font-size: 0.8rem; color: var(--text-light); margin-top: 2px;">Last Update: ${lastUpdateDate}</p>` : ''}
+                                        <p class="retailer-status ${status.className}">${status.text}</p>
                                     </div>
                                     ${callButton}
                                 </div>
@@ -1460,6 +1487,33 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         },
         
+        formatTimeAgo(date) {
+            if (!date || !(date instanceof Date)) {
+                return { text: 'Status unknown', className: 'offline' };
+            }
+
+            const now = new Date();
+            const seconds = Math.round((now - date) / 1000);
+
+            if (seconds < 60) {
+                return { text: 'Online now', className: 'online' };
+            }
+            const minutes = Math.round(seconds / 60);
+            if (minutes < 60) {
+                return { text: `Online ${minutes} min ago`, className: 'online' };
+            }
+            const hours = Math.round(minutes / 60);
+            if (hours < 24) {
+                return { text: `Online ${hours} hr ago`, className: 'away' };
+            }
+            const days = Math.round(hours / 24);
+            if (days < 7) {
+                return { text: `Online ${days} day${days > 1 ? 's' : ''} ago`, className: 'offline' };
+            }
+            const formattedDate = date.toLocaleDateString('en-NG', { day: 'numeric', month: 'short' });
+            return { text: `Last online: ${formattedDate}`, className: 'offline' };
+        },
+
         formatNumber(value) {
             if (value === null || value === undefined) return '';
             const num = parseFloat(this.unformatNumber(value));
