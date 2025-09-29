@@ -165,6 +165,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             try {
                 await DB.init();
+                this._requestPersistentStorage(); // Request persistent storage
                 await this.initFirebase();
                 this.state.user = await DB.getUser();
 
@@ -414,12 +415,10 @@ document.addEventListener('DOMContentLoaded', () => {
             // Logic for "See last sales" button
             const allSales = await DB.getAllSales();
             const previousSalesExist = allSales.length > todaysSales.length;
-            if (todaysSales.length === 0 && previousSalesExist) {
+
+            if (previousSalesExist && todaysSales.length <= 6) {
                 this.elements.seeLastSalesContainer.style.display = 'block';
             } else {
-                this.elements.seeLastSalesContainer.style.display = 'none';
-            }
-             if (todaysSales.length > 6) {
                 this.elements.seeLastSalesContainer.style.display = 'none';
             }
 
@@ -1217,7 +1216,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 totalAmount += sale.total;
                 itemsHtml += `<tr><td>${sale.productName}</td><td class="col-qty">${this.formatNumber(sale.quantity)}</td><td class="col-price">&#8358;${this.formatNumber(sale.price)}</td><td class="col-total">&#8358;${this.formatNumber(sale.total)}</td></tr>`;
             });
-            const receiptHtml = `<div class="receipt-header"><h3>${this.state.user.business}</h3><p>${this.state.user.location}</p><p><strong>Receipt ID:</strong> ${receiptId}</p></div><div class="receipt-items"><table><thead><tr><th>Item</th><th class="col-qty">Qty</th><th class="col-price">Price</th><th class="col-total">Total</th></tr></thead><tbody>${itemsHtml}</tbody></table></div><div class="receipt-total"><div class="total-row"><span>TOTAL</span><span>&#8358;${this.formatNumber(totalAmount)}</span></div></div><div class="receipt-footer"><p>Thank you for your patronage!</p><p>${now.toLocaleDateString('en-NG')} ${now.toLocaleTimeString('en-NG')}</p></div>`;
+            const receiptHtml = `<div class="receipt-header"><h3>${this.state.user.business}</h3><p>${this.state.user.location} | ${this.state.user.phone}</p><p><strong>Receipt ID:</strong> ${receiptId}</p></div><div class="receipt-items"><table><thead><tr><th>Item</th><th class="col-qty">Qty</th><th class="col-price">Price</th><th class="col-total">Total</th></tr></thead><tbody>${itemsHtml}</tbody></table></div><div class="receipt-total"><div class="total-row"><span>TOTAL</span><span>&#8358;${this.formatNumber(totalAmount)}</span></div></div><div class="receipt-footer"><p>Thank you for your patronage!</p><p>${now.toLocaleDateString('en-NG')} ${now.toLocaleTimeString('en-NG')}</p><p style="font-size: 0.7rem; color: #888; margin-top: 10px;">Powered by Pika-Shot</p></div>`;
             this.elements.receiptContent.innerHTML = receiptHtml;
             this.showModal('receipt-modal');
         },
@@ -1472,6 +1471,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 value = String(value);
             }
             return parseFloat(value.replace(/,/g, '')) || 0;
+        },
+
+        async _requestPersistentStorage() {
+            if (navigator.storage && navigator.storage.persist) {
+                try {
+                    const isPersisted = await navigator.storage.persisted();
+                    console.log(`Storage is already persistent: ${isPersisted}`);
+                    if (!isPersisted) {
+                        const result = await navigator.storage.persist();
+                        console.log(`Storage persistence successfully requested: ${result}`);
+                    }
+                } catch (error) {
+                    console.error("Failed to request persistent storage:", error);
+                }
+            } else {
+                console.log("Persistent Storage API not supported.");
+            }
         },
 
         handleBeforeInstallPrompt(event) { event.preventDefault(); this.state.deferredInstallPrompt = event; this.elements.installBtn.style.display = 'block'; },
