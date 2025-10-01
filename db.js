@@ -1,7 +1,7 @@
 const DB = {
     db: null,
     dbName: 'PikaShotDB',
-    dbVersion: 2, // Version remains the same if schema hasn't changed beyond user store
+    dbVersion: 3, // Incremented version to handle schema upgrade
 
     init() {
         return new Promise((resolve, reject) => {
@@ -20,24 +20,25 @@ const DB = {
 
             request.onupgradeneeded = (event) => {
                 const db = event.target.result;
+                const transaction = event.target.transaction;
+
                 // User store
                 if (!db.objectStoreNames.contains('user')) {
                     db.createObjectStore('user', { keyPath: 'id' });
                 }
-                
+
                 // Products store
                 if (!db.objectStoreNames.contains('products')) {
                     const productStore = db.createObjectStore('products', { keyPath: 'id' });
                     productStore.createIndex('barcode', 'barcode', { unique: false });
                 } else {
-                    const transaction = event.target.transaction;
                     const productStore = transaction.objectStore('products');
                     if (!productStore.indexNames.contains('barcode')) {
                          productStore.createIndex('barcode', 'barcode', { unique: false });
                     }
                 }
-                
-                // Sales store
+
+                // Sales store - check and add sharedAsLog property
                 if (!db.objectStoreNames.contains('sales')) {
                     db.createObjectStore('sales', { keyPath: 'id' });
                 }
@@ -45,11 +46,12 @@ const DB = {
         });
     },
 
+
     _getStore(storeName, mode) {
         const transaction = this.db.transaction(storeName, mode);
         return transaction.objectStore(storeName);
     },
-    
+
     _requestToPromise(request) {
         return new Promise((resolve, reject) => {
             request.onsuccess = () => resolve(request.result);
@@ -60,7 +62,6 @@ const DB = {
     // --- USER ---
     saveUser(userData) {
         const store = this._getStore('user', 'readwrite');
-        // The user object now contains more fields, but the schema is flexible.
         const user = { id: 1, ...userData };
         return this._requestToPromise(store.put(user));
     },
@@ -91,18 +92,25 @@ const DB = {
         const store = this._getStore('products', 'readonly');
         return this._requestToPromise(store.getAll());
     },
-    
+
     deleteProduct(id) {
         const store = this._getStore('products', 'readwrite');
         return this._requestToPromise(store.delete(id));
     },
-    
+
     // --- SALES ---
     addSale(sale) {
         const store = this._getStore('sales', 'readwrite');
-        return this._requestToPromise(store.add(sale));
+        // Initialize sharedAsLog property
+        const saleWithLogStatus = { ...sale, sharedAsLog: false };
+        return this._requestToPromise(store.add(saleWithLogStatus));
     },
-    
+
+    updateSale(sale) {
+        const store = this._getStore('sales', 'readwrite');
+        return this._requestToPromise(store.put(sale));
+    },
+
     getAllSales() {
         const store = this._getStore('sales', 'readonly');
         return this._requestToPromise(store.getAll());

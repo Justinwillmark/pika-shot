@@ -71,6 +71,7 @@ document.addEventListener('DOMContentLoaded', () => {
             productStockInput: document.getElementById('product-stock'),
             productUnitInput: document.getElementById('product-unit'),
             cancelProductFormBtn: document.getElementById('cancel-product-form-btn'),
+            saveProductBtn: document.getElementById('save-product-btn'),
             confirmSaleModal: document.getElementById('confirm-sale-modal'),
             saleProductImage: document.getElementById('sale-product-image'),
             saleProductName: document.getElementById('sale-product-name'),
@@ -94,6 +95,7 @@ document.addEventListener('DOMContentLoaded', () => {
             qrCodeModal: document.getElementById('qr-code-modal'),
             qrCanvas: document.getElementById('qr-canvas'),
             closeQrBtn: document.getElementById('close-qr-btn'),
+            cancelQrBtn: document.getElementById('cancel-qr-btn'),
             entryChoiceModal: document.getElementById('entry-choice-modal'),
             entryChoiceTitle: document.getElementById('entry-choice-title'),
             entryChoiceParagraph: document.getElementById('entry-choice-p'),
@@ -134,6 +136,7 @@ document.addEventListener('DOMContentLoaded', () => {
             cartonQuantityLabel: document.getElementById('carton-quantity-label'),
             privacyLink: document.getElementById('privacy-link'),
             privacyOkBtn: document.getElementById('privacy-ok-btn'),
+            toast: document.getElementById('toast'),
         },
 
         // --- APP STATE ---
@@ -144,8 +147,8 @@ document.addEventListener('DOMContentLoaded', () => {
             capturedBlob: null,
             capturedBarcode: null,
             editingProduct: null,
-            isChangingPicture: false, 
-            productSelectionMode: false, 
+            isChangingPicture: false,
+            productSelectionMode: false,
             sellingProduct: null,
             scannedLogData: null,
             deferredInstallPrompt: null,
@@ -239,7 +242,8 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.shareReceiptBtn.addEventListener('click', this.shareReceipt.bind(this));
             this.elements.printReceiptBtn.addEventListener('click', () => window.print());
             this.elements.shareLogBtn.addEventListener('click', this.generateQrLog.bind(this));
-            this.elements.closeQrBtn.addEventListener('click', () => this.hideModal());
+            this.elements.closeQrBtn.addEventListener('click', this.handleLogShared.bind(this));
+            this.elements.cancelQrBtn.addEventListener('click', () => this.hideModal());
             this.elements.productSearchInput.addEventListener('input', (e) => this.renderProducts(e.target.value));
             this.elements.cancelEntryChoiceBtn.addEventListener('click', () => this.hideModal());
             this.elements.manualEntryBtn.addEventListener('click', () => { this.hideModal(); this.elements.manualSaleForm.reset(); this.showModal('manual-sale-modal'); });
@@ -299,7 +303,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 input.value = value;
             });
-            
+
             // Listen for clicks on disabled stock/unit fields
             const pointToInfoMessage = (e) => {
                 if (e.target.disabled) {
@@ -311,28 +315,35 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.productStockInput.addEventListener('click', pointToInfoMessage);
             this.elements.productUnitInput.addEventListener('click', pointToInfoMessage);
         },
-        
+
         // --- UI & NAVIGATION ---
         showLoader() { this.elements.loader.style.display = 'flex'; this.elements.appContainer.style.display = 'none'; },
         hideLoader() { this.elements.loaderSpinner.style.display = 'none'; this.elements.loaderCheck.style.display = 'block'; setTimeout(() => { this.elements.loader.style.opacity = '0'; this.elements.appContainer.style.display = 'flex'; setTimeout(() => { this.elements.loader.style.display = 'none'; }, 500); }, 500); },
-        showView(viewId) { 
+        showView(viewId) {
             if (this.state.currentView === viewId) return;
-            this.elements.views.forEach(view => view.classList.remove('active')); 
-            const viewToShow = document.getElementById(viewId); 
-            if (viewToShow) { 
-                viewToShow.classList.add('active'); 
-                this.state.currentView = viewId; 
-                if (!['onboarding-view', 'camera-permission-view', 'location-permission-view'].includes(viewId)) { 
-                    this.updateHeader(viewId); 
-                } 
-            } 
+            this.elements.views.forEach(view => view.classList.remove('active'));
+            const viewToShow = document.getElementById(viewId);
+            if (viewToShow) {
+                viewToShow.classList.add('active');
+                this.state.currentView = viewId;
+                if (!['onboarding-view', 'camera-permission-view', 'location-permission-view'].includes(viewId)) {
+                    this.updateHeader(viewId);
+                }
+            }
         },
         showModal(modalId) { this.elements.modalContainer.style.display = 'flex'; this.elements.modalContainer.querySelectorAll('.modal-content').forEach(m => m.style.display = 'none'); const modalToShow = document.getElementById(modalId); if (modalToShow) { modalToShow.style.display = 'block'; } },
         hideModal() { this.elements.modalContainer.style.display = 'none'; this.elements.modalContainer.querySelectorAll('.modal-content').forEach(m => m.style.display = 'none'); },
-        
+        showToast(message) {
+            this.elements.toast.textContent = message;
+            this.elements.toast.classList.add('show');
+            setTimeout(() => {
+                this.elements.toast.classList.remove('show');
+            }, 3000);
+        },
+
         navigateTo(viewId, isBackNavigation = false) {
             if (this.state.currentView === viewId && !isBackNavigation) return;
-            
+
             if (!isBackNavigation) {
                 history.pushState({ view: viewId }, '', `#${viewId}`);
             }
@@ -344,7 +355,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (viewId === 'all-sales-view') {
                 this.renderAllSales();
             }
-            
+
             if (viewId === 'stock-levels-view') {
                 this.renderRetailerStocks();
                 window.addEventListener('online', this.handleOnlineStatusChange);
@@ -353,7 +364,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 window.removeEventListener('online', this.handleOnlineStatusChange);
                 window.removeEventListener('offline', this.handleOnlineStatusChange);
                 if (this.state.retailerListener) {
-                    this.state.retailerListener(); 
+                    this.state.retailerListener();
                     this.state.retailerListener = null;
                 }
             }
@@ -369,16 +380,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
             this.showView(viewId);
             this.elements.navButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.view === viewId));
-            
+
             const isHomePage = viewId === 'home-view' || !document.getElementById(viewId)?.classList.contains('page');
             this.elements.backBtn.style.display = isHomePage ? 'none' : 'block';
-            
+
             this.elements.productsView.classList.toggle('selection-mode', this.state.productSelectionMode);
             this.elements.addNewProductBtn.style.display = (this.state.productSelectionMode || viewId !== 'products-view') ? 'none' : 'flex';
-            
+
             this.exitSelectionMode();
         },
-        
+
         handlePopState(event) {
             const viewId = (event.state && event.state.view) || 'home-view';
             this.navigateTo(viewId, true);
@@ -414,13 +425,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const date = new Date();
             this.elements.welcomeDate.textContent = date.toLocaleDateString('en-NG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-            
+
             const todaysSales = await DB.getSalesToday();
             const totalSales = todaysSales.reduce((sum, sale) => sum + sale.total, 0);
             const itemsSold = todaysSales.reduce((sum, sale) => sum + sale.quantity, 0);
             this.elements.totalSalesEl.textContent = `₦${this.formatNumber(totalSales)}`;
             this.elements.itemsSoldEl.textContent = this.formatNumber(itemsSold);
-            
+
             this.elements.seeAllContainer.style.display = todaysSales.length > 6 ? 'block' : 'none';
             this.elements.selectionModeHint.style.display = todaysSales.length > 0 ? 'block' : 'none';
 
@@ -436,7 +447,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             this.renderSalesList(todaysSales, this.elements.recentSalesList, 6);
         },
-        
+
         renderSalesList(sales, targetElement, limit) {
             targetElement.innerHTML = '';
             const sortedSales = sales.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
@@ -446,19 +457,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 targetElement.innerHTML = `<p class="empty-state">No sales recorded yet.</p>`;
                 return;
             }
-            
+
             salesToRender.forEach(sale => {
                 const saleEl = document.createElement('div');
                 saleEl.className = 'sale-item';
+                if (sale.sharedAsLog) {
+                    saleEl.classList.add('shared-log');
+                }
                 saleEl.dataset.saleId = sale.id;
                 const imageUrl = sale.image ? URL.createObjectURL(sale.image) : 'icons/icon-192.png';
                 saleEl.innerHTML = `<img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${this.formatNumber(sale.quantity)} x &#8358;${this.formatNumber(sale.price)}</span></div><p class="sale-price">&#8358;${this.formatNumber(sale.total)}</p>`;
-                
+
                 this.addSaleItemEventListeners(saleEl, sale);
                 targetElement.appendChild(saleEl);
             });
         },
-        
+
         async renderAllSales() {
             const allSales = await DB.getAllSales();
             const sortedSales = allSales.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
@@ -473,7 +487,7 @@ document.addEventListener('DOMContentLoaded', () => {
             for (const groupTitle in groupedSales) {
                 const groupContainer = document.createElement('div');
                 groupContainer.className = 'sales-group';
-                
+
                 const dailyTotal = groupedSales[groupTitle].reduce((sum, sale) => sum + sale.total, 0);
 
                 const groupHeader = document.createElement('div');
@@ -484,6 +498,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 groupedSales[groupTitle].forEach(sale => {
                     const saleEl = document.createElement('div');
                     saleEl.className = 'sale-item';
+                     if (sale.sharedAsLog) {
+                        saleEl.classList.add('shared-log');
+                    }
                     saleEl.dataset.saleId = sale.id;
                     const imageUrl = sale.image ? URL.createObjectURL(sale.image) : 'icons/icon-192.png';
                     saleEl.innerHTML = `<img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${this.formatNumber(sale.quantity)} x &#8358;${this.formatNumber(sale.price)}</span></div><p class="sale-price">&#8358;${this.formatNumber(sale.total)}</p>`;
@@ -507,7 +524,7 @@ document.addEventListener('DOMContentLoaded', () => {
             sales.forEach(sale => {
                 const saleDate = new Date(sale.timestamp);
                 saleDate.setHours(0, 0, 0, 0);
-                
+
                 let groupTitle;
                 if (saleDate.getTime() === today.getTime()) {
                     groupTitle = `Today, ${today.toLocaleDateString('en-NG', dateOptions)}`;
@@ -531,7 +548,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const filterType = this.state.productFilter;
             const allProducts = await DB.getAllProducts();
             allProducts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)); // Sort by newest first
-            
+
             this.elements.productGrid.innerHTML = '';
             this.elements.productSkuCount.textContent = `${allProducts.length} SKUs`;
 
@@ -545,10 +562,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             // Then apply search text filter
-            const products = searchText 
-                ? filteredProducts.filter(p => p.name.toLowerCase().includes(searchText.toLowerCase())) 
+            const products = searchText
+                ? filteredProducts.filter(p => p.name.toLowerCase().includes(searchText.toLowerCase()))
                 : filteredProducts;
-            
+
             if (allProducts.length > 0) {
                 this.elements.productSearchContainer.style.display = 'block';
                 this.elements.productFilterTabs.style.display = 'flex';
@@ -574,7 +591,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const card = document.createElement('div');
                 card.className = 'product-card';
                 const imageUrl = product.image ? URL.createObjectURL(product.image) : 'icons/icon-192.png';
-                
+
                 let badgeHtml = '';
                 if (product.stock <= 0) {
                     badgeHtml = '<div class="out-of-stock-badge">Out of Stock</div>';
@@ -601,7 +618,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <p class="product-price">&#8358;${this.formatNumber(product.price)}</p>
                         <p class="product-stock">${product.stock > 0 ? `${this.formatNumber(product.stock)} ${product.unit} left` : ''}</p>
                     </div>`;
-                
+
                 const editBtn = card.querySelector('.edit-btn-icon');
                 editBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
@@ -630,47 +647,47 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.appHeader.style.display = 'flex';
             this.elements.mainContent.style.display = 'block';
             this.elements.bottomNav.style.display = 'flex';
-        
+
             const initialView = window.location.hash.substring(1) || 'home-view';
             history.replaceState({ view: initialView }, '', `#${initialView}`);
             this.navigateTo(initialView, true);
-        
+
             await this.updateDashboard();
             await this.renderProducts();
         },
-        
+
         // --- ADMIN DASHBOARD INTEGRATION ---
         async _logToFirestore(collectionName, docId, data) {
             if (!this.state.firebaseReady) return;
             try {
-                const docRef = docId 
+                const docRef = docId
                     ? window.fb.doc(window.fb.db, collectionName, docId)
                     : window.fb.doc(window.fb.collection(window.fb.db, collectionName));
-                
+
                 await window.fb.setDoc(docRef, data, { merge: true });
             } catch (error) {
                 console.error(`Failed to log to ${collectionName}:`, error);
             }
         },
 
-        async handleOnboarding(e) { 
-            e.preventDefault(); 
-            const name = this.elements.userNameInput.value.trim(); 
-            const business = this.elements.businessNameInput.value.trim(); 
-            const phone = this.elements.userPhoneInput.value.trim(); 
-            const type = this.elements.businessTypeInput.value; 
-            const location = this.elements.businessLocationInput.value; 
-            if (!name || !business || !phone || !type || !location) { 
-                alert('Please fill in all fields.'); return; 
-            } 
-            const uid = this.state.firebaseReady ? window.fb.auth.currentUser.uid : null; 
-            this.state.user = { id: 1, name, business, phone, type, location, uid }; 
-            await DB.saveUser(this.state.user); 
-            
+        async handleOnboarding(e) {
+            e.preventDefault();
+            const name = this.elements.userNameInput.value.trim();
+            const business = this.elements.businessNameInput.value.trim();
+            const phone = this.elements.userPhoneInput.value.trim();
+            const type = this.elements.businessTypeInput.value;
+            const location = this.elements.businessLocationInput.value;
+            if (!name || !business || !phone || !type || !location) {
+                alert('Please fill in all fields.'); return;
+            }
+            const uid = this.state.firebaseReady ? window.fb.auth.currentUser.uid : null;
+            this.state.user = { id: 1, name, business, phone, type, location, uid };
+            await DB.saveUser(this.state.user);
+
             const userDataForAdmin = { name, business, phone, type, location, uid, createdAt: window.fb.serverTimestamp() };
             this._logToFirestore('users', phone, userDataForAdmin);
 
-            this.showView('location-permission-view'); 
+            this.showView('location-permission-view');
         },
         handleLocationPermission() {
              navigator.geolocation.getCurrentPosition(
@@ -687,32 +704,32 @@ document.addEventListener('DOMContentLoaded', () => {
             );
         },
         async handleCameraPermission() { try { const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }); stream.getTracks().forEach(track => track.stop()); await this.loadMainApp(); } catch (err) { console.error("Camera permission denied:", err); alert("Camera access is required for barcode scanning. Please enable it in browser settings."); } },
-        async loadCameraScannerInBackground() { 
-            try { 
-                this.elements.sellItemBtnText.textContent = 'Loading...'; 
+        async loadCameraScannerInBackground() {
+            try {
+                this.elements.sellItemBtnText.textContent = 'Loading...';
                 this.elements.sellItemBtnMain.classList.add('loading');
-                await Camera.init(); 
-                this.state.cameraReady = true; 
-                this.elements.addNewProductBtn.classList.remove('disabled'); 
-                this.elements.sellItemBtnMain.classList.remove('disabled'); 
-                this.elements.sellItemBtnText.textContent = 'Sell Item'; 
-                console.log("Barcode scanner ready."); 
-            } catch (error) { 
-                console.error("Failed to initialize scanner:", error); 
-                this.state.cameraReady = false; 
-                this.elements.sellItemBtnText.textContent = 'Offline'; 
+                await Camera.init();
+                this.state.cameraReady = true;
+                this.elements.addNewProductBtn.classList.remove('disabled');
+                this.elements.sellItemBtnMain.classList.remove('disabled');
+                this.elements.sellItemBtnText.textContent = 'Sell Item';
+                console.log("Barcode scanner ready.");
+            } catch (error) {
+                console.error("Failed to initialize scanner:", error);
+                this.state.cameraReady = false;
+                this.elements.sellItemBtnText.textContent = 'Offline';
             } finally {
                 this.elements.sellItemBtnMain.classList.remove('loading');
             }
         },
-        
-        startAddProduct() { 
+
+        startAddProduct() {
             if (!this.state.cameraReady) { alert("Scanner is not ready yet. Please wait or check your connection."); return; }
             if (!Camera.barcodeDetector) { alert("Barcode scanning is not available on this browser."); return; }
             this.elements.scanFeedback.textContent = 'Scan product barcode';
             this.navigateTo('camera-view');
             Camera.startScan(
-                this.handleAddProductScanResult.bind(this), 
+                this.handleAddProductScanResult.bind(this),
                 () => { // onTimeout callback
                     this.elements.scanFeedback.textContent = 'No barcode found.';
                     this._logToFirestore('scan_logs', null, {
@@ -722,7 +739,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         barcode: null,
                         timestamp: window.fb.serverTimestamp()
                     });
-                    setTimeout(() => { 
+                    setTimeout(() => {
                         history.back();
                         this.showModal('add-product-failed-modal');
                     }, 500);
@@ -730,13 +747,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.scanTimerDisplay
             );
         },
-        
+
         async handleAddProductScanResult(result) {
             this._logToFirestore('scan_logs', null, {
                 userId: this.state.user.phone,
                 type: result.type === 'barcode' ? 'add_product' : 'log_scan',
                 status: 'success',
-                barcode: result.data.pikaLogVersion ? 'PIKA_LOG' : result.data, 
+                barcode: result.data.pikaLogVersion ? 'PIKA_LOG' : result.data,
                 timestamp: window.fb.serverTimestamp()
             });
 
@@ -790,11 +807,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 () => { // onTimeout
                     history.back();
                     this.handleSellScanNotFound(true);
-                }, 
+                },
                 this.elements.scanTimerDisplay
             );
         },
-        
+
         showNewSaleEntryChoice() {
             this.hideModal();
             this.elements.entryChoiceTitle.textContent = 'New Sale Entry';
@@ -824,63 +841,63 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         async handleRetakePicture() { this.hideModal(); await this.handleAddOrChangePicture(); },
-        
+
         handleConfirmPicture() {
             this.hideModal();
-            this.elements.addChangePictureBtn.textContent = 'New product image added';
+            this.elements.addChangePictureBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>';
             this.showModal('product-form-modal');
         },
-        
+
         _openProductForm(options = {}) {
             this.elements.productForm.reset();
             this.elements.productFormTitle.textContent = 'Add New Product';
             this.elements.deleteProductBtn.style.display = 'none';
-            this.elements.addChangePictureBtn.style.display = 'block';
-            this.elements.addChangePictureBtn.textContent = 'Add / Change Image';
+            this.elements.addChangePictureBtn.style.display = 'flex';
+            this.elements.addChangePictureBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>';
             this.elements.scanNewBarcodeBtn.style.display = 'none';
             this.elements.productIdInput.value = '';
             this.elements.productBarcodeDisplay.style.display = 'none';
             this.elements.productSourceInfo.style.display = 'none';
             this.state.capturedBlob = null;
-            
+
             const cartonOption = this.elements.productUnitInput.querySelector('.wholesaler-only');
             if (this.state.user && this.state.user.type === 'Wholesaler') {
                 cartonOption.style.display = 'block';
             } else {
                 cartonOption.style.display = 'none';
             }
-            
+
             if (options.source === 'barcode' && this.state.capturedBarcode) {
                 this.elements.productBarcodeDisplay.textContent = this.state.capturedBarcode;
                 this.elements.productBarcodeDisplay.style.display = 'block';
             }
-            
+
             this.hideModal();
             this.showModal('product-form-modal');
         },
 
-        async handleSaveProduct(e) { 
-            e.preventDefault(); 
+        async handleSaveProduct(e) {
+            e.preventDefault();
             const isEditing = !!this.state.editingProduct;
-            
-            let productData = { 
-                id: isEditing ? this.state.editingProduct.id : Date.now(), 
-                name: this.elements.productNameInput.value.trim(), 
-                price: this.unformatNumber(this.elements.productPriceInput.value), 
-                stock: this.unformatNumber(this.elements.productStockInput.value), 
-                unit: this.elements.productUnitInput.value, 
-                image: this.state.capturedBlob || (isEditing ? this.state.editingProduct.image : null), 
+
+            let productData = {
+                id: isEditing ? this.state.editingProduct.id : Date.now(),
+                name: this.elements.productNameInput.value.trim(),
+                price: this.unformatNumber(this.elements.productPriceInput.value),
+                stock: this.unformatNumber(this.elements.productStockInput.value),
+                unit: this.elements.productUnitInput.value,
+                image: this.state.capturedBlob || (isEditing ? this.state.editingProduct.image : null),
                 barcode: this.state.capturedBarcode || (isEditing ? this.state.editingProduct.barcode : null),
                 createdAt: isEditing ? this.state.editingProduct.createdAt : new Date(),
                 supplierId: isEditing ? this.state.editingProduct.supplierId : null,
                 originalName: isEditing ? this.state.editingProduct.originalName : null,
                 lockedUntilOOS: isEditing ? this.state.editingProduct.lockedUntilOOS : false,
-                needsSetup: null, 
-            }; 
+                needsSetup: null,
+            };
 
-            if (!productData.name || isNaN(productData.price) || isNaN(productData.stock)) { 
-                alert('Please fill out all fields correctly.'); return; 
-            } 
+            if (!productData.name || isNaN(productData.price) || isNaN(productData.stock)) {
+                alert('Please fill out all fields correctly.'); return;
+            }
 
             if (isEditing && this.state.editingProduct.lockedUntilOOS && this.state.editingProduct.stock > 0) {
                 productData.stock = this.state.editingProduct.stock;
@@ -898,7 +915,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 setTimeout(() => addPicBtn.classList.remove('input-error-shake'), 600);
                 return;
             }
-            
+
             if (isEditing && this.state.editingProduct.needsSetup === 'barcode-and-price' && !productData.barcode) {
                 alert('Please scan a barcode for this product before saving.');
                 const scanBarcodeBtn = this.elements.scanNewBarcodeBtn;
@@ -906,7 +923,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 setTimeout(() => scanBarcodeBtn.classList.remove('input-error-shake'), 600);
                 return;
             }
-            
+
             if (productData.unit === 'cartons' && this.state.user.type === 'Wholesaler') {
                 this.elements.cartonDetailsForm.reset();
                 this.elements.cartonProductNameLabel.textContent = `What's inside the ${productData.name} carton?`;
@@ -914,9 +931,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.state.tempProductDataForCarton = productData;
                 this.hideModal();
                 this.showModal('carton-details-modal');
-                return; 
+                return;
             }
-            
+
             await this._commitProductSave(productData);
         },
 
@@ -931,7 +948,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 alert('Please fill in the carton details correctly.');
                 return;
             }
-            
+
             let productData = this.state.tempProductDataForCarton;
             productData.subUnitType = subUnitType;
             productData.subUnitQuantity = subUnitQuantity;
@@ -941,30 +958,30 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         async _commitProductSave(productData) {
-            await DB.saveProduct(productData); 
-            
-            this.hideModal(); 
-            this.state.capturedBlob = null; 
+            await DB.saveProduct(productData);
+
+            this.hideModal();
+            this.state.capturedBlob = null;
             this.state.capturedBarcode = null;
-            this.state.editingProduct = null; 
-            
-            this.navigateTo('products-view'); 
-            await this.renderProducts(); 
+            this.state.editingProduct = null;
+
+            this.navigateTo('products-view');
+            await this.renderProducts();
         },
 
-        handleEditProduct(product) { 
-            this.state.editingProduct = product; 
+        handleEditProduct(product) {
+            this.state.editingProduct = product;
             this.state.capturedBarcode = product.barcode;
             this.elements.productForm.reset();
-            this.elements.productFormTitle.textContent = 'Edit Product'; 
-            this.elements.deleteProductBtn.style.display = 'flex'; 
-            this.elements.addChangePictureBtn.style.display = 'block';
-            this.elements.addChangePictureBtn.textContent = 'Add / Change Image';
-            this.elements.productIdInput.value = product.id; 
-            this.elements.productNameInput.value = product.name; 
-            this.elements.productPriceInput.value = this.formatNumber(product.price); 
-            this.elements.productStockInput.value = this.formatNumber(product.stock); 
-            this.elements.productUnitInput.value = product.unit; 
+            this.elements.productFormTitle.textContent = 'Edit Product';
+            this.elements.deleteProductBtn.style.display = 'flex';
+            this.elements.addChangePictureBtn.style.display = 'flex';
+             this.elements.addChangePictureBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>';
+            this.elements.productIdInput.value = product.id;
+            this.elements.productNameInput.value = product.name;
+            this.elements.productPriceInput.value = this.formatNumber(product.price);
+            this.elements.productStockInput.value = this.formatNumber(product.stock);
+            this.elements.productUnitInput.value = product.unit;
             this.state.capturedBlob = product.image;
 
             const cartonOption = this.elements.productUnitInput.querySelector('.wholesaler-only');
@@ -973,7 +990,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 cartonOption.style.display = 'none';
             }
-            
+
             this.elements.productStockInput.disabled = false;
             this.elements.productUnitInput.disabled = false;
             this.elements.productSourceInfo.style.display = 'none';
@@ -1001,7 +1018,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-            this.showModal('product-form-modal'); 
+            this.showModal('product-form-modal');
         },
 
         async handleDeleteProduct() {
@@ -1016,7 +1033,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 alert('Product deleted successfully.');
             }
         },
-        
+
         async handleAddOrChangePicture() {
             this.hideModal();
             this.navigateTo('camera-view');
@@ -1056,7 +1073,7 @@ document.addEventListener('DOMContentLoaded', () => {
         async handleBarcodeAssignmentResult(result) {
             history.back();
             if (result.type !== 'barcode') return;
-            
+
             this._logToFirestore('scan_logs', null, {
                 userId: this.state.user.phone,
                 type: 'assign_barcode',
@@ -1079,27 +1096,27 @@ document.addEventListener('DOMContentLoaded', () => {
             this.showModal('product-form-modal');
         },
 
-        handleProductFound(product) { 
-            this.state.sellingProduct = product; 
-            this.elements.saleProductImage.src = product.image ? URL.createObjectURL(product.image) : 'icons/icon-192.png'; 
-            this.elements.saleProductName.textContent = product.name; 
-            this.elements.saleProductStock.textContent = `Stock: ${this.formatNumber(product.stock)} ${product.unit} left`; 
+        handleProductFound(product) {
+            this.state.sellingProduct = product;
+            this.elements.saleProductImage.src = product.image ? URL.createObjectURL(product.image) : 'icons/icon-192.png';
+            this.elements.saleProductName.textContent = product.name;
+            this.elements.saleProductStock.textContent = `Stock: ${this.formatNumber(product.stock)} ${product.unit} left`;
             this.elements.saleQuantityLabel.textContent = `How many ${product.unit} are you selling?`;
-            this.elements.saleQuantityInput.value = '1'; 
-            this.updateSaleTotal(); 
-            this.showModal('confirm-sale-modal'); 
+            this.elements.saleQuantityInput.value = '1';
+            this.updateSaleTotal();
+            this.showModal('confirm-sale-modal');
         },
         updateSaleTotal() { const quantity = this.unformatNumber(this.elements.saleQuantityInput.value); const price = this.state.sellingProduct?.price || 0; const total = quantity * price; this.elements.saleTotalPrice.textContent = `₦${this.formatNumber(total)}`; },
-        async _processSale() { 
-            const quantity = this.unformatNumber(this.elements.saleQuantityInput.value); 
-            const product = this.state.sellingProduct; 
-            if (quantity <= 0 || !product || quantity > product.stock) { alert('Invalid quantity or product not available.'); return false; } 
-            
-            product.stock -= quantity; 
-            
-            await DB.saveProduct(product); 
-            const sale = { id: Date.now(), productId: product.id, productName: product.name, quantity: quantity, price: product.price, total: quantity * product.price, timestamp: new Date(), image: product.image }; 
-            await DB.addSale(sale); 
+        async _processSale() {
+            const quantity = this.unformatNumber(this.elements.saleQuantityInput.value);
+            const product = this.state.sellingProduct;
+            if (quantity <= 0 || !product || quantity > product.stock) { alert('Invalid quantity or product not available.'); return false; }
+
+            product.stock -= quantity;
+
+            await DB.saveProduct(product);
+            const sale = { id: Date.now(), productId: product.id, productName: product.name, quantity: quantity, price: product.price, total: quantity * product.price, timestamp: new Date(), image: product.image, sharedAsLog: false };
+            await DB.addSale(sale);
 
             // --- SALES LOGGING: START ---
             const saleDataForAdmin = {
@@ -1117,25 +1134,25 @@ document.addEventListener('DOMContentLoaded', () => {
                     const firebaseProductName = product.originalName || product.name;
                     updateData[`products.${firebaseProductName}.stock`] = product.stock;
                     updateData.lastUpdate = window.fb.serverTimestamp();
-                    
+
                     await window.fb.updateDoc(retailerDocRef, updateData);
                 } catch (error) {
                     console.error("Failed to sync sale to Firebase:", error);
                 }
             }
-            
-            return true; 
+
+            return true;
         },
-        async handleConfirmSale() { 
-            const success = await this._processSale(); 
-            if (success) { 
-                this.hideModal(); 
-                await this.updateDashboard(); 
-                await this.renderProducts(); 
-                this.navigateTo('home-view'); 
-            } 
+        async handleConfirmSale() {
+            const success = await this._processSale();
+            if (success) {
+                this.hideModal();
+                await this.updateDashboard();
+                await this.renderProducts();
+                this.navigateTo('home-view');
+            }
         },
-        
+
         async handleManualSale(e) {
             e.preventDefault();
             const name = this.elements.manualProductName.value.trim();
@@ -1145,7 +1162,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!name || isNaN(price) || isNaN(quantity) || quantity <= 0) {
                 alert('Please fill in all fields correctly.'); return;
             }
-            
+
             const allProducts = await DB.getAllProducts();
             let productToSell = allProducts.find(p => p.name.toLowerCase() === name.toLowerCase());
             if (productToSell) {
@@ -1160,7 +1177,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             await DB.saveProduct(productToSell);
-            const sale = { id: Date.now() + 1, productId: productToSell.id, productName: name, quantity, price, total: price * quantity, timestamp: new Date(), image: productToSell.image };
+            const sale = { id: Date.now() + 1, productId: productToSell.id, productName: name, quantity, price, total: price * quantity, timestamp: new Date(), image: productToSell.image, sharedAsLog: false };
             await DB.addSale(sale);
 
             // --- SALES LOGGING: START ---
@@ -1179,7 +1196,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const firebaseProductName = productToSell.originalName || productToSell.name;
                     updateData[`products.${firebaseProductName}.stock`] = productToSell.stock;
                     updateData.lastUpdate = window.fb.serverTimestamp();
-    
+
                     await window.fb.updateDoc(retailerDocRef, updateData);
                 } catch (error) {
                     console.error("Failed to sync manual sale to Firebase:", error);
@@ -1238,12 +1255,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 alert("Cannot generate log: not connected to online services.");
                 return;
             }
+
             const allSales = await DB.getAllSales();
             const selectedSaleObjects = allSales.filter(s => this.state.selectedSales.has(s.id));
-            if (selectedSaleObjects.length === 0) return;
+
+            if (selectedSaleObjects.length === 0) {
+                this.showToast("Please select at least one sale to share.");
+                return;
+            }
+
+            const alreadySharedSales = selectedSaleObjects.filter(s => s.sharedAsLog);
+            if (alreadySharedSales.length > 0) {
+                const productNames = alreadySharedSales.map(s => s.productName).join(', ');
+                this.showToast(`Cannot re-share: ${productNames}`);
+                return;
+            }
 
             const allProducts = await DB.getAllProducts();
-            
+
             const logData = {
                 pikaLogVersion: 1,
                 senderStore: this.state.user.business,
@@ -1265,11 +1294,35 @@ document.addEventListener('DOMContentLoaded', () => {
                 })
             };
 
-            QRCode.toCanvas(this.elements.qrCanvas, JSON.stringify(logData), { width: 250 }, (error) => {
-                if (error) console.error(error);
+            QRCode.toCanvas(this.elements.qrCanvas, JSON.stringify(logData), { width: 300 }, (error) => {
+                if (error) {
+                    console.error(error);
+                    alert("Could not generate QR code.");
+                    return;
+                }
                 this.hideModal();
                 this.showModal('qr-code-modal');
             });
+        },
+        async handleLogShared() {
+            this.hideModal();
+            const allSales = await DB.getAllSales();
+            const updates = [];
+
+            for (const saleId of this.state.selectedSales) {
+                const saleToUpdate = allSales.find(s => s.id === saleId);
+                if (saleToUpdate) {
+                    saleToUpdate.sharedAsLog = true;
+                    updates.push(DB.updateSale(saleToUpdate));
+                }
+            }
+
+            await Promise.all(updates);
+            this.exitSelectionMode();
+            await this.updateDashboard();
+            if (this.state.currentView === 'all-sales-view') {
+                await this.renderAllSales();
+            }
         },
         handlePikaLogScanned(logData) {
             this.state.scannedLogData = logData;
@@ -1280,10 +1333,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const itemsHtml = logData.items.map(item => {
                 const isCarton = item.unit === 'cartons' && item.subUnitType;
-                const displayName = isCarton 
+                const displayName = isCarton
                     ? `${item.name} (${this.formatNumber(item.quantity)} ${item.unit} -> ${this.formatNumber(item.quantity * item.subUnitQuantity)} ${item.subUnitType})`
                     : `${item.name} (${this.formatNumber(item.quantity)} ${item.unit})`;
-                
+
                 return `
                 <div class="log-details-row">
                     <div class="log-details-cell item">${displayName}</div>
@@ -1310,7 +1363,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                 </div>
             `;
-            
+
             this.elements.confirmLogContent.innerHTML = contentHtml;
             this.showModal('confirm-log-modal');
         },
@@ -1335,7 +1388,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else {
                     // Original logic for Retailers, or for non-carton items for Wholesalers
                     const isCarton = item.unit === 'cartons' && item.subUnitType && item.subUnitQuantity > 0;
-                    
+
                     stockToAdd = isCarton ? item.quantity * item.subUnitQuantity : item.quantity;
                     unitType = isCarton ? item.subUnitType : item.unit;
                     costPrice = isCarton ? item.price / item.subUnitQuantity : item.price;
@@ -1353,18 +1406,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     existingProduct.needsSetup = needsSetup;
                     existingProduct.lockedUntilOOS = true;
                     existingProduct.originalName = originalName;
-                    if (barcode) existingProduct.barcode = barcode; 
+                    if (barcode) existingProduct.barcode = barcode;
                     finalProduct = existingProduct;
                 } else {
-                    finalProduct = { 
-                        id: Date.now() + Math.random(), 
-                        name: item.name, 
+                    finalProduct = {
+                        id: Date.now() + Math.random(),
+                        name: item.name,
                         originalName: originalName,
                         price: costPrice,
-                        stock: stockToAdd, 
-                        unit: unitType, 
-                        image: null, 
-                        barcode: barcode, 
+                        stock: stockToAdd,
+                        unit: unitType,
+                        image: null,
+                        barcode: barcode,
                         createdAt: new Date(),
                         supplierId: supplierId,
                         lockedUntilOOS: true,
@@ -1392,7 +1445,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     alert("Local inventory updated, but failed to sync online.");
                 }
             }
-            
+
             this.hideModal();
             this.state.scannedLogData = null;
             alert('Inventory updated successfully! Check "My Products" to set your prices.');
@@ -1430,7 +1483,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     let contentHtml = '';
                     const retailersData = [];
                     querySnapshot.forEach(doc => retailersData.push(doc.data()));
-                    
+
                     retailersData.sort((a, b) => (b.lastUpdate?.toDate() || 0) - (a.lastUpdate?.toDate() || 0));
 
                     retailersData.forEach(retailer => {
@@ -1443,10 +1496,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         } else {
                             productsHtml = `<div class="retailer-product-item"><span>No product data available.</span></div>`;
                         }
-                        
+
                         const phoneIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>`;
                         const callButton = retailer.retailerPhone ? `<a href="tel:${retailer.retailerPhone}" class="retailer-call-btn" title="Call ${retailer.retailerName}">${phoneIcon}</a>` : '';
-                        
+
                         const status = this.formatTimeAgo(retailer.lastUpdate?.toDate());
 
                         contentHtml += `
@@ -1486,7 +1539,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.retailerStockView.innerHTML = `<p class="empty-state">Error loading retailer data.</p>`;
             }
         },
-        
+
         formatTimeAgo(date) {
             if (!date || !(date instanceof Date)) {
                 return { text: 'Status unknown', className: 'offline' };
