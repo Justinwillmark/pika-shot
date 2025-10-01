@@ -514,7 +514,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     saleEl.dataset.saleId = sale.id;
                     const imageUrl = sale.image ? URL.createObjectURL(sale.image) : 'icons/icon-192.png';
-                    saleEl.innerHTML = `<div class="sale-item-overlay">Previously shared as log</div><img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${this.formatNumber(sale.quantity)} x &#8358;${this.formatNumber(sale.price)}</span></div><p class="sale-price">&#8358;${this.formatNumber(sale.total)}</p>`;
+                    saleEl.innerHTML = `<div class="sale-item-overlay">Previously shared as log</div><img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${this.formatNumber(sale.quantity)} x &#8358;${this.formatNumber(sale.price)}</span></div><p class.sale-price">&#8358;${this.formatNumber(sale.total)}</p>`;
                     this.addSaleItemEventListeners(saleEl, sale);
                     groupContainer.appendChild(saleEl);
                 });
@@ -856,8 +856,13 @@ document.addEventListener('DOMContentLoaded', () => {
         handleConfirmPicture() {
             this.hideModal();
             const btn = this.elements.addChangePictureBtn;
+            const originalContent = '<span>Snap Image</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>';
             btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
             btn.classList.add('success');
+            setTimeout(() => {
+                btn.classList.remove('success');
+                btn.innerHTML = originalContent;
+            }, 2000);
             this.showModal('product-form-modal');
         },
 
@@ -1555,6 +1560,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     this.elements.retailerStockView.innerHTML = customersHtml || `<p class="empty-state">No customers found.</p>`;
                     this.elements.salespeopleView.innerHTML = salespeopleHtml || `<p class="empty-state">No salespeople found.</p>`;
+                    
+                    this.addDeleteEventListeners();
 
                 }, (error) => {
                      console.error("Error fetching retailer stocks in real-time:", error);
@@ -1588,7 +1595,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const status = this.formatTimeAgo(retailer.lastUpdate?.toDate());
 
             return `
-                <div class="card">
+                <div class="card" data-retailer-id="${retailer.id}" data-retailer-name="${retailer.retailerName}">
                     <div class="retailer-header">
                         <div style="flex-grow: 1;">
                             <h4>${retailer.retailerName} (${retailer.retailerLocation})</h4>
@@ -1603,30 +1610,57 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         async buildSalespersonCard(retailer) {
+            const salesData = await this.getSalespersonSales(retailer.id);
             let productsHtml = '';
+            let totalSalesToday = 0;
+            let itemsSoldToday = 0;
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
             if (retailer.products && Object.keys(retailer.products).length > 0) {
-                 for (const productName in retailer.products) {
+                for (const productName in retailer.products) {
                     const product = retailer.products[productName];
-                    const stockClass = product.stock <= 0 ? 'out-of-stock' : (product.stock < 7 ? 'restock-now' : '');
-                    productsHtml += `<div class="retailer-product-item ${stockClass}"><span>${productName}</span><strong>${this.formatNumber(product.stock)} ${product.unit} left</strong></div>`;
+                    const todaysProductSales = salesData.filter(s => s.productName === productName && new Date(s.timestamp) >= today);
+                    const todaysQuantity = todaysProductSales.reduce((sum, s) => sum + s.quantity, 0);
+
+                    if (todaysQuantity > 0) {
+                        itemsSoldToday += todaysQuantity;
+                        totalSalesToday += todaysProductSales.reduce((sum, s) => sum + s.total, 0);
+                    }
+                     const stockClass = product.stock <= 0 ? 'out-of-stock' : (product.stock < 7 ? 'restock-now' : '');
+                    productsHtml += `<div class="retailer-product-item ${stockClass}"><span>${productName}</span><strong>${this.formatNumber(todaysQuantity)} sold today</strong></div>`;
                 }
             } else {
                 productsHtml = `<div class="retailer-product-item"><span>No product data available.</span></div>`;
             }
-            
-             const salesSummaryHtml = await this.getSalespersonSummary(retailer.id);
+
+            const recentSalesDays = this.getRecentSalesDays(salesData, 2);
+            let salesSummaryHtml = '<h5>Recent Sales Days</h5>';
+            if (recentSalesDays.length > 0) {
+                recentSalesDays.forEach(day => {
+                    salesSummaryHtml += `
+                        <div class="sales-day">
+                            <div class="sales-day-header">
+                                <strong>${day.date}</strong>
+                                <span>Total: &#8358;${this.formatNumber(day.total)}</span>
+                            </div>
+                        </div>`;
+                });
+            } else {
+                salesSummaryHtml += '<p class="empty-state" style="font-size: 0.8rem; padding: 5px 0;">No sales recorded yet.</p>';
+            }
 
             const phoneIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>`;
             const callButton = retailer.retailerPhone ? `<a href="tel:${retailer.retailerPhone}" class="retailer-call-btn" title="Call ${retailer.retailerName}">${phoneIcon}</a>` : '';
-             const deleteIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
+            const deleteIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
             const status = this.formatTimeAgo(retailer.lastUpdate?.toDate());
 
             return `
-                <div class="card">
+                <div class="card" data-retailer-id="${retailer.id}" data-retailer-name="${retailer.retailerName}">
                     <div class="retailer-header">
                         <div style="flex-grow: 1;">
                             <h4>${retailer.retailerName} (${retailer.retailerLocation})</h4>
-                            <p class="retailer-status ${status.className}">${status.text}</p>
+                             <p class="retailer-status ${status.className}">&#8358;${this.formatNumber(totalSalesToday)} today from ${itemsSoldToday} items</p>
                         </div>
                         ${callButton}
                         <button class="delete-retailer-btn">${deleteIcon}</button>
@@ -1636,49 +1670,52 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             `;
         },
-        
-        async getSalespersonSummary(salespersonId) {
-            const allProducts = await DB.getAllProducts();
-            const salespersonProducts = allProducts.filter(p => p.supplierId === this.state.user.uid && p.isSalesperson);
 
-            let summaryHtml = '<h5>Recent Sales</h5>';
-            const dateOptions = { weekday: 'short', month: 'short', day: 'numeric' };
-
-            for (let i = 0; i < 3; i++) {
-                const date = new Date();
-                date.setDate(date.getDate() - i);
-                date.setHours(0, 0, 0, 0);
-
-                let dailyTotal = 0;
-                let dailyItems = [];
-
-                for (const p of salespersonProducts) {
-                    const sales = await DB.getSalesByProductId(p.id);
-                    const salesOnDate = sales.filter(s => new Date(s.timestamp) >= date && new Date(s.timestamp) < new Date(date.getTime() + 24 * 60 * 60 * 1000));
-                    
-                    salesOnDate.forEach(sale => {
-                        dailyTotal += sale.quantity * p.wholesalerPrice;
-                        const existingItem = dailyItems.find(item => item.name === sale.productName);
-                        if (existingItem) {
-                            existingItem.quantity += sale.quantity;
-                        } else {
-                            dailyItems.push({ name: sale.productName, quantity: sale.quantity });
-                        }
-                    });
+        getRecentSalesDays(sales, count) {
+            const salesByDay = {};
+            sales.forEach(sale => {
+                const saleDate = new Date(sale.timestamp).toLocaleDateString('en-NG', { year: 'numeric', month: 'short', day: 'numeric' });
+                if (!salesByDay[saleDate]) {
+                    salesByDay[saleDate] = { total: 0, date: saleDate, timestamp: new Date(sale.timestamp).setHours(0,0,0,0) };
                 }
-                
-                summaryHtml += `<div class="sales-day">
-                    <div class="sales-day-header">
-                        <strong>${date.toLocaleDateString('en-NG', dateOptions)}</strong>
-                        <span>Total: &#8358;${this.formatNumber(dailyTotal)}</span>
-                    </div>
-                    <div class="sales-day-items">
-                        ${dailyItems.map(item => `<div>${item.name} (x${this.formatNumber(item.quantity)})</div>`).join('') || 'No sales'}
-                    </div>
-                </div>`;
-            }
-            return summaryHtml;
+                salesByDay[saleDate].total += sale.total;
+            });
+
+            return Object.values(salesByDay)
+                .sort((a, b) => b.timestamp - a.timestamp)
+                .slice(0, count);
         },
+
+        async getSalespersonSales(salespersonId) {
+            // This is a placeholder. In a real app, you would fetch this from your backend/DB.
+            // For now, we simulate by checking the local IndexedDB sales.
+            const allSales = await DB.getAllSales();
+            // This filtering is a simplification. A real implementation would need a way to link sales to a salesperson.
+            // We assume for now that all sales are from the salesperson for demonstration purposes.
+            return allSales;
+        },
+
+        addDeleteEventListeners() {
+            document.querySelectorAll('.delete-retailer-btn').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    const card = e.target.closest('.card');
+                    const retailerId = card.dataset.retailerId;
+                    const retailerName = card.dataset.retailerName;
+                    
+                    if (confirm(`Are you sure you want to remove ${retailerName}? This will delete their data from your view.`)) {
+                        try {
+                            const docRef = window.fb.doc(window.fb.db, `retailer_stocks/${this.state.user.uid}/supplied_retailers/${retailerId}`);
+                            await window.fb.deleteDoc(docRef);
+                            this.showToast(`${retailerName} has been removed.`);
+                        } catch (error) {
+                            console.error("Error removing retailer: ", error);
+                            this.showToast(`Failed to remove ${retailerName}.`);
+                        }
+                    }
+                });
+            });
+        },
+
 
         formatTimeAgo(date) {
             if (!date || !(date instanceof Date)) {

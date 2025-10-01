@@ -545,18 +545,20 @@ html, body {
 .retailer-product-item {
     display: flex;
     justify-content: space-between;
-    padding: 8px 0;
+    padding: 8px;
     font-size: 0.9rem;
     border-bottom: 1px solid var(--border-color);
+    border-radius: 8px;
+    margin: 4px 0;
 }
 .retailer-product-item:last-child {
     border-bottom: none;
 }
-.retailer-product-item.out-of-stock span {
-    color: var(--danger-color);
+.retailer-product-item.out-of-stock {
+    background-color: #ffebee;
 }
-.retailer-product-item.restock-now span {
-    color: var(--warning-color);
+.retailer-product-item.restock-now {
+    background-color: #fff8e1;
 }
 .salesperson-summary {
     padding: 8px 16px;
@@ -635,14 +637,18 @@ html, body {
 .modal-actions-inline .btn-primary { flex-basis: 66.67%; }
 
 #confirm-picture-modal img { width: 100%; max-height: 250px; object-fit: contain; border-radius: var(--border-radius); margin-bottom: 10px; }
+
 #confirm-sale-modal {
     padding-bottom: 0;
+    justify-content: flex-end;
 }
+
 #confirm-sale-modal .modal-scroll-content {
-    flex-grow: 1;
-    overflow-y: auto; /* Allow content to scroll if needed, though we aim to avoid it */
-    padding-bottom: 24px; /* Space for content before sticky buttons */
+    overflow-y: auto;
+    padding: 0 24px;
+    margin: 0 -24px;
 }
+
 #confirm-sale-modal .sale-item-details { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
 #confirm-sale-modal img { width: 60px; height: 60px; border-radius: 8px; object-fit: cover; }
 #confirm-sale-modal h3 { font-size: clamp(1.1rem, 3.5vw, 1.2rem); margin: 0; }
@@ -657,10 +663,15 @@ html, body {
 }
 .sale-total p { font-size: clamp(0.9rem, 2.5vw, 1rem); color: var(--text-light); }
 .sale-total h2 { margin: 0; color: var(--primary-color); font-size: clamp(1.4rem, 4vw, 1.6rem); }
-.modal-actions {
-    margin-top: auto; /* Pushes buttons to the bottom */
-    padding-top: 16px;
+
+#confirm-sale-modal .modal-actions {
+    margin-top: auto;
+    padding: 24px;
+    margin: 0 -24px;
     background: var(--surface-color);
+    border-top: 1px solid var(--border-color);
+    border-bottom-left-radius: 16px;
+    border-bottom-right-radius: 16px;
 }
 .salesperson-check {
     display: flex;
