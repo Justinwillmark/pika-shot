@@ -1,7 +1,7 @@
 const DB = {
     db: null,
     dbName: 'PikaShotDB',
-    dbVersion: 3, // Incremented version to handle schema upgrade
+    dbVersion: 4, // Incremented version to handle schema upgrade
 
     init() {
         return new Promise((resolve, reject) => {
@@ -38,14 +38,19 @@ const DB = {
                     }
                 }
 
-                // Sales store - check and add sharedAsLog property
+                // Sales store
                 if (!db.objectStoreNames.contains('sales')) {
-                    db.createObjectStore('sales', { keyPath: 'id' });
+                    const salesStore = db.createObjectStore('sales', { keyPath: 'id' });
+                    salesStore.createIndex('productId', 'productId', { unique: false });
+                } else {
+                     const salesStore = transaction.objectStore('sales');
+                    if (!salesStore.indexNames.contains('productId')) {
+                         salesStore.createIndex('productId', 'productId', { unique: false });
+                    }
                 }
             };
         });
     },
-
 
     _getStore(storeName, mode) {
         const transaction = this.db.transaction(storeName, mode);
@@ -101,7 +106,6 @@ const DB = {
     // --- SALES ---
     addSale(sale) {
         const store = this._getStore('sales', 'readwrite');
-        // Initialize sharedAsLog property
         const saleWithLogStatus = { ...sale, sharedAsLog: false };
         return this._requestToPromise(store.add(saleWithLogStatus));
     },
@@ -114,6 +118,12 @@ const DB = {
     getAllSales() {
         const store = this._getStore('sales', 'readonly');
         return this._requestToPromise(store.getAll());
+    },
+    
+    getSalesByProductId(productId) {
+        const store = this._getStore('sales', 'readonly');
+        const index = store.index('productId');
+        return this._requestToPromise(index.getAll(productId));
     },
 
     getSalesToday() {

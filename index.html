@@ -158,7 +158,7 @@
                         </div>
 
                         <div id="see-stock-levels-container" class="see-all-container" style="display: none; margin-top: 24px; margin-bottom: 0;">
-                            <button id="see-stock-levels-btn" class="see-all-btn">Customers stock levels <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="arrow-icon"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
+                            <button id="see-stock-levels-btn" class="see-all-btn">Customers and Salespeople <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="arrow-icon"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
                         </div>
 
                         <div class="recent-sales-container">
@@ -209,16 +209,20 @@
             <div id="stock-levels-view" class="view page">
                 <div id="internet-notice" class="internet-notice" style="display: none;">
                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M1.42 9a16 16 0 0 1 21.16 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg>
-                    <span>Please connect to the internet to see live customer stocks.</span>
+                    <span>Please connect to the internet to see live data.</span>
                 </div>
                 <div class="page-actions-header">
+                    <div class="product-filter-tabs">
+                        <button class="filter-tab-btn active" data-filter="customers">Customers</button>
+                        <button class="filter-tab-btn" data-filter="salespeople">Salespeople</button>
+                    </div>
                     <button id="refresh-stocks-btn" class="btn-icon-link">
                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
                         <span>Refresh</span>
                     </button>
                 </div>
-                <div id="retailer-stock-view" class="all-sales-container">
-                    </div>
+                <div id="retailer-stock-view" class="all-sales-container"></div>
+                <div id="salespeople-view" class="all-sales-container" style="display: none;"></div>
             </div>
 
         </main>
@@ -306,7 +310,7 @@
                 </div>
                  <div class="form-row price-image-row">
                     <div class="form-group"><label for="product-price">Selling Price (₦)</label><input type="text" id="product-price" inputmode="decimal" required></div>
-                    <button type="button" id="add-change-picture-btn" class="btn-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg></button>
+                    <button type="button" id="add-change-picture-btn" class="btn-icon"><span>Snap Image</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg></button>
                 </div>
                 <div class="form-row">
                     <div class="form-group"><label for="product-stock">Stock Quantity</label><input type="text" id="product-stock" inputmode="numeric" required></div>
@@ -349,10 +353,10 @@
              <div class="modal-scroll-content">
                 <h2>Confirm Sale</h2>
                 <div class="sale-item-details"><img id="sale-product-image" src="" alt="Product image"><div><h3 id="sale-product-name">Product Name</h3><p id="sale-product-stock">Stock: 50 sachets</p></div></div>
-                <div class="form-group"><label for="sale-quantity" id="sale-quantity-label">Quantity</label><input type="text" id="sale-quantity" inputmode="numeric" value="1" min="1"></div>
                 <div class="sale-total"><p>Total</p><h2 id="sale-total-price">₦0</h2></div>
+                <div class="form-group"><label for="sale-quantity" id="sale-quantity-label">Quantity</label><input type="text" id="sale-quantity" inputmode="numeric" value="1" min="1"></div>
             </div>
-            <div class="modal-actions modal-actions-inline modal-actions-sticky">
+            <div class="modal-actions modal-actions-inline">
                 <button id="cancel-sale-btn" class="btn btn-secondary">Cancel</button>
                 <button id="confirm-sale-btn" class="btn btn-primary">Confirm Sale</button>
             </div>
@@ -403,19 +407,18 @@
             </div>
         </div>
 
-
         <div id="confirm-log-modal" class="modal-content" style="display:none;">
             <h2 id="confirm-log-title">Accept Log?</h2>
             <div id="confirm-log-content"></div>
-            <div class="modal-actions">
-                <p style="font-size: 0.8rem; color: #6c757d; text-align: center; margin-bottom: 1rem;">
-                    Accept to restock instantly. The wholesaler will see the product stock levels in real time and may call.
-                </p>
+             <div class="salesperson-check">
+                <input type="checkbox" id="salesperson-checkbox">
+                <label for="salesperson-checkbox" id="salesperson-label"></label>
+            </div>
+            <div class="modal-actions modal-actions-inline">
                 <button id="reject-log-btn" class="btn btn-secondary">Reject</button>
                 <button id="accept-log-btn" class="btn btn-primary">Accept & Add</button>
             </div>
         </div>
-
 
         <div id="privacy-policy-modal" class="modal-content" style="display:none;">
             <h2>Data & Privacy Policy</h2>
