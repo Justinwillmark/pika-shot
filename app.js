@@ -1258,7 +1258,6 @@ document.addEventListener('DOMContentLoaded', () => {
         addSaleItemEventListeners(element, sale) {
             const pressDuration = 500;
             const onTouchStart = (e) => {
-                // Prevent starting a long press if the click target is the overlay
                 if (e.target.classList.contains('sale-item-overlay')) return;
                 this.state.longPressTimer = setTimeout(() => this.enterSelectionMode(element, sale), pressDuration);
             };
@@ -1269,15 +1268,9 @@ document.addEventListener('DOMContentLoaded', () => {
             element.addEventListener('mouseleave', onTouchEnd);
             element.addEventListener('touchstart', onTouchStart);
             element.addEventListener('touchend', onTouchEnd);
-            element.addEventListener('click', (e) => {
+            element.addEventListener('click', () => {
                 if (this.state.isSelectionMode) {
                     this.toggleSaleSelection(element, sale);
-                } else if (sale.sharedAsLog) {
-                    // This is the fix for the shaking feedback
-                    element.classList.add('shake-and-show-overlay');
-                    setTimeout(() => {
-                        element.classList.remove('shake-and-show-overlay');
-                    }, 1000);
                 }
             });
         },
@@ -1327,20 +1320,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (selectedSaleObjects.length === 0) {
                 this.showToast("Please select at least one sale to share.");
-                return;
-            }
-
-            const alreadySharedSales = selectedSaleObjects.filter(s => s.sharedAsLog);
-            if (alreadySharedSales.length > 0) {
-                alreadySharedSales.forEach(sale => {
-                    const saleEl = document.querySelector(`.sale-item[data-sale-id='${sale.id}']`);
-                    if (saleEl) {
-                        saleEl.classList.add('shake-and-show-overlay');
-                        setTimeout(() => {
-                            saleEl.classList.remove('shake-and-show-overlay');
-                        }, 1000);
-                    }
-                });
                 return;
             }
 
@@ -1439,6 +1418,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="log-details-cell total">&#8358;${this.formatNumber(totalCost)}</div>
                     </div>
                 </div>
+                <p class="log-accept-notice">Accept for instant restocking. The wholesaler will see stock levels in real time and may call</p>
             `;
 
             this.elements.confirmLogContent.innerHTML = contentHtml;

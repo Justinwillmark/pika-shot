@@ -703,6 +703,13 @@ html, body {
     margin-top: 16px;
 }
 
+.log-accept-notice {
+    font-size: 0.75rem;
+    color: var(--text-light);
+    text-align: center;
+    margin-top: 10px;
+    margin-bottom: -10px;
+}
 
 .delete-btn-icon { position: absolute; top: 16px; right: 16px; z-index: 5; background: #fee; border: 1px solid var(--danger-color); border-radius: 50%; width: 32px; height: 32px; padding: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
 .delete-btn-icon:hover { background: var(--danger-color); }
