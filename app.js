@@ -606,6 +606,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 let badgeHtml = '';
                 if (product.stock <= 0) {
                     badgeHtml = '<div class="out-of-stock-badge">Out of Stock</div>';
+                } else if (product.isSalesperson) {
+                    if (product.needsSetup === 'barcode-and-price') {
+                        badgeHtml = '<div class="setup-badge">Add image & barcode</div>';
+                    } else if (product.needsSetup === 'price') {
+                        badgeHtml = '<div class="setup-badge">Add image</div>';
+                    }
                 } else if (product.needsSetup === 'barcode-and-price') {
                     badgeHtml = '<div class="setup-badge">Add barcode & price</div>';
                 } else if (product.needsSetup === 'price') {
@@ -1602,9 +1608,11 @@ document.addEventListener('DOMContentLoaded', () => {
                             <p class="retailer-status ${status.className}">${status.text}</p>
                         </div>
                         ${callButton}
-                        <button class="delete-retailer-btn">${deleteIcon}</button>
                     </div>
                     <div class="retailer-product-list">${productsHtml}</div>
+                    <div class="card-footer">
+                        <button class="delete-retailer-btn">${deleteIcon}</button>
+                    </div>
                 </div>
             `;
         },
@@ -1663,10 +1671,12 @@ document.addEventListener('DOMContentLoaded', () => {
                              <p class="retailer-status ${status.className}">&#8358;${this.formatNumber(totalSalesToday)} today from ${itemsSoldToday} items</p>
                         </div>
                         ${callButton}
-                        <button class="delete-retailer-btn">${deleteIcon}</button>
                     </div>
                     <div class="retailer-product-list">${productsHtml}</div>
                     <div class="salesperson-summary">${salesSummaryHtml}</div>
+                    <div class="card-footer">
+                        <button class="delete-retailer-btn">${deleteIcon}</button>
+                    </div>
                 </div>
             `;
         },
