@@ -1379,7 +1379,7 @@ document.addEventListener('DOMContentLoaded', () => {
         handlePikaLogScanned(logData) {
             this.state.scannedLogData = logData;
             this.elements.confirmLogTitle.textContent = `Accept Log from ${logData.senderStore}?`;
-            this.elements.salespersonLabel.innerHTML = `Are you selling for ${logData.senderStore}?`;
+            this.elements.salespersonLabel.innerHTML = `Are you a salesperson for ${logData.senderStore}?`;
             this.elements.salespersonCheckbox.checked = false;
             this.handleSalespersonCheck({ target: this.elements.salespersonCheckbox }); // Update UI on open
 
@@ -1430,7 +1430,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.salespersonLabel.innerHTML = `${this.state.scannedLogData.senderStore} will be able to see your sales`;
                 this.elements.salespersonLabel.classList.add('checked');
             } else {
-                this.elements.salespersonLabel.innerHTML = `Are you selling for ${this.state.scannedLogData.senderStore}?`;
+                this.elements.salespersonLabel.innerHTML = `Are you a salesperson for ${this.state.scannedLogData.senderStore}?`;
             }
         },
         async acceptPikaLog() {
