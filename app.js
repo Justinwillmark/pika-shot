@@ -1648,68 +1648,70 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         async buildSalespersonCard(retailer) {
-            // This function now correctly fetches sales data related to the salesperson.
             const salesData = await this.getSalespersonSales(retailer.id);
-
-            // Today's Sales Calculation
             const today = new Date();
             today.setHours(0, 0, 0, 0);
+        
             const todaysSales = salesData.filter(s => new Date(s.timestamp) >= today);
             const totalSalesToday = todaysSales.reduce((sum, s) => sum + s.total, 0);
-            const itemsSoldToday = todaysSales.reduce((sum, s) => sum + s.quantity, 0);
-
-            let todaysSalesHtml = `<p class="empty-state" style="font-size: 0.8rem; padding: 5px 0;">No sales for today yet.</p>`;
+        
+            let todaysSalesHtml = '<p class="empty-state" style="font-size: 0.8rem; padding: 5px 0;">No sales for today yet.</p>';
             if (todaysSales.length > 0) {
-                todaysSalesHtml = `
-                    <div class="sales-day">
-                        <div class="sales-day-header">
-                            <strong>${itemsSoldToday} items sold</strong>
-                            <span>Total: &#8358;${this.formatNumber(totalSalesToday)}</span>
-                        </div>
-                    </div>`;
+                const salesByProduct = todaysSales.reduce((acc, sale) => {
+                    if (!acc[sale.productName]) {
+                        acc[sale.productName] = { quantity: 0, unit: sale.unit || 'pieces' };
+                    }
+                    acc[sale.productName].quantity += sale.quantity;
+                    return acc;
+                }, {});
+        
+                todaysSalesHtml = Object.entries(salesByProduct)
+                    .map(([name, data]) => `<div class="sales-day-item">${name} - ${this.formatNumber(data.quantity)} ${data.unit} sold</div>`)
+                    .join('');
+                todaysSalesHtml += `<div class="sales-day-total">Current total sales for today: ₦${this.formatNumber(totalSalesToday)}</div>`;
             }
-
-            // Previous Days Sales Calculation
+        
             const previousSalesByDay = this.groupSalesByDate(
                 salesData.filter(s => new Date(s.timestamp) < today)
             );
             let previousDaysHtml = '';
             for (const date in previousSalesByDay) {
                 const dayData = previousSalesByDay[date];
-                // Check if this day's sales have been acknowledged
                 if (!retailer.acknowledgedSales || !retailer.acknowledgedSales[date]) {
+                    const total = dayData.reduce((sum, s) => sum + s.total, 0);
                     previousDaysHtml += `
                         <div class="sales-day">
                             <div class="sales-day-header">
                                 <strong>${date}</strong>
-                                <span>Total: &#8358;${this.formatNumber(dayData.reduce((sum, s) => sum + s.total, 0))}</span>
+                                <span>Total sales: ₦${this.formatNumber(total)}</span>
                             </div>
                             <div class="sales-day-actions">
-                                <label>
-                                    <input type="checkbox" class="receive-payment-cb" data-date="${date}" />
-                                    Did you receive this amount?
-                                </label>
+                                <label>Did you receive this amount?</label>
+                                <div>
+                                    <button class="btn-yes" data-date="${date}">YES</button>
+                                    <button class="btn-no" data-date="${date}">NO</button>
+                                </div>
                             </div>
                         </div>`;
                 }
             }
-
+        
             const infoIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>`;
             const status = this.formatTimeAgo(retailer.lastUpdate?.toDate());
-
+        
             return `
                 <div class="card" data-retailer-id="${retailer.id}" data-retailer-name="${retailer.retailerName}">
                     <div class="retailer-header">
                         <div style="flex-grow: 1;">
                             <h4>${retailer.retailerName} (${retailer.businessName || ''})</h4>
-                             <p class="retailer-status ${status.className}">${status.text}</p>
+                            <p class="retailer-status ${status.className}">${status.text}</p>
                         </div>
                         <button class="info-btn">${infoIcon}</button>
                     </div>
                     <div class="salesperson-summary">
-                        <h5>Today, ${today.toLocaleDateString('en-NG', { month: 'short', day: 'numeric' })}</h5>
+                        <h5>Today's (${today.toLocaleDateString('en-NG', { month: 'short', day: 'numeric' })}) sales:</h5>
                         ${todaysSalesHtml}
-                        <h5>Previous Sales</h5>
+                        <h5>Previous Days:</h5>
                         ${previousDaysHtml || '<p class="empty-state" style="font-size: 0.8rem; padding: 5px 0;">No previous sales recorded.</p>'}
                     </div>
                 </div>`;
@@ -1748,31 +1750,73 @@ document.addEventListener('DOMContentLoaded', () => {
                     this.showSalespersonStockModal(retailerId);
                 });
             });
-
-            document.querySelectorAll('.receive-payment-cb').forEach(checkbox => {
-                checkbox.addEventListener('change', (e) => {
+        
+            document.querySelectorAll('.btn-yes').forEach(button => {
+                button.addEventListener('click', (e) => {
                     const card = e.target.closest('.card');
                     const retailerId = card.dataset.retailerId;
                     const date = e.target.dataset.date;
-
-                    if (e.target.checked) {
-                        const confirmation = confirm(`Are you sure you want to confirm receipt of payment for ${date}? This action cannot be undone.`);
-                        if (confirmation) {
-                            this.acknowledgeSales(retailerId, date);
-                        } else {
-                            e.target.checked = false;
-                        }
+        
+                    if (confirm(`Are you sure you want to confirm receipt of payment for ${date}? This action cannot be undone.`)) {
+                        this.acknowledgeSales(retailerId, date);
                     }
                 });
             });
+        
+            document.querySelectorAll('.btn-no').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    // No action specified for "NO", so this is a placeholder.
+                    e.target.closest('.sales-day-actions').style.display = 'none';
+                });
+            });
         },
-
+        
         async showSalespersonStockModal(retailerId) {
-            // This function would fetch the specific retailer's data to show their stock.
-            // For now, we'll just show an alert as a placeholder.
-            alert("Showing salesperson stock modal for " + retailerId);
+            if (!this.state.firebaseReady) {
+                this.showToast("Not connected to online services.");
+                return;
+            }
+            try {
+                const docRef = window.fb.doc(window.fb.db, `retailer_stocks/${this.state.user.uid}/supplied_retailers/${retailerId}`);
+                const docSnap = await window.fb.getDoc(docRef);
+        
+                if (docSnap.exists()) {
+                    const retailer = docSnap.data();
+                    let productsHtml = '';
+                    if (retailer.products && Object.keys(retailer.products).length > 0) {
+                        for (const productName in retailer.products) {
+                            const product = retailer.products[productName];
+                            const stockClass = product.stock <= 0 ? 'out-of-stock' : (product.stock < 7 ? 'restock-now' : '');
+                            productsHtml += `<div class="retailer-product-item ${stockClass}"><span>${productName}</span><strong>${this.formatNumber(product.stock)} ${product.unit} left</strong></div>`;
+                        }
+                    } else {
+                        productsHtml = `<p class="empty-state">No product data available.</p>`;
+                    }
+        
+                    // For simplicity, using a generic modal. You could create a dedicated one.
+                    this.elements.confirmLogTitle.textContent = `${retailer.retailerName}'s Stock`;
+                    this.elements.confirmLogContent.innerHTML = `<div class="retailer-product-list" style="padding: 0;">${productsHtml}</div>`;
+                    this.elements.rejectLogBtn.textContent = "Close";
+                    this.elements.acceptLogBtn.style.display = 'none';
+                    this.showModal('confirm-log-modal');
+        
+                    // Reset modal for next use
+                    this.elements.rejectLogBtn.onclick = () => {
+                        this.hideModal();
+                        // Reset to default state
+                        this.elements.rejectLogBtn.textContent = "Reject";
+                        this.elements.acceptLogBtn.style.display = 'inline-block';
+                        this.elements.rejectLogBtn.onclick = null;
+                    };
+                } else {
+                    this.showToast("Could not find salesperson data.");
+                }
+            } catch (error) {
+                console.error("Error fetching salesperson stock:", error);
+                this.showToast("Failed to load stock data.");
+            }
         },
-
+        
         async acknowledgeSales(retailerId, date) {
             if (!this.state.firebaseReady) return;
             try {
