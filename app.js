@@ -417,7 +417,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (this.state.productSelectionMode && viewId === 'products-view') {
                 title = 'Select a Product';
             } else {
-                const titles = { 'home-view': 'Home', 'products-view': 'My Products', 'all-sales-view': 'All Sales', 'stock-levels-view': 'Customers and Salespeople' };
+                const titles = { 'home-view': 'Home', 'products-view': 'My Products', 'all-sales-view': 'All Sales', 'stock-levels-view': 'Customers & Salespeople' };
                 title = titles[viewId] || 'pika shot';
             }
             this.elements.headerTitle.textContent = title;
