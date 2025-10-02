@@ -281,7 +281,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.state.productFilter = e.target.dataset.filter;
                 this.renderProducts(this.elements.productSearchInput.value);
             }));
-            
+
             this.elements.stockFilterTabs.forEach(btn => btn.addEventListener('click', (e) => {
                 this.elements.stockFilterTabs.forEach(b => b.classList.remove('active'));
                 e.target.classList.add('active');
@@ -1018,7 +1018,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.productStockInput.value = this.formatNumber(product.stock);
             this.elements.productUnitInput.value = product.unit;
             this.state.capturedBlob = product.image;
-            
+
             this.elements.productNameInput.disabled = product.isSalesperson;
             this.elements.productPriceInput.disabled = product.isSalesperson;
 
@@ -1255,7 +1255,32 @@ document.addEventListener('DOMContentLoaded', () => {
             this.navigateTo('products-view');
         },
 
-        addSaleItemEventListeners(element, sale) { const pressDuration = 500; const onTouchStart = () => { this.state.longPressTimer = setTimeout(() => this.enterSelectionMode(element, sale), pressDuration); }; const onTouchEnd = () => clearTimeout(this.state.longPressTimer); element.addEventListener('mousedown', onTouchStart); element.addEventListener('mouseup', onTouchEnd); element.addEventListener('mouseleave', onTouchEnd); element.addEventListener('touchstart', onTouchStart); element.addEventListener('touchend', onTouchEnd); element.addEventListener('click', () => { if(this.state.isSelectionMode) this.toggleSaleSelection(element, sale); }); },
+        addSaleItemEventListeners(element, sale) {
+            const pressDuration = 500;
+            const onTouchStart = (e) => {
+                // Prevent starting a long press if the click target is the overlay
+                if (e.target.classList.contains('sale-item-overlay')) return;
+                this.state.longPressTimer = setTimeout(() => this.enterSelectionMode(element, sale), pressDuration);
+            };
+            const onTouchEnd = () => clearTimeout(this.state.longPressTimer);
+
+            element.addEventListener('mousedown', onTouchStart);
+            element.addEventListener('mouseup', onTouchEnd);
+            element.addEventListener('mouseleave', onTouchEnd);
+            element.addEventListener('touchstart', onTouchStart);
+            element.addEventListener('touchend', onTouchEnd);
+            element.addEventListener('click', (e) => {
+                if (this.state.isSelectionMode) {
+                    this.toggleSaleSelection(element, sale);
+                } else if (sale.sharedAsLog) {
+                    // This is the fix for the shaking feedback
+                    element.classList.add('shake-and-show-overlay');
+                    setTimeout(() => {
+                        element.classList.remove('shake-and-show-overlay');
+                    }, 1000);
+                }
+            });
+        },
         enterSelectionMode(element, sale) {
             this.state.isSelectionMode = true;
             document.querySelectorAll('.sale-item').forEach(el => el.classList.add('selectable'));
@@ -1377,6 +1402,8 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.confirmLogTitle.textContent = `Accept Log from ${logData.senderStore}?`;
             this.elements.salespersonLabel.innerHTML = `Are you selling for ${logData.senderStore}?`;
             this.elements.salespersonCheckbox.checked = false;
+            this.handleSalespersonCheck({ target: this.elements.salespersonCheckbox }); // Update UI on open
+
 
             const totalCost = logData.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
             const dateScanned = new Date().toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -1418,8 +1445,10 @@ document.addEventListener('DOMContentLoaded', () => {
             this.showModal('confirm-log-modal');
         },
         handleSalespersonCheck(e) {
+            this.elements.salespersonLabel.classList.remove('checked');
             if (e.target.checked) {
                 this.elements.salespersonLabel.innerHTML = `${this.state.scannedLogData.senderStore} will be able to see your sales`;
+                this.elements.salespersonLabel.classList.add('checked');
             } else {
                 this.elements.salespersonLabel.innerHTML = `Are you selling for ${this.state.scannedLogData.senderStore}?`;
             }
@@ -1436,7 +1465,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 let stockToAdd, unitType, costPrice, needsSetup, barcode, originalName, wholesalerPrice;
 
                 const isCarton = item.unit === 'cartons' && item.subUnitType && item.subUnitQuantity > 0;
-                
+
                 stockToAdd = isCarton ? item.quantity * item.subUnitQuantity : item.quantity;
                 unitType = isCarton ? item.subUnitType : item.unit;
                 costPrice = isCarton ? item.price / item.subUnitQuantity : item.price;
@@ -1444,7 +1473,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 needsSetup = isCarton ? 'barcode-and-price' : 'price';
                 barcode = isCarton ? null : item.barcode;
                 originalName = item.name;
-                
+
                 const existingProduct = allProducts.find(p => p.name.toLowerCase() === item.name.toLowerCase());
                 let finalProduct;
 
@@ -1566,8 +1595,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     this.elements.retailerStockView.innerHTML = customersHtml || `<p class="empty-state">No customers found.</p>`;
                     this.elements.salespeopleView.innerHTML = salespeopleHtml || `<p class="empty-state">No salespeople found.</p>`;
-                    
+
                     this.addDeleteEventListeners();
+                    this.addSalespersonEventListeners();
+
 
                 }, (error) => {
                      console.error("Error fetching retailer stocks in real-time:", error);
@@ -1582,7 +1613,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.salespeopleView.innerHTML = errorHtml;
             }
         },
-        
+
         buildCustomerCard(retailer) {
             let productsHtml = '';
             if (retailer.products && Object.keys(retailer.products).length > 0) {
@@ -1618,67 +1649,66 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         async buildSalespersonCard(retailer) {
+            // This function now correctly fetches sales data related to the salesperson.
             const salesData = await this.getSalespersonSales(retailer.id);
-            let productsHtml = '';
-            let totalSalesToday = 0;
-            let itemsSoldToday = 0;
+
+            // Today's Sales Calculation
             const today = new Date();
             today.setHours(0, 0, 0, 0);
+            const todaysSales = salesData.filter(s => new Date(s.timestamp) >= today);
+            const totalSalesToday = todaysSales.reduce((sum, s) => sum + s.total, 0);
+            const itemsSoldToday = todaysSales.reduce((sum, s) => sum + s.quantity, 0);
 
-            if (retailer.products && Object.keys(retailer.products).length > 0) {
-                for (const productName in retailer.products) {
-                    const product = retailer.products[productName];
-                    const todaysProductSales = salesData.filter(s => s.productName === productName && new Date(s.timestamp) >= today);
-                    const todaysQuantity = todaysProductSales.reduce((sum, s) => sum + s.quantity, 0);
-
-                    if (todaysQuantity > 0) {
-                        itemsSoldToday += todaysQuantity;
-                        totalSalesToday += todaysProductSales.reduce((sum, s) => sum + s.total, 0);
-                    }
-                     const stockClass = product.stock <= 0 ? 'out-of-stock' : (product.stock < 7 ? 'restock-now' : '');
-                    productsHtml += `<div class="retailer-product-item ${stockClass}"><span>${productName}</span><strong>${this.formatNumber(todaysQuantity)} sold today</strong></div>`;
-                }
-            } else {
-                productsHtml = `<div class="retailer-product-item"><span>No product data available.</span></div>`;
-            }
-
-            const recentSalesDays = this.getRecentSalesDays(salesData, 2);
-            let salesSummaryHtml = '<h5>Recent Sales Days</h5>';
-            if (recentSalesDays.length > 0) {
-                recentSalesDays.forEach(day => {
-                    salesSummaryHtml += `
+            // Previous Days Sales Calculation
+            const previousSalesByDay = this.groupSalesByDate(
+                salesData.filter(s => new Date(s.timestamp) < today)
+            );
+            let previousDaysHtml = '';
+            for (const date in previousSalesByDay) {
+                const dayData = previousSalesByDay[date];
+                // Check if this day's sales have been acknowledged
+                if (!retailer.acknowledgedSales || !retailer.acknowledgedSales[date]) {
+                    previousDaysHtml += `
                         <div class="sales-day">
                             <div class="sales-day-header">
-                                <strong>${day.date}</strong>
-                                <span>Total: &#8358;${this.formatNumber(day.total)}</span>
+                                <strong>${date}</strong>
+                                <span>Total: &#8358;${this.formatNumber(dayData.reduce((sum, s) => sum + s.total, 0))}</span>
+                            </div>
+                            <div class="sales-day-actions">
+                                <label>
+                                    <input type="checkbox" class="receive-payment-cb" data-date="${date}" />
+                                    Did you receive this amount?
+                                </label>
                             </div>
                         </div>`;
-                });
-            } else {
-                salesSummaryHtml += '<p class="empty-state" style="font-size: 0.8rem; padding: 5px 0;">No sales recorded yet.</p>';
+                }
             }
 
-            const phoneIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>`;
-            const callButton = retailer.retailerPhone ? `<a href="tel:${retailer.retailerPhone}" class="retailer-call-btn" title="Call ${retailer.retailerName}">${phoneIcon}</a>` : '';
-            const deleteIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
+
+            const infoIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>`;
             const status = this.formatTimeAgo(retailer.lastUpdate?.toDate());
 
             return `
                 <div class="card" data-retailer-id="${retailer.id}" data-retailer-name="${retailer.retailerName}">
                     <div class="retailer-header">
                         <div style="flex-grow: 1;">
-                            <h4>${retailer.retailerName} (${retailer.retailerLocation})</h4>
-                             <p class="retailer-status ${status.className}">&#8358;${this.formatNumber(totalSalesToday)} today from ${itemsSoldToday} items</p>
+                            <h4>${retailer.retailerName} (${retailer.businessName || ''})</h4>
+                             <p class="retailer-status ${status.className}">${status.text}</p>
                         </div>
-                        ${callButton}
+                        <button class="info-btn">${infoIcon}</button>
                     </div>
-                    <div class="retailer-product-list">${productsHtml}</div>
-                    <div class="salesperson-summary">${salesSummaryHtml}</div>
-                    <div class="card-footer">
-                        <button class="delete-retailer-btn">${deleteIcon}</button>
+                    <div class="salesperson-summary">
+                        <h5>Today's Sales</h5>
+                        <div class="sales-day">
+                            <div class="sales-day-header">
+                                <strong>${itemsSoldToday} items sold</strong>
+                                <span>Total: &#8358;${this.formatNumber(totalSalesToday)}</span>
+                            </div>
+                        </div>
+                        <h5>Previous Sales</h5>
+                        ${previousDaysHtml || '<p class="empty-state" style="font-size: 0.8rem; padding: 5px 0;">No previous sales recorded.</p>'}
                     </div>
-                </div>
-            `;
+                </div>`;
         },
 
         getRecentSalesDays(sales, count) {
@@ -1697,13 +1727,62 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         async getSalespersonSales(salespersonId) {
-            // This is a placeholder. In a real app, you would fetch this from your backend/DB.
-            // For now, we simulate by checking the local IndexedDB sales.
+            // In a real-world scenario, you would fetch this from a specific 'sales' subcollection
+            // under the salesperson's document. For this simulation, we'll continue to use
+            // the local DB, but this would be the place to implement that specific logic.
             const allSales = await DB.getAllSales();
-            // This filtering is a simplification. A real implementation would need a way to link sales to a salesperson.
-            // We assume for now that all sales are from the salesperson for demonstration purposes.
+            // This is a placeholder for filtering sales by salesperson.
+            // You would need a salespersonId on each sale object to do this properly.
             return allSales;
         },
+
+        addSalespersonEventListeners() {
+            document.querySelectorAll('.info-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const card = e.target.closest('.card');
+                    const retailerId = card.dataset.retailerId;
+                    this.showSalespersonStockModal(retailerId);
+                });
+            });
+
+            document.querySelectorAll('.receive-payment-cb').forEach(checkbox => {
+                checkbox.addEventListener('change', (e) => {
+                    const card = e.target.closest('.card');
+                    const retailerId = card.dataset.retailerId;
+                    const date = e.target.dataset.date;
+
+                    if (e.target.checked) {
+                        const confirmation = confirm(`Are you sure you want to confirm receipt of payment for ${date}? This action cannot be undone.`);
+                        if (confirmation) {
+                            this.acknowledgeSales(retailerId, date);
+                        } else {
+                            e.target.checked = false;
+                        }
+                    }
+                });
+            });
+        },
+
+        async showSalespersonStockModal(retailerId) {
+            // This function would fetch the specific retailer's data to show their stock.
+            // For now, we'll just show an alert as a placeholder.
+            alert("Showing salesperson stock modal for " + retailerId);
+        },
+
+        async acknowledgeSales(retailerId, date) {
+            if (!this.state.firebaseReady) return;
+            try {
+                const docRef = window.fb.doc(window.fb.db, `retailer_stocks/${this.state.user.uid}/supplied_retailers/${retailerId}`);
+                const updateData = {};
+                updateData[`acknowledgedSales.${date}`] = true;
+                await window.fb.updateDoc(docRef, updateData);
+                this.showToast(`Payment for ${date} acknowledged.`);
+            } catch (error) {
+                console.error("Error acknowledging sales:", error);
+                this.showToast("Failed to acknowledge payment.");
+            }
+        },
+
 
         addDeleteEventListeners() {
             document.querySelectorAll('.delete-retailer-btn').forEach(btn => {
@@ -1711,7 +1790,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const card = e.target.closest('.card');
                     const retailerId = card.dataset.retailerId;
                     const retailerName = card.dataset.retailerName;
-                    
+
                     if (confirm(`Are you sure you want to remove ${retailerName}? This will delete their data from your view.`)) {
                         try {
                             const docRef = window.fb.doc(window.fb.db, `retailer_stocks/${this.state.user.uid}/supplied_retailers/${retailerId}`);
