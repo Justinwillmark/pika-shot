@@ -281,7 +281,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.state.productFilter = e.target.dataset.filter;
                 this.renderProducts(this.elements.productSearchInput.value);
             }));
-
+            
             this.elements.stockFilterTabs.forEach(btn => btn.addEventListener('click', (e) => {
                 this.elements.stockFilterTabs.forEach(b => b.classList.remove('active'));
                 e.target.classList.add('active');
@@ -1018,7 +1018,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.productStockInput.value = this.formatNumber(product.stock);
             this.elements.productUnitInput.value = product.unit;
             this.state.capturedBlob = product.image;
-
+            
             this.elements.productNameInput.disabled = product.isSalesperson;
             this.elements.productPriceInput.disabled = product.isSalesperson;
 
@@ -1465,7 +1465,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 let stockToAdd, unitType, costPrice, needsSetup, barcode, originalName, wholesalerPrice;
 
                 const isCarton = item.unit === 'cartons' && item.subUnitType && item.subUnitQuantity > 0;
-
+                
                 stockToAdd = isCarton ? item.quantity * item.subUnitQuantity : item.quantity;
                 unitType = isCarton ? item.subUnitType : item.unit;
                 costPrice = isCarton ? item.price / item.subUnitQuantity : item.price;
@@ -1473,7 +1473,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 needsSetup = isCarton ? 'barcode-and-price' : 'price';
                 barcode = isCarton ? null : item.barcode;
                 originalName = item.name;
-
+                
                 const existingProduct = allProducts.find(p => p.name.toLowerCase() === item.name.toLowerCase());
                 let finalProduct;
 
@@ -1595,10 +1595,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     this.elements.retailerStockView.innerHTML = customersHtml || `<p class="empty-state">No customers found.</p>`;
                     this.elements.salespeopleView.innerHTML = salespeopleHtml || `<p class="empty-state">No salespeople found.</p>`;
-
+                    
                     this.addDeleteEventListeners();
                     this.addSalespersonEventListeners();
-
 
                 }, (error) => {
                      console.error("Error fetching retailer stocks in real-time:", error);
@@ -1613,7 +1612,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.salespeopleView.innerHTML = errorHtml;
             }
         },
-
+        
         buildCustomerCard(retailer) {
             let productsHtml = '';
             if (retailer.products && Object.keys(retailer.products).length > 0) {
@@ -1659,6 +1658,17 @@ document.addEventListener('DOMContentLoaded', () => {
             const totalSalesToday = todaysSales.reduce((sum, s) => sum + s.total, 0);
             const itemsSoldToday = todaysSales.reduce((sum, s) => sum + s.quantity, 0);
 
+            let todaysSalesHtml = `<p class="empty-state" style="font-size: 0.8rem; padding: 5px 0;">No sales for today yet.</p>`;
+            if (todaysSales.length > 0) {
+                todaysSalesHtml = `
+                    <div class="sales-day">
+                        <div class="sales-day-header">
+                            <strong>${itemsSoldToday} items sold</strong>
+                            <span>Total: &#8358;${this.formatNumber(totalSalesToday)}</span>
+                        </div>
+                    </div>`;
+            }
+
             // Previous Days Sales Calculation
             const previousSalesByDay = this.groupSalesByDate(
                 salesData.filter(s => new Date(s.timestamp) < today)
@@ -1684,7 +1694,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-
             const infoIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>`;
             const status = this.formatTimeAgo(retailer.lastUpdate?.toDate());
 
@@ -1698,13 +1707,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         <button class="info-btn">${infoIcon}</button>
                     </div>
                     <div class="salesperson-summary">
-                        <h5>Today's Sales</h5>
-                        <div class="sales-day">
-                            <div class="sales-day-header">
-                                <strong>${itemsSoldToday} items sold</strong>
-                                <span>Total: &#8358;${this.formatNumber(totalSalesToday)}</span>
-                            </div>
-                        </div>
+                        <h5>Today, ${today.toLocaleDateString('en-NG', { month: 'short', day: 'numeric' })}</h5>
+                        ${todaysSalesHtml}
                         <h5>Previous Sales</h5>
                         ${previousDaysHtml || '<p class="empty-state" style="font-size: 0.8rem; padding: 5px 0;">No previous sales recorded.</p>'}
                     </div>
@@ -1790,7 +1794,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const card = e.target.closest('.card');
                     const retailerId = card.dataset.retailerId;
                     const retailerName = card.dataset.retailerName;
-
+                    
                     if (confirm(`Are you sure you want to remove ${retailerName}? This will delete their data from your view.`)) {
                         try {
                             const docRef = window.fb.doc(window.fb.db, `retailer_stocks/${this.state.user.uid}/supplied_retailers/${retailerId}`);
