@@ -1711,10 +1711,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const salesData = await this.getSalespersonSales(retailer.id);
             const today = new Date();
             today.setHours(0, 0, 0, 0);
-        
+
             const todaysSales = salesData.filter(s => new Date(s.timestamp) >= today);
             const totalSalesToday = todaysSales.reduce((sum, s) => sum + s.total, 0);
-        
+
             let todaysSalesHtml = '<p class="empty-state" style="font-size: 0.8rem; padding: 5px 0;">No sales for today yet.</p>';
             if (todaysSales.length > 0) {
                 const salesByProduct = todaysSales.reduce((acc, sale) => {
@@ -1724,13 +1724,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     acc[sale.productName].quantity += sale.quantity;
                     return acc;
                 }, {});
-        
+
                 todaysSalesHtml = Object.entries(salesByProduct)
                     .map(([name, data]) => `<div class="sales-day-item">${name} - ${this.formatNumber(data.quantity)} ${data.unit} sold</div>`)
                     .join('');
                 todaysSalesHtml += `<div class="sales-day-total">Current total sales for today: ₦${this.formatNumber(totalSalesToday)}</div>`;
             }
-        
+
             const previousSalesByDay = this.groupSalesByDate(
                 salesData.filter(s => new Date(s.timestamp) < today)
             );
@@ -1755,10 +1755,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>`;
                 }
             }
-        
+
             const infoIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>`;
             const status = this.formatTimeAgo(retailer.lastUpdate?.toDate());
-        
+
             return `
                 <div class="card" data-retailer-id="${retailer.id}" data-retailer-name="${retailer.retailerName}">
                     <div class="retailer-header">
@@ -1793,13 +1793,21 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         async getSalespersonSales(salespersonId) {
-            // In a real-world scenario, you would fetch this from a specific 'sales' subcollection
-            // under the salesperson's document. For this simulation, we'll continue to use
-            // the local DB, but this would be the place to implement that specific logic.
-            const allSales = await DB.getAllSales();
-            // This is a placeholder for filtering sales by salesperson.
-            // You would need a salespersonId on each sale object to do this properly.
-            return allSales;
+            if (!this.state.firebaseReady || !this.state.user.uid) return [];
+            try {
+                const salesRef = window.fb.collection(window.fb.db, `retailer_stocks/${this.state.user.uid}/supplied_retailers/${salespersonId}/sales`);
+                const q = window.fb.query(salesRef);
+                const querySnapshot = await window.fb.getDocs(q);
+                const sales = [];
+                querySnapshot.forEach(doc => {
+                    const data = doc.data();
+                    sales.push({ ...data, timestamp: data.timestamp.toDate() });
+                });
+                return sales.sort((a, b) => b.timestamp - a.timestamp);
+            } catch (error) {
+                console.error("Error fetching salesperson sales:", error);
+                return [];
+            }
         },
 
         addSalespersonEventListeners() {
