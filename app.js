@@ -353,6 +353,12 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         navigateTo(viewId, isBackNavigation = false) {
+            if (this.state.currentView === 'camera-view') {
+                // Reset camera UI to default (for scanning) when leaving the view
+                document.querySelector('#camera-overlay .scan-box').style.display = 'block';
+                this.elements.scanFeedback.textContent = 'Scanning for product...';
+            }
+
             if (this.state.currentView === viewId && !isBackNavigation) return;
 
             if (!isBackNavigation) {
@@ -1012,12 +1018,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const picBtn = this.elements.addChangePictureBtn;
             picBtn.style.display = 'flex';
             picBtn.innerHTML = '<span>Snap Image</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>';
+            
             if (product.image) {
                 picBtn.classList.add('success');
-                 picBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
             } else {
                  picBtn.classList.remove('success');
             }
+            
             this.elements.productIdInput.value = product.id;
             this.elements.productNameInput.value = product.name;
             this.elements.productPriceInput.value = this.formatNumber(product.price);
@@ -1081,6 +1088,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         async handleAddOrChangePicture() {
             this.hideModal();
+            
+            // Hide scan-related UI elements for photo capture
+            document.querySelector('#camera-overlay .scan-box').style.display = 'none';
+            this.elements.scanFeedback.textContent = 'Hold steady...';
+            
             this.navigateTo('camera-view');
             try {
                 const { blob } = await Camera.capturePhoto(this.elements.scanTimerDisplay, this.elements.scanFeedback);
