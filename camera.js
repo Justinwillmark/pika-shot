@@ -70,7 +70,15 @@ const Camera = {
                     if (barcodes.length > 0) {
                         this.stop(); // Stop scanning immediately on detection
                         const detectedValue = barcodes[0].rawValue;
-                        // Check if it's a pika-log QR code
+
+                        // Check for the new format
+                        if (detectedValue.startsWith('pika-log-id:')) {
+                            const logId = detectedValue.substring('pika-log-id:'.length);
+                            onResult({ type: 'qrlog_id', data: logId });
+                            return;
+                        }
+
+                        // Check if it's a pika-log QR code (old version)
                         try {
                             const jsonData = JSON.parse(detectedValue);
                             if (jsonData && jsonData.pikaLogVersion === 1) {

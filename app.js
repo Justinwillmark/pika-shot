@@ -792,6 +792,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     history.back();
                     this.handlePikaLogScanned(result.data);
                     break;
+                case 'qrlog_id':
+                    history.back();
+                    this.handlePikaLogIdScanned(result.data);
+                    break;
             }
         },
 
@@ -819,6 +823,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     } else if (result.type === 'qrlog') {
                         this.handlePikaLogScanned(result.data);
+                    } else if (result.type === 'qrlog_id') {
+                        this.handlePikaLogIdScanned(result.data);
                     }
                 },
                 () => { // onTimeout
@@ -1309,6 +1315,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.showModal('receipt-modal');
         },
         async shareReceipt() { const receiptElement = this.elements.receiptContent; try { const canvas = await html2canvas(receiptElement, { scale: 2 }); canvas.toBlob(async (blob) => { if (navigator.share && blob) { try { await navigator.share({ files: [new File([blob], 'pika-shot-receipt.png', { type: 'image/png' })], title: 'Your Receipt', text: 'Here is your receipt from ' + this.state.user.business, }); } catch (error) { console.error('Error sharing:', error); } } else { alert('Sharing is not supported on this browser, or there was an error creating the image.'); } }, 'image/png'); } catch (error) { console.error('Error generating receipt image:', error); alert('Could not generate receipt image.'); } },
+        
         async generateQrLog() {
             if (!this.state.firebaseReady || !this.state.user.uid) {
                 alert("Cannot generate log: not connected to online services.");
@@ -1322,14 +1329,30 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.showToast("Please select at least one sale to share.");
                 return;
             }
+            
+            // **FIX STARTS HERE: Group sales by product**
+            const groupedSales = selectedSaleObjects.reduce((acc, sale) => {
+                const key = sale.productId; // Group by the unique product ID
+                if (!acc[key]) {
+                    acc[key] = {
+                        ...sale, // Copy all properties from the first sale of this product
+                        quantity: 0, // Reset quantity to be summed
+                    };
+                }
+                acc[key].quantity += sale.quantity; // Sum the quantities
+                return acc;
+            }, {});
+
+            const aggregatedSaleObjects = Object.values(groupedSales);
+            // **FIX ENDS HERE**
 
             const allProducts = await DB.getAllProducts();
 
             const logData = {
-                pikaLogVersion: 1,
+                pikaLogVersion: 2, // New version to indicate server-side log
                 senderStore: this.state.user.business,
                 senderId: this.state.user.uid,
-                items: selectedSaleObjects.map(sale => {
+                items: aggregatedSaleObjects.map(sale => { // Use the aggregated sales
                     const product = allProducts.find(p => p.id === sale.productId);
                     const item = {
                         name: sale.productName,
@@ -1345,17 +1368,31 @@ document.addEventListener('DOMContentLoaded', () => {
                     return item;
                 })
             };
+            
+            try {
+                // Save to a new 'shared_logs' collection in Firestore
+                const logCollectionRef = window.fb.collection(window.fb.db, 'shared_logs');
+                const logDocRef = window.fb.doc(logCollectionRef);
+                await window.fb.setDoc(logDocRef, logData);
+                const logId = logDocRef.id;
 
-            QRCode.toCanvas(this.elements.qrCanvas, JSON.stringify(logData), { width: 300 }, (error) => {
-                if (error) {
-                    console.error(error);
-                    alert("Could not generate QR code.");
-                    return;
-                }
-                this.hideModal();
-                this.showModal('qr-code-modal');
-            });
+                // The QR code now only contains the ID with a prefix
+                QRCode.toCanvas(this.elements.qrCanvas, `pika-log-id:${logId}`, { width: 300 }, (error) => {
+                    if (error) {
+                        console.error(error);
+                        alert("Could not generate QR code.");
+                        return;
+                    }
+                    this.hideModal();
+                    this.showModal('qr-code-modal');
+                });
+
+            } catch (error) {
+                console.error("Error creating shared log:", error);
+                alert("Could not create the share log. Please check your internet connection.");
+            }
         },
+
         async handleLogShared() {
             this.hideModal();
             const allSales = await DB.getAllSales();
@@ -1376,6 +1413,30 @@ document.addEventListener('DOMContentLoaded', () => {
                 await this.renderAllSales();
             }
         },
+
+        async handlePikaLogIdScanned(logId) {
+            if (!this.state.firebaseReady) {
+                alert("Cannot process log: not connected to online services.");
+                return;
+            }
+            // You can show a loader here
+            try {
+                const logDocRef = window.fb.doc(window.fb.db, 'shared_logs', logId);
+                const logDocSnap = await window.fb.getDoc(logDocRef);
+                if (logDocSnap.exists()) {
+                    const logData = logDocSnap.data();
+                    this.handlePikaLogScanned(logData); // Reuse your existing logic
+                } else {
+                    alert("Log not found. It may have been deleted.");
+                }
+            } catch (error) {
+                console.error("Error fetching shared log:", error);
+                alert("Could not fetch the shared log data.");
+            } finally {
+                // Hide loader here
+            }
+        },
+
         handlePikaLogScanned(logData) {
             this.state.scannedLogData = logData;
             this.elements.confirmLogTitle.textContent = `Accept Log from ${logData.senderStore}?`;
