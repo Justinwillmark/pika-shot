@@ -1194,6 +1194,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     updateData.lastUpdate = window.fb.serverTimestamp();
 
                     await window.fb.updateDoc(retailerDocRef, updateData);
+                    
+                    if (product.isSalesperson) {
+                        const saleDataForWholesaler = {
+                            ...sale,
+                            timestamp: window.fb.serverTimestamp()
+                        };
+                        delete saleDataForWholesaler.image; // Don't upload blob to Firestore
+                        const salesSubcollectionRef = window.fb.collection(window.fb.db, `retailer_stocks/${product.supplierId}/supplied_retailers/${this.state.user.uid}/sales`);
+                        await window.fb.addDoc(salesSubcollectionRef, saleDataForWholesaler);
+                    }
+
                 } catch (error) {
                     console.error("Failed to sync sale to Firebase:", error);
                 }
@@ -1257,6 +1268,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     updateData.lastUpdate = window.fb.serverTimestamp();
 
                     await window.fb.updateDoc(retailerDocRef, updateData);
+                    
+                    if (productToSell.isSalesperson) {
+                        const saleDataForWholesaler = {
+                            ...sale,
+                            timestamp: window.fb.serverTimestamp()
+                        };
+                        delete saleDataForWholesaler.image; // Don't upload blob to Firestore
+                        const salesSubcollectionRef = window.fb.collection(window.fb.db, `retailer_stocks/${productToSell.supplierId}/supplied_retailers/${this.state.user.uid}/sales`);
+                        await window.fb.addDoc(salesSubcollectionRef, saleDataForWholesaler);
+                    }
                 } catch (error) {
                     console.error("Failed to sync manual sale to Firebase:", error);
                 }
@@ -1575,7 +1596,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 try {
                     const retailerDocRef = window.fb.doc(window.fb.db, `retailer_stocks/${supplierId}/supplied_retailers/${this.state.user.uid}`);
                     await window.fb.setDoc(retailerDocRef, {
-                        retailerName: this.state.user.business,
+                        retailerName: isSalesperson ? this.state.user.name : this.state.user.business,
+                        businessName: this.state.user.business,
                         retailerLocation: this.state.user.location,
                         retailerPhone: this.state.user.phone,
                         products: updatedProductsForFirebase,
@@ -1711,10 +1733,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const salesData = await this.getSalespersonSales(retailer.id);
             const today = new Date();
             today.setHours(0, 0, 0, 0);
-
+        
             const todaysSales = salesData.filter(s => new Date(s.timestamp) >= today);
             const totalSalesToday = todaysSales.reduce((sum, s) => sum + s.total, 0);
-
+        
             let todaysSalesHtml = '<p class="empty-state" style="font-size: 0.8rem; padding: 5px 0;">No sales for today yet.</p>';
             if (todaysSales.length > 0) {
                 const salesByProduct = todaysSales.reduce((acc, sale) => {
@@ -1724,13 +1746,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     acc[sale.productName].quantity += sale.quantity;
                     return acc;
                 }, {});
-
+        
                 todaysSalesHtml = Object.entries(salesByProduct)
                     .map(([name, data]) => `<div class="sales-day-item">${name} - ${this.formatNumber(data.quantity)} ${data.unit} sold</div>`)
                     .join('');
                 todaysSalesHtml += `<div class="sales-day-total">Current total sales for today: ₦${this.formatNumber(totalSalesToday)}</div>`;
             }
-
+        
             const previousSalesByDay = this.groupSalesByDate(
                 salesData.filter(s => new Date(s.timestamp) < today)
             );
@@ -1755,10 +1777,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>`;
                 }
             }
-
+        
             const infoIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>`;
             const status = this.formatTimeAgo(retailer.lastUpdate?.toDate());
-
+        
             return `
                 <div class="card" data-retailer-id="${retailer.id}" data-retailer-name="${retailer.retailerName}">
                     <div class="retailer-header">
