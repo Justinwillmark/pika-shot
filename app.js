@@ -1329,8 +1329,15 @@ document.addEventListener('DOMContentLoaded', () => {
         async shareReceipt() { const receiptElement = this.elements.receiptContent; try { const canvas = await html2canvas(receiptElement, { scale: 2 }); canvas.toBlob(async (blob) => { if (navigator.share && blob) { try { await navigator.share({ files: [new File([blob], 'pika-shot-receipt.png', { type: 'image/png' })], title: 'Your Receipt', text: 'Here is your receipt from ' + this.state.user.business, }); } catch (error) { console.error('Error sharing:', error); } } else { alert('Sharing is not supported on this browser, or there was an error creating the image.'); } }, 'image/png'); } catch (error) { console.error('Error generating receipt image:', error); alert('Could not generate receipt image.'); } },
         
         async generateQrLog() {
+            if (!navigator.onLine) {
+                this.showToast("Please connect to the internet to share logs.");
+                const shareLogBtn = this.elements.shareLogBtn;
+                shareLogBtn.classList.add('input-error-shake');
+                setTimeout(() => shareLogBtn.classList.remove('input-error-shake'), 600);
+                return;
+            }
             if (!this.state.firebaseReady || !this.state.user.uid) {
-                alert("Cannot generate log: not connected to online services.");
+                this.showToast("Cannot generate log: not connected to online services.");
                 return;
             }
 

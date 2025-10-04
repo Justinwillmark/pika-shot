@@ -308,13 +308,13 @@
                     <label for="product-name">Product Name</label>
                     <input type="text" id="product-name" required>
                 </div>
-                 <div class="form-row price-image-row">
-                    <div class="form-group"><label for="product-price">Selling Price (₦)</label><input type="text" id="product-price" inputmode="decimal" required></div>
-                    <button type="button" id="add-change-picture-btn" class="btn-icon"><span>Snap Image</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg></button>
+                <div class="form-row">
+                    <div class="form-group unit-group"><label for="product-unit">Unit Type</label><select id="product-unit" required><option value="sachets">sachets</option><option value="bottles">bottles</option><option value="cans">cans</option><option value="tubes">tubes</option><option value="pieces">pieces</option><option value="packs">packs</option><option value="cartons" class="wholesaler-only">cartons</option></select></div>
+                    <div class="form-group price-group"><label for="product-price">Selling Price (₦)</label><input type="text" id="product-price" inputmode="decimal" required></div>
                 </div>
                 <div class="form-row">
-                    <div class="form-group"><label for="product-stock">Stock Quantity</label><input type="text" id="product-stock" inputmode="numeric" required></div>
-                    <div class="form-group"><label for="product-unit">Unit Type</label><select id="product-unit" required><option value="sachets">sachets</option><option value="bottles">bottles</option><option value="cans">cans</option><option value="tubes">tubes</option><option value="pieces">pieces</option><option value="packs">packs</option><option value="cartons" class="wholesaler-only">cartons</option></select></div>
+                    <button type="button" id="add-change-picture-btn" class="btn-icon"><span>Snap Image</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg></button>
+                    <div class="form-group stock-group"><label for="product-stock">Stock Quantity</label><input type="text" id="product-stock" inputmode="numeric" required></div>
                 </div>
                  <div class="modal-actions modal-actions-inline">
                     <button type="button" id="cancel-product-form-btn" class="btn btn-secondary">Cancel</button>
