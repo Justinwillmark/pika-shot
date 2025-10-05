@@ -1619,7 +1619,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 try {
                     const retailerDocRef = window.fb.doc(window.fb.db, `retailer_stocks/${supplierId}/supplied_retailers/${this.state.user.uid}`);
                     await window.fb.setDoc(retailerDocRef, {
-                        retailerName: isSalesperson ? this.state.user.name : this.state.user.business,
+                        retailerName: isSalesperson ? (this.state.user.name || this.state.user.business) : this.state.user.business,
                         businessName: this.state.user.business,
                         retailerLocation: this.state.user.location,
                         retailerPhone: this.state.user.phone,
