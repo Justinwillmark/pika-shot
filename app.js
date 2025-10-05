@@ -161,7 +161,6 @@ document.addEventListener('DOMContentLoaded', () => {
             longPressTimer: null,
             firebaseReady: false,
             retailerListener: null, // For unsubscribing from Firestore listener
-            salespersonSalesListeners: {}, // To manage real-time sales listeners
             tempProductDataForCarton: null,
             productFilter: 'all',
             stockViewFilter: 'customers',
@@ -196,17 +195,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         async initFirebase() {
             try {
-                // Use a custom token if available, otherwise sign in anonymously
-                const customToken = localStorage.getItem('firebaseCustomToken');
-                if (customToken) {
-                    await window.fb.signInWithCustomToken(window.fb.auth, customToken);
-                } else {
-                    await window.fb.signInAnonymously(window.fb.auth);
-                }
-
+                await window.fb.signInAnonymously(window.fb.auth);
                 this.state.firebaseReady = true;
-                console.log("Firebase sign-in successful. UID:", window.fb.auth.currentUser.uid);
-                
+                console.log("Firebase anonymous sign-in successful. UID:", window.fb.auth.currentUser.uid);
                 const localUser = await DB.getUser();
                 if (localUser && !localUser.uid) {
                     localUser.uid = window.fb.auth.currentUser.uid;
@@ -360,20 +351,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.toast.classList.remove('show');
             }, 3000);
         },
-        
-        navigateTo(viewId, isBackNavigation = false) {
-            // Cleanup old listeners when navigating away from the stock levels view
-            if (this.state.currentView === 'stock-levels-view' && viewId !== 'stock-levels-view') {
-                if (this.state.retailerListener) {
-                    this.state.retailerListener(); // Unsubscribe from retailers listener
-                    this.state.retailerListener = null;
-                }
-                // Unsubscribe from all active salesperson sales listeners
-                Object.values(this.state.salespersonSalesListeners).forEach(unsubscribe => unsubscribe());
-                this.state.salespersonSalesListeners = {};
-            }
 
+        navigateTo(viewId, isBackNavigation = false) {
             if (this.state.currentView === 'camera-view') {
+                // Reset camera UI to default (for scanning) when leaving the view
                 document.querySelector('#camera-overlay .scan-box').style.display = 'block';
                 this.elements.scanFeedback.textContent = 'Scanning for product...';
             }
@@ -399,6 +380,10 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 window.removeEventListener('online', this.handleOnlineStatusChange);
                 window.removeEventListener('offline', this.handleOnlineStatusChange);
+                if (this.state.retailerListener) {
+                    this.state.retailerListener();
+                    this.state.retailerListener = null;
+                }
             }
 
             if (viewId === 'products-view' && !this.state.productSelectionMode) {
@@ -421,7 +406,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
             this.exitSelectionMode();
         },
-
 
         handlePopState(event) {
             const viewId = (event.state && event.state.view) || 'home-view';
@@ -1188,7 +1172,7 @@ document.addEventListener('DOMContentLoaded', () => {
             product.stock -= quantity;
 
             await DB.saveProduct(product);
-            const sale = { id: Date.now(), productId: product.id, productName: product.name, quantity: quantity, price: product.price, total: quantity * product.price, timestamp: new Date(), image: product.image, sharedAsLog: false, unit: product.unit };
+            const sale = { id: Date.now(), productId: product.id, productName: product.name, quantity: quantity, price: product.price, total: quantity * product.price, timestamp: new Date(), image: product.image, sharedAsLog: false };
             await DB.addSale(sale);
 
             // --- SALES LOGGING: START ---
@@ -1213,20 +1197,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     
                     if (product.isSalesperson) {
                         const saleDataForWholesaler = {
-                            productName: sale.productName,
-                            quantity: sale.quantity,
-                            price: sale.price,
-                            total: sale.total,
-                            unit: sale.unit,
+                            ...sale,
                             timestamp: window.fb.serverTimestamp()
                         };
-                        const salesSubcollectionRef = window.fb.collection(retailerDocRef, 'sales');
+                        delete saleDataForWholesaler.image; // Don't upload blob to Firestore
+                        const salesSubcollectionRef = window.fb.collection(window.fb.db, `retailer_stocks/${product.supplierId}/supplied_retailers/${this.state.user.uid}/sales`);
                         await window.fb.addDoc(salesSubcollectionRef, saleDataForWholesaler);
                     }
 
                 } catch (error) {
                     console.error("Failed to sync sale to Firebase:", error);
-                    this.showToast("Couldn't sync sale. Check connection.");
                 }
             }
 
@@ -1266,7 +1246,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             await DB.saveProduct(productToSell);
-            const sale = { id: Date.now() + 1, productId: productToSell.id, productName: name, quantity, price, total: price * quantity, timestamp: new Date(), image: productToSell.image, sharedAsLog: false, unit: productToSell.unit };
+            const sale = { id: Date.now() + 1, productId: productToSell.id, productName: name, quantity, price, total: price * quantity, timestamp: new Date(), image: productToSell.image, sharedAsLog: false };
             await DB.addSale(sale);
 
             // --- SALES LOGGING: START ---
@@ -1288,17 +1268,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     updateData.lastUpdate = window.fb.serverTimestamp();
 
                     await window.fb.updateDoc(retailerDocRef, updateData);
-
+                    
                     if (productToSell.isSalesperson) {
-                         const saleDataForWholesaler = {
-                            productName: sale.productName,
-                            quantity: sale.quantity,
-                            price: sale.price,
-                            total: sale.total,
-                            unit: sale.unit,
+                        const saleDataForWholesaler = {
+                            ...sale,
                             timestamp: window.fb.serverTimestamp()
                         };
-                        const salesSubcollectionRef = window.fb.collection(retailerDocRef, 'sales');
+                        delete saleDataForWholesaler.image; // Don't upload blob to Firestore
+                        const salesSubcollectionRef = window.fb.collection(window.fb.db, `retailer_stocks/${productToSell.supplierId}/supplied_retailers/${this.state.user.uid}/sales`);
                         await window.fb.addDoc(salesSubcollectionRef, saleDataForWholesaler);
                     }
                 } catch (error) {
@@ -1619,7 +1596,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 try {
                     const retailerDocRef = window.fb.doc(window.fb.db, `retailer_stocks/${supplierId}/supplied_retailers/${this.state.user.uid}`);
                     await window.fb.setDoc(retailerDocRef, {
-                        retailerName: isSalesperson ? (this.state.user.name || this.state.user.business) : this.state.user.business,
+                        retailerName: isSalesperson ? this.state.user.name : this.state.user.business,
                         businessName: this.state.user.business,
                         retailerLocation: this.state.user.location,
                         retailerPhone: this.state.user.phone,
@@ -1674,46 +1651,35 @@ document.addEventListener('DOMContentLoaded', () => {
                 const q = window.fb.query(retailersRef);
 
                 this.state.retailerListener = window.fb.onSnapshot(q, async (querySnapshot) => {
+                    if (querySnapshot.empty) {
+                        const emptyHtml = `<p class="empty-state">No data found. As a wholesaler, sell and share log with a retailer to see their real-time stock level here.</p>`;
+                        this.elements.retailerStockView.innerHTML = emptyHtml;
+                        this.elements.salespeopleView.innerHTML = emptyHtml;
+                        return;
+                    }
+
                     let customersHtml = '';
                     let salespeopleHtml = '';
                     const retailersData = [];
                     querySnapshot.forEach(doc => retailersData.push({ id: doc.id, ...doc.data() }));
 
                     retailersData.sort((a, b) => (b.lastUpdate?.toDate() || 0) - (a.lastUpdate?.toDate() || 0));
-                    
-                    // Cleanup old listeners for salespeople that no longer exist
-                    const currentSalespersonIds = new Set(retailersData.map(r => r.id));
-                    for (const id in this.state.salespersonSalesListeners) {
-                        if (!currentSalespersonIds.has(id)) {
-                            this.state.salespersonSalesListeners[id](); // Unsubscribe
-                            delete this.state.salespersonSalesListeners[id];
-                        }
-                    }
 
                     for (const retailer of retailersData) {
                         const isSalesperson = Object.values(retailer.products || {}).some(p => p.isSalesperson);
 
                         if (isSalesperson) {
-                            salespeopleHtml += this.buildSalespersonCard(retailer);
+                            salespeopleHtml += await this.buildSalespersonCard(retailer);
                         } else {
                             customersHtml += this.buildCustomerCard(retailer);
                         }
                     }
-                    
+
                     this.elements.retailerStockView.innerHTML = customersHtml || `<p class="empty-state">No customers found.</p>`;
                     this.elements.salespeopleView.innerHTML = salespeopleHtml || `<p class="empty-state">No salespeople found.</p>`;
                     
                     this.addDeleteEventListeners();
                     this.addSalespersonEventListeners();
-
-                    // Now, attach real-time listeners for sales for each salesperson
-                    for (const retailer of retailersData) {
-                         const isSalesperson = Object.values(retailer.products || {}).some(p => p.isSalesperson);
-                         if (isSalesperson && !this.state.salespersonSalesListeners[retailer.id]) {
-                             this.listenToSalespersonSales(retailer);
-                         }
-                    }
-
 
                 }, (error) => {
                      console.error("Error fetching retailer stocks in real-time:", error);
@@ -1763,112 +1729,106 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
         },
 
-        buildSalespersonCard(retailer) {
+        async buildSalespersonCard(retailer) {
+            const salesData = await this.getSalespersonSales(retailer.id);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+        
+            const todaysSales = salesData.filter(s => new Date(s.timestamp) >= today);
+            const totalSalesToday = todaysSales.reduce((sum, s) => sum + s.total, 0);
+        
+            let todaysSalesHtml = '<p class="empty-state" style="font-size: 0.8rem; padding: 5px 0;">No sales for today yet.</p>';
+            if (todaysSales.length > 0) {
+                const salesByProduct = todaysSales.reduce((acc, sale) => {
+                    if (!acc[sale.productName]) {
+                        acc[sale.productName] = { quantity: 0, unit: sale.unit || 'pieces' };
+                    }
+                    acc[sale.productName].quantity += sale.quantity;
+                    return acc;
+                }, {});
+        
+                todaysSalesHtml = Object.entries(salesByProduct)
+                    .map(([name, data]) => `<div class="sales-day-item">${name} - ${this.formatNumber(data.quantity)} ${data.unit} sold</div>`)
+                    .join('');
+                todaysSalesHtml += `<div class="sales-day-total">Current total sales for today: ₦${this.formatNumber(totalSalesToday)}</div>`;
+            }
+        
+            const previousSalesByDay = this.groupSalesByDate(
+                salesData.filter(s => new Date(s.timestamp) < today)
+            );
+            let previousDaysHtml = '';
+            for (const date in previousSalesByDay) {
+                const dayData = previousSalesByDay[date];
+                if (!retailer.acknowledgedSales || !retailer.acknowledgedSales[date]) {
+                    const total = dayData.reduce((sum, s) => sum + s.total, 0);
+                    previousDaysHtml += `
+                        <div class="sales-day">
+                            <div class="sales-day-header">
+                                <strong>${date}</strong>
+                                <span>Total sales: ₦${this.formatNumber(total)}</span>
+                            </div>
+                            <div class="sales-day-actions">
+                                <label>Did you receive this amount?</label>
+                                <div>
+                                    <button class="btn-yes" data-date="${date}">YES</button>
+                                    <button class="btn-no" data-date="${date}">NO</button>
+                                </div>
+                            </div>
+                        </div>`;
+                }
+            }
+        
             const infoIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>`;
             const status = this.formatTimeAgo(retailer.lastUpdate?.toDate());
-            const today = new Date();
         
             return `
-                <div class="card salesperson-card" id="salesperson-card-${retailer.id}" data-retailer-id="${retailer.id}" data-retailer-name="${retailer.retailerName}">
+                <div class="card" data-retailer-id="${retailer.id}" data-retailer-name="${retailer.retailerName}">
                     <div class="retailer-header">
                         <div style="flex-grow: 1;">
-                            <h4>${retailer.retailerName}</h4>
+                            <h4>${retailer.retailerName} (${retailer.businessName || ''})</h4>
                             <p class="retailer-status ${status.className}">${status.text}</p>
                         </div>
                         <button class="info-btn">${infoIcon}</button>
                     </div>
                     <div class="salesperson-summary">
-                        <h5>Today's (${today.toLocaleDateString('en-NG', { month: 'short', day: 'numeric' })}) Sales:</h5>
-                        <div id="sales-today-${retailer.id}"><p class="empty-state">Loading sales...</p></div>
-                        
+                        <h5>Today's (${today.toLocaleDateString('en-NG', { month: 'short', day: 'numeric' })}) sales:</h5>
+                        ${todaysSalesHtml}
                         <h5>Previous Days:</h5>
-                        <div id="sales-previous-${retailer.id}"><p class="empty-state">Loading sales...</p></div>
+                        ${previousDaysHtml || '<p class="empty-state" style="font-size: 0.8rem; padding: 5px 0;">No previous sales recorded.</p>'}
                     </div>
                 </div>`;
         },
 
-        listenToSalespersonSales(retailer) {
-            const salesRef = window.fb.collection(window.fb.db, `retailer_stocks/${this.state.user.uid}/supplied_retailers/${retailer.id}/sales`);
-            const q = window.fb.query(salesRef);
-
-            const unsubscribe = window.fb.onSnapshot(q, (querySnapshot) => {
-                const salesData = [];
-                querySnapshot.forEach(doc => {
-                    const data = doc.data();
-                    if (data.timestamp) { // Ensure timestamp exists
-                        salesData.push({ ...data, timestamp: data.timestamp.toDate() });
-                    }
-                });
-                
-                this.updateSalespersonCard(retailer, salesData);
-
-            }, (error) => {
-                console.error(`Error listening to sales for ${retailer.retailerName}:`, error);
-                const todayEl = document.getElementById(`sales-today-${retailer.id}`);
-                if(todayEl) todayEl.innerHTML = `<p class="empty-state">Error loading sales.</p>`;
+        getRecentSalesDays(sales, count) {
+            const salesByDay = {};
+            sales.forEach(sale => {
+                const saleDate = new Date(sale.timestamp).toLocaleDateString('en-NG', { year: 'numeric', month: 'short', day: 'numeric' });
+                if (!salesByDay[saleDate]) {
+                    salesByDay[saleDate] = { total: 0, date: saleDate, timestamp: new Date(sale.timestamp).setHours(0,0,0,0) };
+                }
+                salesByDay[saleDate].total += sale.total;
             });
 
-            this.state.salespersonSalesListeners[retailer.id] = unsubscribe;
+            return Object.values(salesByDay)
+                .sort((a, b) => b.timestamp - a.timestamp)
+                .slice(0, count);
         },
 
-        updateSalespersonCard(retailer, salesData) {
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-
-            const todaysSales = salesData.filter(s => s.timestamp >= today);
-            const totalSalesToday = todaysSales.reduce((sum, s) => sum + s.total, 0);
-
-            const todayEl = document.getElementById(`sales-today-${retailer.id}`);
-            if (todayEl) {
-                if (todaysSales.length > 0) {
-                    const salesByProduct = todaysSales.reduce((acc, sale) => {
-                        if (!acc[sale.productName]) {
-                            acc[sale.productName] = { quantity: 0, unit: sale.unit || 'pieces' };
-                        }
-                        acc[sale.productName].quantity += sale.quantity;
-                        return acc;
-                    }, {});
-
-                    let todaysSalesHtml = Object.entries(salesByProduct)
-                        .map(([name, data]) => `<div class="sales-day-item">${name} - ${this.formatNumber(data.quantity)} ${data.unit} sold</div>`)
-                        .join('');
-                    todaysSalesHtml += `<div class="sales-day-total">Today's Total: ₦${this.formatNumber(totalSalesToday)}</div>`;
-                    todayEl.innerHTML = todaysSalesHtml;
-                } else {
-                    todayEl.innerHTML = '<p class="empty-state" style="font-size: 0.8rem; padding: 5px 0;">No sales for today yet.</p>';
-                }
-            }
-
-            const previousEl = document.getElementById(`sales-previous-${retailer.id}`);
-            if (previousEl) {
-                const previousSalesByDay = this.groupSalesByDate(
-                    salesData.filter(s => s.timestamp < today)
-                );
-                
-                let previousDaysHtml = '';
-                const sortedDays = Object.keys(previousSalesByDay).sort((a, b) => new Date(b.split(', ')[1]) - new Date(a.split(', ')[1]));
-
-                for (const date of sortedDays) {
-                    const dayData = previousSalesByDay[date];
-                    if (!retailer.acknowledgedSales || !retailer.acknowledgedSales[date]) {
-                        const total = dayData.reduce((sum, s) => sum + s.total, 0);
-                        previousDaysHtml += `
-                            <div class="sales-day">
-                                <div class="sales-day-header">
-                                    <strong>${date}</strong>
-                                    <span>Total Sales: ₦${this.formatNumber(total)}</span>
-                                </div>
-                                <div class="sales-day-actions">
-                                    <label>Received this amount?</label>
-                                    <div>
-                                        <button class="btn-yes" data-retailer-id="${retailer.id}" data-date="${date}">YES</button>
-                                        <button class="btn-no" data-retailer-id="${retailer.id}" data-date="${date}">NO</button>
-                                    </div>
-                                </div>
-                            </div>`;
-                    }
-                }
-                previousEl.innerHTML = previousDaysHtml || '<p class="empty-state" style="font-size: 0.8rem; padding: 5px 0;">No previous sales to acknowledge.</p>';
+        async getSalespersonSales(salespersonId) {
+            if (!this.state.firebaseReady || !this.state.user.uid) return [];
+            try {
+                const salesRef = window.fb.collection(window.fb.db, `retailer_stocks/${this.state.user.uid}/supplied_retailers/${salespersonId}/sales`);
+                const q = window.fb.query(salesRef);
+                const querySnapshot = await window.fb.getDocs(q);
+                const sales = [];
+                querySnapshot.forEach(doc => {
+                    const data = doc.data();
+                    sales.push({ ...data, timestamp: data.timestamp.toDate() });
+                });
+                return sales.sort((a, b) => b.timestamp - a.timestamp);
+            } catch (error) {
+                console.error("Error fetching salesperson sales:", error);
+                return [];
             }
         },
 
@@ -1883,7 +1843,8 @@ document.addEventListener('DOMContentLoaded', () => {
         
             document.querySelectorAll('.btn-yes').forEach(button => {
                 button.addEventListener('click', (e) => {
-                    const retailerId = e.target.dataset.retailerId;
+                    const card = e.target.closest('.card');
+                    const retailerId = card.dataset.retailerId;
                     const date = e.target.dataset.date;
         
                     if (confirm(`Are you sure you want to confirm receipt of payment for ${date}? This action cannot be undone.`)) {
@@ -1894,8 +1855,8 @@ document.addEventListener('DOMContentLoaded', () => {
         
             document.querySelectorAll('.btn-no').forEach(button => {
                 button.addEventListener('click', (e) => {
-                    e.target.closest('.sales-day').style.opacity = '0.5';
-                    e.target.closest('.sales-day-actions').innerHTML = '<p style="font-size: 0.8rem; color: var(--danger-color); font-weight: bold;">Noted. Please follow up.</p>';
+                    // No action specified for "NO", so this is a placeholder.
+                    e.target.closest('.sales-day-actions').style.display = 'none';
                 });
             });
         },
@@ -1954,7 +1915,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 updateData[`acknowledgedSales.${date}`] = true;
                 await window.fb.updateDoc(docRef, updateData);
                 this.showToast(`Payment for ${date} acknowledged.`);
-                // The onSnapshot listener will automatically re-render the card
             } catch (error) {
                 console.error("Error acknowledging sales:", error);
                 this.showToast("Failed to acknowledge payment.");
