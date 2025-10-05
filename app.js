@@ -1748,14 +1748,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 }, {});
         
                 todaysSalesHtml = Object.entries(salesByProduct)
-                    .map(([name, data]) => `<div class="sales-day-item">${name} - ${this.formatNumber(data.quantity)} ${data.unit} sold</div>`)
+                    .map(([name, data]) => `<div class="sales-day-item"><span>${name}</span> <span>${this.formatNumber(data.quantity)} ${data.unit} sold</span></div>`)
                     .join('');
-                todaysSalesHtml += `<div class="sales-day-total">Current total sales for today: ₦${this.formatNumber(totalSalesToday)}</div>`;
             }
         
             const previousSalesByDay = this.groupSalesByDate(
                 salesData.filter(s => new Date(s.timestamp) < today)
             );
+        
             let previousDaysHtml = '';
             for (const date in previousSalesByDay) {
                 const dayData = previousSalesByDay[date];
@@ -1765,12 +1765,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="sales-day">
                             <div class="sales-day-header">
                                 <strong>${date}</strong>
-                                <span>Total sales: ₦${this.formatNumber(total)}</span>
+                                <span>Total: ₦${this.formatNumber(total)}</span>
                             </div>
                             <div class="sales-day-actions">
-                                <label>Did you receive this amount?</label>
-                                <div>
-                                    <button class="btn-yes" data-date="${date}">YES</button>
+                                <label>Received payment?</label>
+                                <div class="sales-day-buttons">
+                                    <button class="btn-yes" data-date="${date}" data-total="${total}">YES</button>
                                     <button class="btn-no" data-date="${date}">NO</button>
                                 </div>
                             </div>
@@ -1779,22 +1779,31 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         
             const infoIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>`;
+            const deleteIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
             const status = this.formatTimeAgo(retailer.lastUpdate?.toDate());
         
             return `
-                <div class="card" data-retailer-id="${retailer.id}" data-retailer-name="${retailer.retailerName}">
+                <div class="card salesperson-card" data-retailer-id="${retailer.id}" data-retailer-name="${retailer.retailerName}">
                     <div class="retailer-header">
                         <div style="flex-grow: 1;">
                             <h4>${retailer.retailerName} (${retailer.businessName || ''})</h4>
                             <p class="retailer-status ${status.className}">${status.text}</p>
                         </div>
-                        <button class="info-btn">${infoIcon}</button>
+                        <button class="info-btn" title="View Stock">${infoIcon}</button>
                     </div>
                     <div class="salesperson-summary">
-                        <h5>Today's (${today.toLocaleDateString('en-NG', { month: 'short', day: 'numeric' })}) sales:</h5>
-                        ${todaysSalesHtml}
-                        <h5>Previous Days:</h5>
-                        ${previousDaysHtml || '<p class="empty-state" style="font-size: 0.8rem; padding: 5px 0;">No previous sales recorded.</p>'}
+                        <div class="sales-section">
+                            <h5>Today's Sales (${today.toLocaleDateString('en-NG', { month: 'short', day: 'numeric' })})</h5>
+                            <div class="sales-today-details">${todaysSalesHtml}</div>
+                            ${todaysSales.length > 0 ? `<div class="sales-today-total">Total for today: ₦${this.formatNumber(totalSalesToday)}</div>` : ''}
+                        </div>
+                        <div class="sales-section">
+                            <h5>Previous Unconfirmed Sales</h5>
+                            ${previousDaysHtml || '<p class="empty-state" style="font-size: 0.8rem; padding: 5px 0;">No previous unconfirmed sales.</p>'}
+                        </div>
+                    </div>
+                     <div class="card-footer">
+                        <button class="delete-retailer-btn">${deleteIcon}</button>
                     </div>
                 </div>`;
         },
@@ -1846,8 +1855,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     const card = e.target.closest('.card');
                     const retailerId = card.dataset.retailerId;
                     const date = e.target.dataset.date;
+                    const total = e.target.dataset.total;
         
-                    if (confirm(`Are you sure you want to confirm receipt of payment for ${date}? This action cannot be undone.`)) {
+                    if (confirm(`Are you sure you want to confirm receipt of payment (₦${this.formatNumber(total)}) for ${date}? This action cannot be undone.`)) {
                         this.acknowledgeSales(retailerId, date);
                     }
                 });
@@ -1855,7 +1865,8 @@ document.addEventListener('DOMContentLoaded', () => {
         
             document.querySelectorAll('.btn-no').forEach(button => {
                 button.addEventListener('click', (e) => {
-                    // No action specified for "NO", so this is a placeholder.
+                    // When "No" is clicked, we just remove the action buttons for that day for this session.
+                    // It will reappear on next refresh if not confirmed.
                     e.target.closest('.sales-day-actions').style.display = 'none';
                 });
             });
@@ -1908,11 +1919,17 @@ document.addEventListener('DOMContentLoaded', () => {
         },
         
         async acknowledgeSales(retailerId, date) {
-            if (!this.state.firebaseReady) return;
+            if (!this.state.firebaseReady || !this.state.user || !this.state.user.uid) {
+                 this.showToast("Failed to acknowledge payment: Not connected.");
+                return;
+            }
             try {
                 const docRef = window.fb.doc(window.fb.db, `retailer_stocks/${this.state.user.uid}/supplied_retailers/${retailerId}`);
                 const updateData = {};
-                updateData[`acknowledgedSales.${date}`] = true;
+                // Use a string that can be a key in Firestore, replacing slashes or invalid characters
+                const safeDateKey = date.replace(/[^a-zA-Z0-9]/g, '_');
+                updateData[`acknowledgedSales.${safeDateKey}`] = true;
+                
                 await window.fb.updateDoc(docRef, updateData);
                 this.showToast(`Payment for ${date} acknowledged.`);
             } catch (error) {
