@@ -79,6 +79,7 @@
                             <option value="" disabled selected>Select your type</option>
                             <option value="Retailer">Retailer</option>
                             <option value="Wholesaler">Wholesaler</option>
+                            <option value="Salesperson">Salesperson</option>
                         </select>
                     </div>
                      <div class="form-group">
@@ -213,7 +214,7 @@
                     <span>Please connect to the internet to see live data.</span>
                 </div>
                 <div class="page-actions-header">
-                    <div class="product-filter-tabs">
+                    <div id="stock-view-filter-tabs" class="product-filter-tabs">
                         <button class="filter-tab-btn active" data-filter="customers">Customers</button>
                         <button class="filter-tab-btn" data-filter="salespeople">Salespeople</button>
                     </div>
@@ -411,10 +412,6 @@
         <div id="confirm-log-modal" class="modal-content" style="display:none;">
             <h2 id="confirm-log-title">Accept Log?</h2>
             <div id="confirm-log-content"></div>
-             <div class="salesperson-check">
-                <input type="checkbox" id="salesperson-checkbox">
-                <label for="salesperson-checkbox" id="salesperson-label"></label>
-            </div>
             <div class="modal-actions modal-actions-inline">
                 <button id="reject-log-btn" class="btn btn-secondary">Reject</button>
                 <button id="accept-log-btn" class="btn btn-primary">Accept & Add</button>

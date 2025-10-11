@@ -115,8 +115,6 @@ document.addEventListener('DOMContentLoaded', () => {
             confirmLogContent: document.getElementById('confirm-log-content'),
             rejectLogBtn: document.getElementById('reject-log-btn'),
             acceptLogBtn: document.getElementById('accept-log-btn'),
-            salespersonCheckbox: document.getElementById('salesperson-checkbox'),
-            salespersonLabel: document.getElementById('salesperson-label'),
             addProductFailedModal: document.getElementById('add-product-failed-modal'),
             retryAddScanBtn: document.getElementById('retry-add-scan-btn'),
             cancelAddScanBtn: document.getElementById('cancel-add-scan-btn'),
@@ -127,6 +125,7 @@ document.addEventListener('DOMContentLoaded', () => {
             seeStockLevelsBtn: document.getElementById('see-stock-levels-btn'),
             stockLevelsView: document.getElementById('stock-levels-view'),
             stockFilterTabs: document.querySelectorAll('#stock-levels-view .product-filter-tabs .filter-tab-btn'),
+            stockViewFilterTabs: document.getElementById('stock-view-filter-tabs'),
             retailerStockView: document.getElementById('retailer-stock-view'),
             salespeopleView: document.getElementById('salespeople-view'),
             refreshStocksBtn: document.getElementById('refresh-stocks-btn'),
@@ -258,7 +257,6 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.selectFromProductsBtn.addEventListener('click', this.showProductSelection.bind(this));
             this.elements.rejectLogBtn.addEventListener('click', () => { this.hideModal(); this.state.scannedLogData = null; });
             this.elements.acceptLogBtn.addEventListener('click', this.acceptPikaLog.bind(this));
-            this.elements.salespersonCheckbox.addEventListener('change', this.handleSalespersonCheck.bind(this));
             this.elements.retryAddScanBtn.addEventListener('click', () => { this.hideModal(); this.startAddProduct(); });
             this.elements.cancelAddScanBtn.addEventListener('click', () => this.hideModal());
             this.elements.productExistsOkBtn.addEventListener('click', () => this.hideModal());
@@ -402,7 +400,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.backBtn.style.display = isHomePage ? 'none' : 'block';
 
             this.elements.productsView.classList.toggle('selection-mode', this.state.productSelectionMode);
-            this.elements.addNewProductBtn.style.display = (this.state.productSelectionMode || viewId !== 'products-view') ? 'none' : 'flex';
+            this.elements.addNewProductBtn.style.display = (this.state.productSelectionMode || viewId !== 'products-view' || (this.state.user && this.state.user.type === 'Salesperson')) ? 'none' : 'flex';
 
             this.exitSelectionMode();
         },
@@ -424,7 +422,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 title = 'Select a Product';
             } else {
                 const titles = { 'home-view': 'Home', 'products-view': 'My Products', 'all-sales-view': 'All Sales', 'stock-levels-view': 'Customers & Salespeople' };
-                title = titles[viewId] || 'pika shot';
+                if (this.state.user && this.state.user.type === 'Salesperson' && viewId === 'stock-levels-view') {
+                    title = 'Customers';
+                } else {
+                    title = titles[viewId] || 'pika shot';
+                }
             }
             this.elements.headerTitle.textContent = title;
         },
@@ -432,9 +434,16 @@ document.addEventListener('DOMContentLoaded', () => {
         async updateDashboard() {
             if (this.state.user) {
                 this.elements.welcomeName.textContent = `Hello, ${this.state.user.name.split(' ')[0]}!`;
-                if (this.state.user.type === 'Wholesaler') {
+                if (this.state.user.type === 'Wholesaler' || this.state.user.type === 'Salesperson') {
                     this.elements.seeStockLevelsContainer.style.display = 'block';
-                    this.elements.shareLogBtn.style.display = 'block';
+                    const buttonText = this.state.user.type === 'Salesperson' ? 'Customers' : 'Customers & Salespeople';
+                    this.elements.seeStockLevelsBtn.innerHTML = `${buttonText} <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="arrow-icon"><polyline points="9 18 15 12 9 6"></polyline></svg>`;
+                    
+                    if (this.state.user.type === 'Wholesaler') {
+                        this.elements.shareLogBtn.style.display = 'block';
+                    } else {
+                        this.elements.shareLogBtn.style.display = 'none';
+                    }
                 } else {
                     this.elements.seeStockLevelsContainer.style.display = 'none';
                     this.elements.shareLogBtn.style.display = 'none';
@@ -594,7 +603,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             if (products.length === 0) {
-                if (searchText) {
+                if (this.state.user && this.state.user.type === 'Salesperson') {
+                    this.elements.productGrid.innerHTML = '<p class="empty-state">You have no products yet. Scan a QR code from your wholesaler to receive products.</p>';
+                } else if (searchText) {
                     this.elements.productGrid.innerHTML = '<p class="empty-state">No products match your search.</p>';
                 } else if (filterType !== 'all') {
                     this.elements.productGrid.innerHTML = '<p class="empty-state">No products in this filter.</p>';
@@ -603,6 +614,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 return;
             }
+
 
             products.forEach(product => {
                 const card = document.createElement('div');
@@ -653,9 +665,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         this.state.productSelectionMode = false;
                         this.handleProductFound(product);
                         this.elements.productsView.classList.remove('selection-mode');
-                        this.elements.addNewProductBtn.style.display = 'flex';
+                        this.elements.addNewProductBtn.style.display = (this.state.user && this.state.user.type === 'Salesperson') ? 'none' : 'flex';
                     } else {
-                        if (product.needsSetup || this.state.user.type === 'Wholesaler' || product.lockedUntilOOS || product.isSalesperson) {
+                        if (product.needsSetup || this.state.user.type === 'Wholesaler' || this.state.user.type === 'Salesperson' || product.lockedUntilOOS) {
                             this.handleEditProduct(product);
                         }
                     }
@@ -747,6 +759,10 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         startAddProduct() {
+            if (this.state.user && this.state.user.type === 'Salesperson') {
+                this.showToast("Salespeople can only receive products via QR code from a wholesaler.");
+                return;
+            }
             if (!this.state.cameraReady) { alert("Scanner is not ready yet. Please wait or check your connection."); return; }
             if (!Camera.barcodeDetector) { alert("Barcode scanning is not available on this browser."); return; }
             this.elements.scanFeedback.textContent = 'Scan product barcode';
@@ -1032,8 +1048,18 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.productUnitInput.value = product.unit;
             this.state.capturedBlob = product.image;
             
-            this.elements.productNameInput.disabled = product.isSalesperson;
-            this.elements.productPriceInput.disabled = product.isSalesperson;
+            const isSalesperson = this.state.user && this.state.user.type === 'Salesperson';
+            this.elements.productNameInput.disabled = isSalesperson;
+            this.elements.productPriceInput.disabled = isSalesperson;
+            this.elements.productStockInput.disabled = isSalesperson;
+            this.elements.productUnitInput.disabled = isSalesperson;
+            this.elements.scanNewBarcodeBtn.style.display = 'none';
+
+            if (isSalesperson) {
+                this.elements.productSourceInfo.textContent = 'As a salesperson, you can only change the product image.';
+                this.elements.productSourceInfo.style.display = 'block';
+                this.elements.deleteProductBtn.disabled = product.stock > 0;
+            }
 
 
             const cartonOption = this.elements.productUnitInput.querySelector('.wholesaler-only');
@@ -1043,14 +1069,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 cartonOption.style.display = 'none';
             }
 
-            this.elements.productStockInput.disabled = false;
-            this.elements.productUnitInput.disabled = false;
-            this.elements.productSourceInfo.style.display = 'none';
             if ((product.lockedUntilOOS || product.isSalesperson) && product.stock > 0) {
                 this.elements.productStockInput.disabled = true;
                 this.elements.productUnitInput.disabled = true;
-                this.elements.productSourceInfo.textContent = 'Stock and unit for this item cannot be edited.';
-                this.elements.productSourceInfo.style.display = 'block';
+                if (!isSalesperson) {
+                    this.elements.productSourceInfo.textContent = 'Stock and unit for this item cannot be edited.';
+                    this.elements.productSourceInfo.style.display = 'block';
+                }
             }
 
             if (product.needsSetup === 'barcode-and-price') {
@@ -1075,6 +1100,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         async handleDeleteProduct() {
             if (!this.state.editingProduct) return;
+            if (this.state.user && this.state.user.type === 'Salesperson' && this.state.editingProduct.stock > 0) {
+                alert("You can only delete products that are out of stock.");
+                return;
+            }
             const confirmation = confirm(`Are you sure you want to permanently delete "${this.state.editingProduct.name}"? This action cannot be undone.`);
             if (confirmation) {
                 await DB.deleteProduct(this.state.editingProduct.id);
@@ -1480,10 +1509,6 @@ document.addEventListener('DOMContentLoaded', () => {
         handlePikaLogScanned(logData) {
             this.state.scannedLogData = logData;
             this.elements.confirmLogTitle.textContent = `Accept Log from ${logData.senderStore}?`;
-            this.elements.salespersonLabel.innerHTML = `Are you a salesperson for ${logData.senderStore}?`;
-            this.elements.salespersonCheckbox.checked = false;
-            this.handleSalespersonCheck({ target: this.elements.salespersonCheckbox }); // Update UI on open
-
 
             const totalCost = logData.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
             const dateScanned = new Date().toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -1516,7 +1541,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     ${itemsHtml}
                     <div class="log-details-row footer">
                         <div class="log-details-cell item">TOTAL PURCHASE</div>
-                        <div class="log-details-cell total">&#8358;${this.formatNumber(totalCost)}</div>
+                        <div class.log-details-cell total">&#8358;${this.formatNumber(totalCost)}</div>
                     </div>
                 </div>
                 <p class="log-accept-notice">Accept for instant restocking. The wholesaler will see stock levels in real time and may call</p>
@@ -1525,18 +1550,10 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.confirmLogContent.innerHTML = contentHtml;
             this.showModal('confirm-log-modal');
         },
-        handleSalespersonCheck(e) {
-            this.elements.salespersonLabel.classList.remove('checked');
-            if (e.target.checked) {
-                this.elements.salespersonLabel.innerHTML = `${this.state.scannedLogData.senderStore} will be able to see your sales`;
-                this.elements.salespersonLabel.classList.add('checked');
-            } else {
-                this.elements.salespersonLabel.innerHTML = `Are you a salesperson for ${this.state.scannedLogData.senderStore}?`;
-            }
-        },
+
         async acceptPikaLog() {
             if (!this.state.scannedLogData) return;
-            const isSalesperson = this.elements.salespersonCheckbox.checked;
+            const isSalesperson = this.state.user.type === 'Salesperson';
             const allProducts = await DB.getAllProducts();
             const productUpdates = [];
             let updatedProductsForFirebase = {};
@@ -1596,7 +1613,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 try {
                     const retailerDocRef = window.fb.doc(window.fb.db, `retailer_stocks/${supplierId}/supplied_retailers/${this.state.user.uid}`);
                     await window.fb.setDoc(retailerDocRef, {
-                        retailerName: isSalesperson ? this.state.user.name : this.state.user.business,
+                        retailerName: this.state.user.name,
                         businessName: this.state.user.business,
                         retailerLocation: this.state.user.location,
                         retailerPhone: this.state.user.phone,
@@ -1625,13 +1642,21 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             this.elements.internetNotice.style.display = 'none';
 
-            if (this.state.stockViewFilter === 'customers') {
+            if (this.state.user && this.state.user.type === 'Salesperson') {
+                this.elements.stockViewFilterTabs.style.display = 'none';
                 this.elements.retailerStockView.style.display = 'block';
                 this.elements.salespeopleView.style.display = 'none';
             } else {
-                this.elements.retailerStockView.style.display = 'none';
-                this.elements.salespeopleView.style.display = 'block';
+                this.elements.stockViewFilterTabs.style.display = 'flex';
+                if (this.state.stockViewFilter === 'customers') {
+                    this.elements.retailerStockView.style.display = 'block';
+                    this.elements.salespeopleView.style.display = 'none';
+                } else {
+                    this.elements.retailerStockView.style.display = 'none';
+                    this.elements.salespeopleView.style.display = 'block';
+                }
             }
+
 
             this.elements.retailerStockView.innerHTML = '<div class="spinner"></div>';
             this.elements.salespeopleView.innerHTML = '<div class="spinner"></div>';
