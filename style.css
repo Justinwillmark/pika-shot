@@ -395,6 +395,21 @@ html, body {
     font-weight: 700;
     color: var(--primary-color);
     margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.sales-legend {
+    padding: 10px 20px;
+    font-size: 0.8rem;
+    color: var(--text-light);
+    text-align: center;
+    background-color: #f9f9f9;
+    border-top: 1px solid var(--border-color);
+}
+.checkmark-icon {
+    color: var(--success-color);
+    font-weight: bold;
 }
 
 /* === Products View === */
@@ -827,8 +842,18 @@ html, body {
     text-decoration: none;
     text-align: center;
     display: block;
+    background-color: var(--primary-color);
 }
-
+#cancel-profile-btn {
+    background-color: var(--primary-color);
+}
+#logout-btn {
+    background-color: var(--text-light);
+}
+.profile-buttons-inline {
+    display: flex;
+    gap: 12px;
+}
 
 /* Receipt & Log Modals */
 .receipt-modal { max-height: 80vh; }

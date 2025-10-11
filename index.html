@@ -14,7 +14,7 @@
         // Import the functions you need from the SDKs you need
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-app.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-auth.js";
-        import { getFirestore, collection, doc, getDoc, setDoc, getDocs, serverTimestamp, updateDoc, onSnapshot, query, addDoc } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore.js";
+        import { getFirestore, collection, doc, getDoc, setDoc, getDocs, serverTimestamp, updateDoc, onSnapshot, query, addDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore.js";
 
         // Your web app's Firebase configuration
         const firebaseConfig = {
@@ -41,7 +41,8 @@
             serverTimestamp,
             onSnapshot,
             query,
-            addDoc
+            addDoc,
+            deleteDoc
         };
     </script>
 </head>
@@ -206,6 +207,9 @@
             <div id="all-sales-view" class="view page">
                 <div id="all-sales-list" class="all-sales-container">
                     </div>
+                 <div id="sales-legend" class="sales-legend" style="display: none;">
+                    <p><span class="checkmark-icon">✔</span> = Payment acknowledged by wholesaler.</p>
+                </div>
             </div>
 
             <div id="stock-levels-view" class="view page">
@@ -248,7 +252,7 @@
         <div id="receipt-actions" class="receipt-actions">
             <button id="cancel-selection-btn" class="btn btn-secondary">Cancel</button>
             <button id="generate-receipt-btn" class="btn btn-primary" disabled>Generate Receipt</button>
-            <button id="share-log-btn" class="btn btn-primary" style="display: none;">Share as Log</button>
+            <button id="share-log-btn" class="btn btn-primary" style="display: none;">Transfer Products</button>
         </div>
 
         <div id="camera-view" class="view camera-container">
@@ -400,7 +404,7 @@
         </div>
 
         <div id="qr-code-modal" class="modal-content" style="display:none;">
-            <h2>Share Log via QR</h2>
+            <h2>Transfer Products via QR</h2>
             <canvas id="qr-canvas"></canvas>
             <p class="qr-help-text">Have the purchasing retailer scan this QR code in their Pikashot app to auto-restock. Applies to salespeople.</p>
              <div class="modal-actions modal-actions-inline">
@@ -410,7 +414,7 @@
         </div>
 
         <div id="confirm-log-modal" class="modal-content" style="display:none;">
-            <h2 id="confirm-log-title">Accept Log?</h2>
+            <h2 id="confirm-log-title">Accept Transfer?</h2>
             <div id="confirm-log-content"></div>
             <div class="modal-actions modal-actions-inline">
                 <button id="reject-log-btn" class="btn btn-secondary">Reject</button>
@@ -453,12 +457,13 @@
                 </div>
             </div>
             <div class="modal-actions">
-                <a href="tel:07089319883" id="get-help-btn" class="btn btn-secondary">Get Help</a>
-                <button id="logout-btn" class="btn btn-danger">Logout</button>
+                <button id="cancel-profile-btn" class="btn btn-secondary">Cancel</button>
+                <div class="profile-buttons-inline">
+                    <a href="tel:07089319883" id="get-help-btn" class="btn btn-primary">Get Help</a>
+                    <button id="logout-btn" class="btn btn-danger">Logout</button>
+                </div>
             </div>
-            <button id="cancel-profile-btn" class="btn btn-secondary" style="margin-top: 12px;">Cancel</button>
         </div>
-
     </div>
 
     <script src="db.js"></script>
