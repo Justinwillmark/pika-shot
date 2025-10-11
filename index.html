@@ -125,8 +125,8 @@
         </div>
 
         <header id="app-header" class="app-header" style="display: none;">
-             <button id="back-btn" class="back-btn" style="display: none;">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+             <button id="menu-btn" class="back-btn">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
              </button>
              <h1 id="header-title">Home</h1>
              <button id="add-to-homescreen-btn" class="add-to-homescreen-btn" style="display: none;">Install app</button>
@@ -426,6 +426,37 @@
             <div class="modal-actions">
                 <button id="privacy-ok-btn" class="btn btn-primary">Got it</button>
             </div>
+        </div>
+
+        <div id="profile-modal" class="modal-content" style="display: none;">
+            <h2>Profile</h2>
+            <div class="profile-details">
+                <div class="profile-item">
+                    <span class="profile-label">Name</span>
+                    <span id="profile-name" class="profile-value"></span>
+                </div>
+                <div class="profile-item">
+                    <span class="profile-label">Business</span>
+                    <span id="profile-business" class="profile-value"></span>
+                </div>
+                <div class="profile-item">
+                    <span class="profile-label">Location</span>
+                    <span id="profile-location" class="profile-value"></span>
+                </div>
+                <div class="profile-item">
+                    <span class="profile-label">Phone</span>
+                    <span id="profile-phone" class="profile-value"></span>
+                </div>
+                <div class="profile-item">
+                    <span class="profile-label">Role</span>
+                    <span id="profile-role" class="profile-value"></span>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <a href="tel:07089319883" id="get-help-btn" class="btn btn-secondary">Get Help</a>
+                <button id="logout-btn" class="btn btn-danger">Logout</button>
+            </div>
+            <button id="cancel-profile-btn" class="btn btn-secondary" style="margin-top: 12px;">Cancel</button>
         </div>
 
     </div>

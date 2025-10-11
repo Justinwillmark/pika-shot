@@ -226,6 +226,7 @@ html, body {
 .btn-primary:active { background-color: var(--primary-dark); }
 .btn-secondary { background-color: var(--border-color); color: var(--text-color); }
 .btn-secondary:active { background-color: #ddd; }
+.btn-danger { background-color: var(--danger-color); color: white; }
 .btn-icon {
     display: flex;
     flex-direction: column;
@@ -794,6 +795,40 @@ html, body {
 .delete-btn-icon svg { stroke: var(--danger-color); transition: stroke 0.2s; }
 .delete-btn-icon:hover svg { stroke: white; }
 @keyframes modal-pop { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+/* Profile Modal */
+.profile-details {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 24px;
+}
+.profile-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+.profile-item:last-child {
+    border-bottom: none;
+}
+.profile-label {
+    font-size: 0.9rem;
+    color: var(--text-light);
+    font-weight: 500;
+}
+.profile-value {
+    font-size: 1rem;
+    font-weight: 600;
+    text-align: right;
+}
+#get-help-btn {
+    text-decoration: none;
+    text-align: center;
+    display: block;
+}
+
 
 /* Receipt & Log Modals */
 .receipt-modal { max-height: 80vh; }

@@ -3,7 +3,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // --- DOM ELEMENTS ---
         elements: {
             appHeader: document.getElementById('app-header'),
-            backBtn: document.getElementById('back-btn'),
+            menuBtn: document.getElementById('menu-btn'),
             welcomeName: document.getElementById('welcome-name'),
             welcomeDate: document.getElementById('welcome-date'),
             loader: document.getElementById('loader'),
@@ -139,6 +139,15 @@ document.addEventListener('DOMContentLoaded', () => {
             cartonQuantityLabel: document.getElementById('carton-quantity-label'),
             privacyLink: document.getElementById('privacy-link'),
             privacyOkBtn: document.getElementById('privacy-ok-btn'),
+            profileModal: document.getElementById('profile-modal'),
+            profileName: document.getElementById('profile-name'),
+            profileBusiness: document.getElementById('profile-business'),
+            profileLocation: document.getElementById('profile-location'),
+            profilePhone: document.getElementById('profile-phone'),
+            profileRole: document.getElementById('profile-role'),
+            getHelpBtn: document.getElementById('get-help-btn'),
+            logoutBtn: document.getElementById('logout-btn'),
+            cancelProfileBtn: document.getElementById('cancel-profile-btn'),
             toast: document.getElementById('toast'),
         },
 
@@ -212,7 +221,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // --- EVENT LISTENERS ---
         setupEventListeners() {
-            this.elements.backBtn.addEventListener('click', () => history.back());
+            this.elements.menuBtn.addEventListener('click', this.showProfileModal.bind(this));
             window.addEventListener('popstate', this.handlePopState.bind(this));
 
             this.elements.startOnboardingBtn.addEventListener('click', this.handleOnboarding.bind(this));
@@ -264,6 +273,8 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.refreshStocksBtn.addEventListener('click', this.renderRetailerStocks.bind(this));
             this.elements.cartonDetailsForm.addEventListener('submit', this.handleSaveCartonDetails.bind(this));
             this.elements.cancelCartonDetailsBtn.addEventListener('click', () => { this.hideModal(); this.showModal('product-form-modal'); });
+            this.elements.logoutBtn.addEventListener('click', this.handleLogout.bind(this));
+            this.elements.cancelProfileBtn.addEventListener('click', () => this.hideModal());
             this.elements.cartonSubunitTypeInput.addEventListener('input', (e) => {
                 const selectedUnit = e.target.value;
                 if (selectedUnit) {
@@ -395,9 +406,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             this.showView(viewId);
             this.elements.navButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.view === viewId));
-
-            const isHomePage = viewId === 'home-view' || !document.getElementById(viewId)?.classList.contains('page');
-            this.elements.backBtn.style.display = isHomePage ? 'none' : 'block';
+            
+            this.elements.menuBtn.style.display = 'block';
 
             this.elements.productsView.classList.toggle('selection-mode', this.state.productSelectionMode);
             this.elements.addNewProductBtn.style.display = (this.state.productSelectionMode || viewId !== 'products-view' || (this.state.user && this.state.user.type === 'Salesperson')) ? 'none' : 'flex';
@@ -438,12 +448,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     this.elements.seeStockLevelsContainer.style.display = 'block';
                     const buttonText = this.state.user.type === 'Salesperson' ? 'Customers' : 'Customers & Salespeople';
                     this.elements.seeStockLevelsBtn.innerHTML = `${buttonText} <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="arrow-icon"><polyline points="9 18 15 12 9 6"></polyline></svg>`;
-                    
-                    if (this.state.user.type === 'Wholesaler') {
-                        this.elements.shareLogBtn.style.display = 'block';
-                    } else {
-                        this.elements.shareLogBtn.style.display = 'none';
-                    }
+                    this.elements.shareLogBtn.style.display = 'block';
                 } else {
                     this.elements.seeStockLevelsContainer.style.display = 'none';
                     this.elements.shareLogBtn.style.display = 'none';
@@ -1398,54 +1403,61 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.showToast("Please select at least one sale to share.");
                 return;
             }
-            
-            // **FIX STARTS HERE: Group sales by product**
+
             const groupedSales = selectedSaleObjects.reduce((acc, sale) => {
-                const key = sale.productId; // Group by the unique product ID
+                const key = sale.productId;
                 if (!acc[key]) {
-                    acc[key] = {
-                        ...sale, // Copy all properties from the first sale of this product
-                        quantity: 0, // Reset quantity to be summed
-                    };
+                    acc[key] = { ...sale, quantity: 0 };
                 }
-                acc[key].quantity += sale.quantity; // Sum the quantities
+                acc[key].quantity += sale.quantity;
                 return acc;
             }, {});
 
             const aggregatedSaleObjects = Object.values(groupedSales);
-            // **FIX ENDS HERE**
-
             const allProducts = await DB.getAllProducts();
 
             const logData = {
-                pikaLogVersion: 2, // New version to indicate server-side log
+                pikaLogVersion: 2,
                 senderStore: this.state.user.business,
                 senderId: this.state.user.uid,
-                items: aggregatedSaleObjects.map(sale => { // Use the aggregated sales
+                senderRole: this.state.user.type,
+                items: aggregatedSaleObjects.map(sale => {
                     const product = allProducts.find(p => p.id === sale.productId);
-                    const item = {
-                        name: sale.productName,
-                        price: sale.price,
-                        quantity: sale.quantity,
-                        unit: product ? product.unit : 'pieces',
-                        barcode: product ? product.barcode : null
-                    };
-                    if (product && product.unit === 'cartons') {
-                        item.subUnitType = product.subUnitType;
-                        item.subUnitQuantity = product.subUnitQuantity;
+                    const isSalespersonSharingCarton = this.state.user.type === 'Salesperson' && product && product.unit === 'cartons';
+
+                    if (isSalespersonSharingCarton) {
+                        return {
+                            name: product.originalName || product.name,
+                            price: product.wholesalerPrice / product.subUnitQuantity,
+                            quantity: sale.quantity * product.subUnitQuantity,
+                            unit: product.subUnitType,
+                            barcode: null,
+                            subUnitType: product.subUnitType,
+                            subUnitQuantity: product.subUnitQuantity
+                        };
+                    } else {
+                        const item = {
+                            name: sale.productName,
+                            price: sale.price,
+                            quantity: sale.quantity,
+                            unit: product ? product.unit : 'pieces',
+                            barcode: product ? product.barcode : null
+                        };
+                        if (product && product.unit === 'cartons') {
+                            item.subUnitType = product.subUnitType;
+                            item.subUnitQuantity = product.subUnitQuantity;
+                        }
+                        return item;
                     }
-                    return item;
                 })
             };
-            
+
             try {
-                // Save to a new 'shared_logs' collection in Firestore
                 const logCollectionRef = window.fb.collection(window.fb.db, 'shared_logs');
                 const logDocRef = window.fb.doc(logCollectionRef);
                 await window.fb.setDoc(logDocRef, logData);
                 const logId = logDocRef.id;
 
-                // The QR code now only contains the ID with a prefix
                 QRCode.toCanvas(this.elements.qrCanvas, `pika-log-id:${logId}`, { width: 300 }, (error) => {
                     if (error) {
                         console.error(error);
@@ -1488,25 +1500,34 @@ document.addEventListener('DOMContentLoaded', () => {
                 alert("Cannot process log: not connected to online services.");
                 return;
             }
-            // You can show a loader here
             try {
                 const logDocRef = window.fb.doc(window.fb.db, 'shared_logs', logId);
                 const logDocSnap = await window.fb.getDoc(logDocRef);
                 if (logDocSnap.exists()) {
                     const logData = logDocSnap.data();
-                    this.handlePikaLogScanned(logData); // Reuse your existing logic
+                    this.handlePikaLogScanned(logData);
                 } else {
                     alert("Log not found. It may have been deleted.");
                 }
             } catch (error) {
                 console.error("Error fetching shared log:", error);
                 alert("Could not fetch the shared log data.");
-            } finally {
-                // Hide loader here
             }
         },
 
         handlePikaLogScanned(logData) {
+            const senderRole = logData.senderRole;
+            const currentUserRole = this.state.user.type;
+
+            if (currentUserRole === 'Salesperson' && senderRole === 'Salesperson') {
+                this.showToast("Salespeople cannot accept logs from other salespeople.");
+                return;
+            }
+            if (currentUserRole === 'Wholesaler' && senderRole === 'Salesperson') {
+                this.showToast("Wholesalers cannot accept logs from salespeople.");
+                return;
+            }
+
             this.state.scannedLogData = logData;
             this.elements.confirmLogTitle.textContent = `Accept Log from ${logData.senderStore}?`;
 
@@ -1514,7 +1535,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const dateScanned = new Date().toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' });
 
             const itemsHtml = logData.items.map(item => {
-                const isCarton = item.unit === 'cartons' && item.subUnitType;
+                const isCarton = item.unit === 'cartons' && item.subUnitType && this.state.user.type !== 'Salesperson';
                 const displayName = isCarton
                     ? `${item.name} (${this.formatNumber(item.quantity)} ${item.unit} -> ${this.formatNumber(item.quantity * item.subUnitQuantity)} ${item.subUnitType})`
                     : `${item.name} (${this.formatNumber(item.quantity)} ${item.unit})`;
@@ -1541,7 +1562,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     ${itemsHtml}
                     <div class="log-details-row footer">
                         <div class="log-details-cell item">TOTAL PURCHASE</div>
-                        <div class.log-details-cell total">&#8358;${this.formatNumber(totalCost)}</div>
+                        <div class="log-details-cell total">&#8358;${this.formatNumber(totalCost)}</div>
                     </div>
                 </div>
                 <p class="log-accept-notice">Accept for instant restocking. The wholesaler will see stock levels in real time and may call</p>
@@ -1564,12 +1585,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const isCarton = item.unit === 'cartons' && item.subUnitType && item.subUnitQuantity > 0;
                 
-                stockToAdd = isCarton ? item.quantity * item.subUnitQuantity : item.quantity;
-                unitType = isCarton ? item.subUnitType : item.unit;
-                costPrice = isCarton ? item.price / item.subUnitQuantity : item.price;
+                if (isSalesperson && isCarton) {
+                    stockToAdd = item.quantity;
+                    unitType = 'cartons';
+                    costPrice = item.price;
+                    needsSetup = 'price';
+                } else {
+                    stockToAdd = isCarton ? item.quantity * item.subUnitQuantity : item.quantity;
+                    unitType = isCarton ? item.subUnitType : item.unit;
+                    costPrice = isCarton ? item.price / item.subUnitQuantity : item.price;
+                    needsSetup = isCarton ? 'barcode-and-price' : 'price';
+                }
+                
                 wholesalerPrice = item.price;
-                needsSetup = isCarton ? 'barcode-and-price' : 'price';
-                barcode = isCarton ? null : item.barcode;
+                barcode = item.barcode;
                 originalName = item.name;
                 
                 const existingProduct = allProducts.find(p => p.name.toLowerCase() === item.name.toLowerCase());
@@ -1584,6 +1613,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     existingProduct.originalName = originalName;
                     existingProduct.wholesalerPrice = wholesalerPrice;
                     if (barcode) existingProduct.barcode = barcode;
+                    if (isSalesperson && isCarton) {
+                        existingProduct.subUnitType = item.subUnitType;
+                        existingProduct.subUnitQuantity = item.subUnitQuantity;
+                    }
                     finalProduct = existingProduct;
                 } else {
                     finalProduct = {
@@ -1602,6 +1635,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         wholesalerPrice: wholesalerPrice,
                         needsSetup: needsSetup
                     };
+                     if (isSalesperson && isCarton) {
+                        finalProduct.subUnitType = item.subUnitType;
+                        finalProduct.subUnitQuantity = item.subUnitQuantity;
+                    }
                 }
                 productUpdates.push(DB.saveProduct(finalProduct));
                 updatedProductsForFirebase[finalProduct.originalName] = { stock: finalProduct.stock, unit: finalProduct.unit, isSalesperson };
@@ -2046,6 +2083,26 @@ document.addEventListener('DOMContentLoaded', () => {
         handleBeforeInstallPrompt(event) { event.preventDefault(); this.state.deferredInstallPrompt = event; this.elements.installBtn.style.display = 'block'; },
         promptInstall() { if (this.state.deferredInstallPrompt) { this.state.deferredInstallPrompt.prompt(); this.state.deferredInstallPrompt.userChoice.then(() => { this.state.deferredInstallPrompt = null; this.elements.installBtn.style.display = 'none'; }); } },
         registerServiceWorker() { if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('/serviceworker.js').then(reg => console.log('Service Worker registered.')).catch(err => console.error('Service Worker registration failed:', err)); }); } },
+
+        showProfileModal() {
+            if (this.state.user) {
+                this.elements.profileName.textContent = this.state.user.name;
+                this.elements.profileBusiness.textContent = this.state.user.business;
+                this.elements.profileLocation.textContent = this.state.user.location;
+                this.elements.profilePhone.textContent = this.state.user.phone;
+                this.elements.profileRole.textContent = this.state.user.type;
+                this.showModal('profile-modal');
+            }
+        },
+
+        async handleLogout() {
+            if (confirm('Are you sure you want to log out?')) {
+                this.state.user = null;
+                await DB.clearUser();
+                this.hideModal();
+                window.location.reload();
+            }
+        },
     };
 
     App.init();
