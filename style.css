@@ -120,6 +120,32 @@ html, body {
     transform: translateY(-50%);
 }
 
+.page-actions-header {
+    padding: 12px 20px;
+    background-color: var(--background-color);
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+}
+.btn-icon-link {
+    background: none;
+    border: none;
+    color: var(--primary-color);
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.btn-icon-link:active {
+    color: var(--primary-dark);
+}
+
 /* === Onboarding & Permissions === */
 .onboarding-content { display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 30px; text-align: center; height: 100%; }
 .onboarding-content h1, .onboarding-content h2 { font-size: clamp(1.5rem, 6vw, 1.8rem); font-weight: 700; margin-bottom: 12px; }

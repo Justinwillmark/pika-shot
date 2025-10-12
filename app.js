@@ -1426,15 +1426,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.showToast("Cannot generate transfer QR: not connected to online services.");
                 return;
             }
-
+        
             const allSales = await DB.getAllSales();
             const selectedSaleObjects = allSales.filter(s => this.state.selectedSales.has(s.id));
-
+        
             if (selectedSaleObjects.length === 0) {
                 this.showToast("Please select at least one sale to transfer.");
                 return;
             }
-
+        
             const groupedSales = selectedSaleObjects.reduce((acc, sale) => {
                 const key = sale.productId;
                 if (!acc[key]) {
@@ -1443,10 +1443,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 acc[key].quantity += sale.quantity;
                 return acc;
             }, {});
-
+        
             const aggregatedSaleObjects = Object.values(groupedSales);
             const allProducts = await DB.getAllProducts();
-
+        
             const logData = {
                 pikaLogVersion: 2,
                 senderStore: this.state.user.business,
@@ -1455,14 +1455,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 items: aggregatedSaleObjects.map(sale => {
                     const product = allProducts.find(p => p.id === sale.productId);
                     const isSalespersonSharingCarton = this.state.user.type === 'Salesperson' && product && product.unit === 'cartons';
-
+        
                     if (isSalespersonSharingCarton) {
                         return {
                             name: product.originalName || product.name,
-                            price: product.wholesalerPrice / product.subUnitQuantity,
-                            quantity: sale.quantity * product.subUnitQuantity,
-                            unit: product.subUnitType,
-                            barcode: null, // Barcode is for the carton, not the sub-unit
+                            price: product.wholesalerPrice,
+                            quantity: sale.quantity,
+                            unit: 'cartons',
+                            barcode: product.barcode,
                             subUnitType: product.subUnitType,
                             subUnitQuantity: product.subUnitQuantity
                         };
@@ -1637,9 +1637,9 @@ document.addEventListener('DOMContentLoaded', () => {
         
                 if (isSalesperson) {
                     stockToAdd = item.quantity;
-                    unitType = 'cartons';
+                    unitType = item.unit;
                     costPrice = item.price;
-                    needsSetup = 'price'; 
+                    needsSetup = 'price';
                 } else if (isRetailerReceiving && isCarton) {
                     stockToAdd = item.quantity * item.subUnitQuantity;
                     unitType = item.subUnitType;
