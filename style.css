@@ -851,9 +851,19 @@ html, body {
 }
 #get-help-btn {
     flex: 2;
+    text-decoration: none;
+    display: flex;
+    justify-content: center;
+    align-items: center;
 }
 #logout-btn {
     flex: 1;
+    background-color: transparent;
+    border: 1px solid var(--danger-color);
+    color: var(--danger-color);
+}
+#logout-btn:active {
+    background-color: #ffebee;
 }
 
 /* Receipt & Log Modals */

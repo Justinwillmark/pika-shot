@@ -1617,6 +1617,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
             const isSalesperson = this.state.user.type === 'Salesperson';
             const isWholesalerReceiving = this.state.user.type === 'Wholesaler';
+            const isRetailerReceiving = this.state.user.type === 'Retailer';
         
             const allProducts = await DB.getAllProducts();
             const productUpdates = [];
@@ -1637,17 +1638,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     stockToAdd = item.quantity;
                     unitType = 'cartons';
                     costPrice = item.price;
-                    needsSetup = 'barcode-and-price';
-                } else if (this.state.scannedLogData.senderRole === 'Salesperson') {
+                    needsSetup = 'price'; 
+                } else if (this.state.scannedLogData.senderRole === 'Salesperson' || isRetailerReceiving) {
                     stockToAdd = item.quantity;
                     unitType = item.unit;
                     costPrice = item.price;
-                    needsSetup = 'price'; // For retailer receiving from salesperson
+                    needsSetup = 'barcode-and-price'; 
                 } else {
                     stockToAdd = isCarton ? item.quantity * item.subUnitQuantity : item.quantity;
                     unitType = isCarton ? item.subUnitType : item.unit;
                     costPrice = isCarton ? item.price / item.subUnitQuantity : item.price;
-                    needsSetup = isCarton ? 'barcode-and-price' : 'price';
+                    needsSetup = 'barcode-and-price';
                 }
         
                 wholesalerPrice = item.price;
@@ -1666,9 +1667,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (!existingProduct.barcode && barcode) {
                         existingProduct.barcode = barcode;
                     }
-                    if (this.state.scannedLogData.senderRole !== 'Salesperson') {
-                        existingProduct.needsSetup = needsSetup;
-                    }
+                    existingProduct.needsSetup = needsSetup;
                     existingProduct.lockedUntilOOS = true;
                     existingProduct.isSalesperson = isSalesperson;
                     existingProduct.originalName = originalName;
