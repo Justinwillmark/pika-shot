@@ -1777,7 +1777,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.state.retailerListener = window.fb.onSnapshot(q, async (querySnapshot) => {
                     if (querySnapshot.empty) {
                         const emptyHtmlRetailer = `<p class="empty-state">No data found. Sell and transfer products to the purchasing retailer to see their real-time stock level here.</p>`;
-                        const emptyHtmlSalespeople = `<p class="empty-state">No data found. Sell and transfer products to the your salespeople to see their real-time stock level and sales here.</p>`;
+                        const emptyHtmlSalespeople = `<p class="empty-state">No data found. Transfer products to your salespeople to see their real-time stock level and sales here.</p>`;
                         this.elements.retailerStockView.innerHTML = emptyHtmlRetailer;
                         this.elements.salespeopleView.innerHTML = emptyHtmlSalespeople;
                         return;
