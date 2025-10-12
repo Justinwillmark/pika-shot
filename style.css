@@ -407,9 +407,16 @@ html, body {
     background-color: #f9f9f9;
     border-top: 1px solid var(--border-color);
 }
-.checkmark-icon {
+.acknowledgement-text {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 500;
     color: var(--success-color);
-    font-weight: bold;
+    background-color: #eaf6ec;
+    padding: 8px 12px;
+    border-radius: 8px;
+    margin: -8px 0 12px;
+    text-align: center;
 }
 
 /* === Products View === */
@@ -838,21 +845,15 @@ html, body {
     font-weight: 600;
     text-align: right;
 }
-#get-help-btn {
-    text-decoration: none;
-    text-align: center;
-    display: block;
-    background-color: var(--primary-color);
-}
-#cancel-profile-btn {
-    background-color: var(--primary-color);
-}
-#logout-btn {
-    background-color: var(--text-light);
-}
 .profile-buttons-inline {
     display: flex;
     gap: 12px;
+}
+#get-help-btn {
+    flex: 2;
+}
+#logout-btn {
+    flex: 1;
 }
 
 /* Receipt & Log Modals */

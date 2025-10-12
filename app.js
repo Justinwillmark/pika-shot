@@ -513,35 +513,43 @@ document.addEventListener('DOMContentLoaded', () => {
             const allSales = await DB.getAllSales();
             const sortedSales = allSales.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
             this.elements.allSalesList.innerHTML = '';
-
+        
             if (this.state.user.type === 'Salesperson') {
                 this.elements.salesLegend.style.display = 'block';
             } else {
                 this.elements.salesLegend.style.display = 'none';
             }
-
+        
             if (sortedSales.length === 0) {
                 this.elements.allSalesList.innerHTML = `<p class="empty-state">No sales recorded yet.</p>`;
                 return;
             }
-
+        
             const groupedSales = this.groupSalesByDate(sortedSales);
             for (const groupTitle in groupedSales) {
                 const groupContainer = document.createElement('div');
                 groupContainer.className = 'sales-group';
-
+        
                 const dailyTotal = groupedSales[groupTitle].reduce((sum, sale) => sum + sale.total, 0);
-
+        
                 const groupHeader = document.createElement('div');
                 groupHeader.className = 'sales-group-header';
-
+        
                 const safeDateKey = groupTitle.split(', ')[1] ? new Date(groupTitle.split(', ')[1] + ' ' + new Date().getFullYear()).toLocaleDateString('en-NG', { year: 'numeric', month: 'short', day: 'numeric' }).replace(/[^a-zA-Z0-9]/g, '_') : groupTitle.replace(/[^a-zA-Z0-9]/g, '_');
                 
-                const isAcknowledged = this.state.acknowledgedSalesData[safeDateKey];
-                
-                groupHeader.innerHTML = `<h3>${groupTitle}</h3><p class="sales-group-total">&#8358;${this.formatNumber(dailyTotal)} ${isAcknowledged ? '<span class="checkmark-icon">✔</span>' : ''}</p>`;
+                const acknowledgement = this.state.acknowledgedSalesData[safeDateKey];
+                let acknowledgedHtml = '';
+                if (acknowledgement) {
+                    const ackDate = new Date(groupTitle.split(', ')[1]).toLocaleDateString('en-NG', { month: 'short', day: 'numeric' });
+                    acknowledgedHtml = `<span class="acknowledgement-text">Your sales payment for ${ackDate} acknowledged by ${acknowledgement.wholesalerName}.</span>`;
+                }
+        
+                groupHeader.innerHTML = `<h3>${groupTitle}</h3><p class="sales-group-total">&#8358;${this.formatNumber(dailyTotal)}</p>`;
+                if (acknowledgedHtml) {
+                    groupHeader.insertAdjacentHTML('afterend', acknowledgedHtml);
+                }
                 groupContainer.appendChild(groupHeader);
-
+        
                 groupedSales[groupTitle].forEach(sale => {
                     const saleEl = document.createElement('div');
                     saleEl.className = 'sale-item';
@@ -550,7 +558,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     saleEl.dataset.saleId = sale.id;
                     const imageUrl = sale.image ? URL.createObjectURL(sale.image) : 'icons/icon-192.png';
-                    saleEl.innerHTML = `<div class="sale-item-overlay">Previously Transferred</div><img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${this.formatNumber(sale.quantity)} x &#8358;${this.formatNumber(sale.price)}</span></div><p class.sale-price">&#8358;${this.formatNumber(sale.total)}</p>`;
+                    saleEl.innerHTML = `<div class="sale-item-overlay">Previously Transferred</div><img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${this.formatNumber(sale.quantity)} x &#8358;${this.formatNumber(sale.price)}</span></div><p class="sale-price">&#8358;${this.formatNumber(sale.total)}</p>`;
                     this.addSaleItemEventListeners(saleEl, sale);
                     groupContainer.appendChild(saleEl);
                 });
@@ -1546,7 +1554,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
             }
-
+        
             if (currentUserRole === 'Salesperson' && senderRole === 'Salesperson') {
                 this.showToast("Salespeople cannot accept transfers from other salespeople.");
                 return;
@@ -1555,19 +1563,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.showToast("Wholesalers cannot accept transfers from salespeople.");
                 return;
             }
-
+        
             this.state.scannedLogData = logData;
             this.elements.confirmLogTitle.textContent = `Accept Transfer from ${logData.senderStore}?`;
-
+        
             const totalCost = logData.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
             const dateScanned = new Date().toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' });
-
+        
             const itemsHtml = logData.items.map(item => {
                 const isCarton = item.unit === 'cartons' && item.subUnitType && this.state.user.type !== 'Salesperson';
                 const displayName = isCarton
                     ? `${item.name} (${this.formatNumber(item.quantity)} ${item.unit} -> ${this.formatNumber(item.quantity * item.subUnitQuantity)} ${item.subUnitType})`
                     : `${item.name} (${this.formatNumber(item.quantity)} ${item.unit})`;
-
+        
                 return `
                 <div class="log-details-row">
                     <div class="log-details-cell item">${displayName}</div>
@@ -1575,7 +1583,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="log-details-cell total">&#8358;${this.formatNumber(item.quantity * item.price)}</div>
                 </div>
             `}).join('');
-
+        
+            const noticeText = currentUserRole === 'Salesperson' 
+                ? "Accept for instant restocking. The wholesaler will see stock levels, and sales in real time."
+                : "Accept for instant restocking. The wholesaler will only see stock levels in real time for offers.";
+        
             const contentHtml = `
                 <div class="log-summary">
                     <p><strong>From:</strong> ${logData.senderStore}</p>
@@ -1593,23 +1605,26 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="log-details-cell total">&#8358;${this.formatNumber(totalCost)}</div>
                     </div>
                 </div>
-                <p class="log-accept-notice">Accept for instant restocking. The wholesaler will only see stock levels in real time for offers.</p>
+                <p class="log-accept-notice">${noticeText}</p>
             `;
-
+        
             this.elements.confirmLogContent.innerHTML = contentHtml;
             this.showModal('confirm-log-modal');
         },
 
         async acceptPikaLog() {
             if (!this.state.scannedLogData) return;
+        
             const isSalesperson = this.state.user.type === 'Salesperson';
+            const isWholesalerReceiving = this.state.user.type === 'Wholesaler';
+        
             const allProducts = await DB.getAllProducts();
             const productUpdates = [];
             let updatedProductsForFirebase = {};
             const supplierId = this.state.scannedLogData.senderId;
-
+        
             for (const item of this.state.scannedLogData.items) {
-                let stockToAdd, unitType, costPrice, needsSetup, barcode, originalName, wholesalerPrice;
+                let stockToAdd, unitType, costPrice, needsSetup, barcode, originalName, wholesalerPrice, subUnitType, subUnitQuantity;
         
                 const isCarton = item.unit === 'cartons' && item.subUnitType && item.subUnitQuantity > 0;
         
@@ -1618,6 +1633,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     unitType = 'cartons';
                     costPrice = item.price;
                     needsSetup = 'price';
+                } else if (isWholesalerReceiving && isCarton) {
+                    stockToAdd = item.quantity;
+                    unitType = 'cartons';
+                    costPrice = item.price;
+                    needsSetup = 'barcode-and-price';
                 } else if (this.state.scannedLogData.senderRole === 'Salesperson') {
                     stockToAdd = item.quantity;
                     unitType = item.unit;
@@ -1633,6 +1653,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 wholesalerPrice = item.price;
                 barcode = item.barcode;
                 originalName = item.name;
+                subUnitType = item.subUnitType;
+                subUnitQuantity = item.subUnitQuantity;
         
                 const existingProduct = allProducts.find(p => (p.originalName || p.name).toLowerCase() === originalName.toLowerCase());
         
@@ -1641,7 +1663,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (existingProduct) {
                     existingProduct.stock += stockToAdd;
                     existingProduct.supplierId = supplierId;
-                    if (!existingProduct.barcode && barcode) { // Only update barcode if it's missing
+                    if (!existingProduct.barcode && barcode) {
                         existingProduct.barcode = barcode;
                     }
                     if (this.state.scannedLogData.senderRole !== 'Salesperson') {
@@ -1651,9 +1673,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     existingProduct.isSalesperson = isSalesperson;
                     existingProduct.originalName = originalName;
                     existingProduct.wholesalerPrice = wholesalerPrice;
-                    if (isSalesperson && isCarton) {
-                        existingProduct.subUnitType = item.subUnitType;
-                        existingProduct.subUnitQuantity = item.subUnitQuantity;
+                    if (isCarton) {
+                        existingProduct.subUnitType = subUnitType;
+                        existingProduct.subUnitQuantity = subUnitQuantity;
                     }
                     finalProduct = existingProduct;
                 } else {
@@ -1673,17 +1695,17 @@ document.addEventListener('DOMContentLoaded', () => {
                         wholesalerPrice: wholesalerPrice,
                         needsSetup: needsSetup
                     };
-                    if (isSalesperson && isCarton) {
-                        finalProduct.subUnitType = item.subUnitType;
-                        finalProduct.subUnitQuantity = item.subUnitQuantity;
+                    if (isCarton) {
+                        finalProduct.subUnitType = subUnitType;
+                        finalProduct.subUnitQuantity = subUnitQuantity;
                     }
                 }
                 productUpdates.push(DB.saveProduct(finalProduct));
                 updatedProductsForFirebase[finalProduct.originalName] = { stock: finalProduct.stock, unit: finalProduct.unit, isSalesperson };
             }
-
+        
             await Promise.all(productUpdates);
-
+        
             if (this.state.firebaseReady && supplierId && this.state.user.uid) {
                 try {
                     const retailerDocRef = window.fb.doc(window.fb.db, `retailer_stocks/${supplierId}/supplied_retailers/${this.state.user.uid}`);
@@ -1700,10 +1722,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     alert("Local inventory updated, but failed to sync online.");
                 }
             }
-
+        
             this.hideModal();
             this.state.scannedLogData = null;
-            alert('Inventory updated successfully! Check "My Products" to set your prices.');
+            const successMessage = isSalesperson
+                ? 'Inventory updated successfully! Check "My Products" to add product images.'
+                : 'Inventory updated successfully! Check "My Products" to set your prices.';
+            alert(successMessage);
             await this.renderProducts();
             this.navigateTo('products-view');
         },
@@ -2029,7 +2054,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 const docRef = window.fb.doc(window.fb.db, `retailer_stocks/${this.state.user.uid}/supplied_retailers/${retailerId}`);
                 const updateData = {};
                 const safeDateKey = date.split(', ')[1] ? new Date(date.split(', ')[1] + ' ' + new Date().getFullYear()).toLocaleDateString('en-NG', { year: 'numeric', month: 'short', day: 'numeric' }).replace(/[^a-zA-Z0-9]/g, '_') : date.replace(/[^a-zA-Z0-9]/g, '_');
-                updateData[`acknowledgedSales.${safeDateKey}`] = true;
+                updateData[`acknowledgedSales.${safeDateKey}`] = {
+                    acknowledged: true,
+                    wholesalerName: this.state.user.business
+                };
                 
                 await window.fb.updateDoc(docRef, updateData);
                 this.showToast(`Payment for ${date} acknowledged.`);
@@ -2146,7 +2174,6 @@ document.addEventListener('DOMContentLoaded', () => {
         async fetchAcknowledgedSales() {
             if (this.state.user.type !== 'Salesperson' || !this.state.firebaseReady) return;
         
-            // Find the supplierId from the first product with one
             const allProducts = await DB.getAllProducts();
             const productWithSupplier = allProducts.find(p => p.supplierId);
             if (!productWithSupplier) {
