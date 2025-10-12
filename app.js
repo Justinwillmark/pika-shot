@@ -4,6 +4,7 @@ document.addEventListener('DOMContentLoaded', () => {
         elements: {
             appHeader: document.getElementById('app-header'),
             menuBtn: document.getElementById('menu-btn'),
+            backArrowBtn: document.getElementById('back-arrow-btn'),
             welcomeName: document.getElementById('welcome-name'),
             welcomeDate: document.getElementById('welcome-date'),
             loader: document.getElementById('loader'),
@@ -224,6 +225,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // --- EVENT LISTENERS ---
         setupEventListeners() {
             this.elements.menuBtn.addEventListener('click', this.showProfileModal.bind(this));
+            this.elements.backArrowBtn.addEventListener('click', () => history.back());
             window.addEventListener('popstate', this.handlePopState.bind(this));
 
             this.elements.startOnboardingBtn.addEventListener('click', this.handleOnboarding.bind(this));
@@ -365,28 +367,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
         async navigateTo(viewId, isBackNavigation = false) {
             if (this.state.currentView === 'camera-view') {
-                // Reset camera UI to default (for scanning) when leaving the view
                 document.querySelector('#camera-overlay .scan-box').style.display = 'block';
                 this.elements.scanFeedback.textContent = 'Scanning for product...';
             }
-
+        
             if (this.state.currentView === viewId && !isBackNavigation) return;
-
+        
             if (!isBackNavigation) {
                 history.pushState({ view: viewId }, '', `#${viewId}`);
             }
-
+        
             if (this.state.productSelectionMode && viewId !== 'products-view') {
                 this.state.productSelectionMode = false;
             }
-
+        
             if (viewId === 'all-sales-view') {
                 if (this.state.user.type === 'Salesperson') {
                     await this.fetchAcknowledgedSales();
                 }
                 this.renderAllSales();
             }
-
+        
             if (viewId === 'stock-levels-view') {
                 this.renderRetailerStocks();
                 window.addEventListener('online', this.handleOnlineStatusChange);
@@ -399,7 +400,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     this.state.retailerListener = null;
                 }
             }
-
+        
             if (viewId === 'products-view' && !this.state.productSelectionMode) {
                 this.elements.productSearchInput.value = '';
                 this.state.productFilter = 'all';
@@ -408,15 +409,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 this.renderProducts();
             }
-
+        
             this.showView(viewId);
             this.elements.navButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.view === viewId));
-            
-            this.elements.menuBtn.style.display = 'block';
-
+        
+            if (viewId === 'home-view') {
+                this.elements.menuBtn.style.display = 'block';
+                this.elements.backArrowBtn.style.display = 'none';
+            } else {
+                this.elements.menuBtn.style.display = 'none';
+                this.elements.backArrowBtn.style.display = 'block';
+            }
+        
             this.elements.productsView.classList.toggle('selection-mode', this.state.productSelectionMode);
             this.elements.addNewProductBtn.style.display = (this.state.productSelectionMode || viewId !== 'products-view' || (this.state.user && this.state.user.type === 'Salesperson')) ? 'none' : 'flex';
-
+        
             this.exitSelectionMode();
         },
 
@@ -1571,10 +1578,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const dateScanned = new Date().toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' });
         
             const itemsHtml = logData.items.map(item => {
-                const isCarton = item.unit === 'cartons' && item.subUnitType && this.state.user.type !== 'Salesperson';
-                const displayName = isCarton
-                    ? `${item.name} (${this.formatNumber(item.quantity)} ${item.unit} -> ${this.formatNumber(item.quantity * item.subUnitQuantity)} ${item.subUnitType})`
-                    : `${item.name} (${this.formatNumber(item.quantity)} ${item.unit})`;
+                let displayName = `${item.name} (${this.formatNumber(item.quantity)} ${item.unit})`;
+                if (item.unit === 'cartons' && item.subUnitType && item.subUnitQuantity > 0) {
+                    displayName = `${item.name} (${this.formatNumber(item.quantity)} ${item.unit} -> ${this.formatNumber(item.quantity * item.subUnitQuantity)} ${item.subUnitType})`;
+                }
         
                 return `
                 <div class="log-details-row">
@@ -1584,7 +1591,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             `}).join('');
         
-            const noticeText = currentUserRole === 'Salesperson' 
+            const noticeText = currentUserRole === 'Salesperson'
                 ? "Accept for instant restocking. The wholesaler will see stock levels, and sales in real time."
                 : "Accept for instant restocking. The wholesaler will only see stock levels in real time for offers.";
         
@@ -1616,7 +1623,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!this.state.scannedLogData) return;
         
             const isSalesperson = this.state.user.type === 'Salesperson';
-            const isWholesalerReceiving = this.state.user.type === 'Wholesaler';
             const isRetailerReceiving = this.state.user.type === 'Retailer';
         
             const allProducts = await DB.getAllProducts();
@@ -1629,26 +1635,21 @@ document.addEventListener('DOMContentLoaded', () => {
         
                 const isCarton = item.unit === 'cartons' && item.subUnitType && item.subUnitQuantity > 0;
         
-                if (isSalesperson && isCarton) {
+                if (isSalesperson) {
                     stockToAdd = item.quantity;
                     unitType = 'cartons';
                     costPrice = item.price;
-                    needsSetup = 'price';
-                } else if (isWholesalerReceiving && isCarton) {
-                    stockToAdd = item.quantity;
-                    unitType = 'cartons';
-                    costPrice = item.price;
-                    needsSetup = 'price';
-                } else if (this.state.scannedLogData.senderRole === 'Salesperson' || isRetailerReceiving) {
+                    needsSetup = 'price'; 
+                } else if (isRetailerReceiving && isCarton) {
+                    stockToAdd = item.quantity * item.subUnitQuantity;
+                    unitType = item.subUnitType;
+                    costPrice = item.price / item.subUnitQuantity;
+                    needsSetup = 'barcode-and-price';
+                } else {
                     stockToAdd = item.quantity;
                     unitType = item.unit;
                     costPrice = item.price;
-                    needsSetup = 'barcode-and-price';
-                } else {
-                    stockToAdd = isCarton ? item.quantity * item.subUnitQuantity : item.quantity;
-                    unitType = isCarton ? item.subUnitType : item.unit;
-                    costPrice = isCarton ? item.price / item.subUnitQuantity : item.price;
-                    needsSetup = 'barcode-and-price';
+                    needsSetup = 'price';
                 }
         
                 wholesalerPrice = item.price;
@@ -1777,7 +1778,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.state.retailerListener = window.fb.onSnapshot(q, async (querySnapshot) => {
                     if (querySnapshot.empty) {
                         const emptyHtmlRetailer = `<p class="empty-state">No data found. Sell and transfer products to the purchasing retailer to see their real-time stock level here.</p>`;
-                        const emptyHtmlSalespeople = `<p class="empty-state">No data found. Transfer products to your salespeople to see their real-time stock level and sales here.</p>`;
+                        const emptyHtmlSalespeople = `<p class="empty-state">No data found. Sell and transfer products to your salespeople to see their real-time stock level and sales here.</p>`;
                         this.elements.retailerStockView.innerHTML = emptyHtmlRetailer;
                         this.elements.salespeopleView.innerHTML = emptyHtmlSalespeople;
                         return;
