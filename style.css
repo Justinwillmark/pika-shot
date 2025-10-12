@@ -109,7 +109,7 @@ html, body {
     top: 50%;
     transform: translateY(-50%);
 }
-.back-btn {
+.menu-btn, .back-btn {
     background: none;
     border: none;
     padding: 4px;
@@ -118,31 +118,6 @@ html, body {
     left: 16px;
     top: 50%;
     transform: translateY(-50%);
-}
-.page-actions-header {
-    padding: 12px 20px;
-    background-color: var(--background-color);
-    border-bottom: 1px solid var(--border-color);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    position: sticky;
-    top: 0;
-    z-index: 5;
-}
-.btn-icon-link {
-    background: none;
-    border: none;
-    color: var(--primary-color);
-    font-weight: 600;
-    font-size: 0.9rem;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-}
-.btn-icon-link:active {
-    color: var(--primary-dark);
 }
 
 /* === Onboarding & Permissions === */
