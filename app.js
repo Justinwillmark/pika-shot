@@ -625,7 +625,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (products.length === 0) {
                 if (this.state.user && this.state.user.type === 'Salesperson') {
-                    this.elements.productGrid.innerHTML = '<p class="empty-state">You have no products yet. Scan a QR code from your wholesaler to receive products.</p>';
+                    this.elements.productGrid.innerHTML = '<p class="empty-state">You have no products yet. Scan a QR code from your wholesaler (admin) to receive products.</p>';
                 } else if (searchText) {
                     this.elements.productGrid.innerHTML = '<p class="empty-state">No products match your search.</p>';
                 } else if (filterType !== 'all') {
@@ -1593,7 +1593,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="log-details-cell total">&#8358;${this.formatNumber(totalCost)}</div>
                     </div>
                 </div>
-                <p class="log-accept-notice">Accept for instant restocking. The wholesaler will see stock levels in real time and may call</p>
+                <p class="log-accept-notice">Accept for instant restocking. The wholesaler will only see stock levels in real time for offers.</p>
             `;
 
             this.elements.confirmLogContent.innerHTML = contentHtml;
