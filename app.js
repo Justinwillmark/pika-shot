@@ -2202,7 +2202,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (count >= 25) {
                 rewardText = '🚀 Great start! Let\'s do more! 🚀';
             } else if (count > 0) {
-                rewardText = '👍 Keep up the great work!';
+                rewardText = '👍 Scan more for free airtime!';
             }
             this.elements.scanReward.textContent = rewardText;
         },
