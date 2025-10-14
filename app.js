@@ -151,6 +151,10 @@ document.addEventListener('DOMContentLoaded', () => {
             logoutBtn: document.getElementById('logout-btn'),
             cancelProfileBtn: document.getElementById('cancel-profile-btn'),
             toast: document.getElementById('toast'),
+            scanTrackerContainer: document.getElementById('scan-tracker-container'),
+            scanProgress: document.getElementById('scan-progress'),
+            scanCount: document.getElementById('scan-count'),
+            scanReward: document.getElementById('scan-reward'),
         },
 
         // --- APP STATE ---
@@ -801,6 +805,11 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         },
 
+        async _handleSuccessfulScan() {
+            await DB.incrementScanCount();
+            this.updateScanTracker();
+        },
+
         startAddProduct() {
             if (this.state.user && this.state.user.type === 'Salesperson') {
                 this.showToast("Salespeople can only receive products via QR code from a wholesaler.");
@@ -838,6 +847,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 barcode: result.data.pikaLogVersion ? 'PIKA_LOG' : result.data,
                 timestamp: window.fb.serverTimestamp()
             });
+            
+            this._handleSuccessfulScan();
 
             switch (result.type) {
                 case 'barcode':
@@ -878,6 +889,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         barcode: result.data.pikaLogVersion ? 'PIKA_LOG' : result.data,
                         timestamp: window.fb.serverTimestamp()
                     });
+                    
+                    this._handleSuccessfulScan();
+                    
                     history.back();
                     if (result.type === 'barcode') {
                         const product = await DB.getProductByBarcode(result.data);
@@ -2159,15 +2173,38 @@ document.addEventListener('DOMContentLoaded', () => {
         promptInstall() { if (this.state.deferredInstallPrompt) { this.state.deferredInstallPrompt.prompt(); this.state.deferredInstallPrompt.userChoice.then(() => { this.state.deferredInstallPrompt = null; this.elements.installBtn.style.display = 'none'; }); } },
         registerServiceWorker() { if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('/serviceworker.js').then(reg => console.log('Service Worker registered.')).catch(err => console.error('Service Worker registration failed:', err)); }); } },
 
-        showProfileModal() {
+        async showProfileModal() {
             if (this.state.user) {
                 this.elements.profileName.textContent = this.state.user.name;
                 this.elements.profileBusiness.textContent = this.state.user.business;
                 this.elements.profileLocation.textContent = this.state.user.location;
                 this.elements.profilePhone.textContent = this.state.user.phone;
                 this.elements.profileRole.textContent = this.state.user.type;
+                
+                await this.updateScanTracker();
+                
                 this.showModal('profile-modal');
             }
+        },
+
+        async updateScanTracker() {
+            const count = await DB.getScanCountForToday();
+            this.elements.scanCount.textContent = count;
+            
+            const progress = Math.min((count / 100) * 100, 100);
+            this.elements.scanProgress.style.width = `${progress}%`;
+
+            let rewardText = '';
+            if (count >= 100) {
+                rewardText = '🎉 Wow! Over 100 scans! You are a SUPERSTAR! 🎉';
+            } else if (count >= 50) {
+                rewardText = '🔥 You are on fire! Keep going! 🔥';
+            } else if (count >= 25) {
+                rewardText = '🚀 Great start! Let\'s do more! 🚀';
+            } else if (count > 0) {
+                rewardText = '👍 Keep up the great work!';
+            }
+            this.elements.scanReward.textContent = rewardText;
         },
 
         async handleLogout() {

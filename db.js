@@ -1,7 +1,7 @@
 const DB = {
     db: null,
     dbName: 'PikaShotDB',
-    dbVersion: 4, // Incremented version to handle schema upgrade
+    dbVersion: 5, // Incremented version to handle schema upgrade
 
     init() {
         return new Promise((resolve, reject) => {
@@ -47,6 +47,11 @@ const DB = {
                     if (!salesStore.indexNames.contains('productId')) {
                          salesStore.createIndex('productId', 'productId', { unique: false });
                     }
+                }
+                
+                // Scan Counts store
+                if (!db.objectStoreNames.contains('scan_counts')) {
+                    db.createObjectStore('scan_counts', { keyPath: 'date' });
                 }
             };
         });
@@ -145,5 +150,21 @@ const DB = {
                 reject(event.target.error);
             };
         });
-    }
+    },
+
+    // --- SCAN COUNTS ---
+    async getScanCountForToday() {
+        const today = new Date().toISOString().split('T')[0];
+        const store = this._getStore('scan_counts', 'readonly');
+        const data = await this._requestToPromise(store.get(today));
+        return data ? data.count : 0;
+    },
+
+    async incrementScanCount() {
+        const today = new Date().toISOString().split('T')[0];
+        const store = this._getStore('scan_counts', 'readwrite');
+        const data = await this._requestToPromise(store.get(today));
+        const currentCount = data ? data.count : 0;
+        return this._requestToPromise(store.put({ date: today, count: currentCount + 1 }));
+    },
 };
