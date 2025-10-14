@@ -400,6 +400,12 @@ html, body {
     align-items: center;
     gap: 4px;
 }
+.sales-group-total.acknowledged {
+    color: var(--success-color);
+}
+.sales-group-total .checkmark-icon {
+    stroke: var(--success-color);
+}
 .sales-legend {
     padding: 10px 20px;
     font-size: 0.8rem;

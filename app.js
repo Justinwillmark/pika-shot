@@ -545,17 +545,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 const safeDateKey = groupTitle.split(', ')[1] ? new Date(groupTitle.split(', ')[1] + ' ' + new Date().getFullYear()).toLocaleDateString('en-NG', { year: 'numeric', month: 'short', day: 'numeric' }).replace(/[^a-zA-Z0-9]/g, '_') : groupTitle.replace(/[^a-zA-Z0-9]/g, '_');
                 
                 const acknowledgement = this.state.acknowledgedSalesData[safeDateKey];
+                let totalHtml = `<p class="sales-group-total">&#8358;${this.formatNumber(dailyTotal)}</p>`;
                 let acknowledgedHtml = '';
-                if (acknowledgement) {
+        
+                if (acknowledgement && acknowledgement.acknowledged) {
+                    const wholesalerName = acknowledgement.wholesalerName || 'your wholesaler';
+                    const checkmarkIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="checkmark-icon"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+                    totalHtml = `<p class="sales-group-total acknowledged">${checkmarkIcon} &#8358;${this.formatNumber(dailyTotal)}</p>`;
+                    
                     const ackDate = new Date(groupTitle.split(', ')[1]).toLocaleDateString('en-NG', { month: 'short', day: 'numeric' });
-                    acknowledgedHtml = `<span class="acknowledgement-text">Your sales payment for ${ackDate} acknowledged by ${acknowledgement.wholesalerName}.</span>`;
+                    acknowledgedHtml = `<span class="acknowledgement-text">Payment for ${ackDate} acknowledged by ${wholesalerName}.</span>`;
                 }
         
-                groupHeader.innerHTML = `<h3>${groupTitle}</h3><p class="sales-group-total">&#8358;${this.formatNumber(dailyTotal)}</p>`;
+                groupHeader.innerHTML = `<h3>${groupTitle}</h3>${totalHtml}`;
+                groupContainer.appendChild(groupHeader);
+        
                 if (acknowledgedHtml) {
                     groupHeader.insertAdjacentHTML('afterend', acknowledgedHtml);
                 }
-                groupContainer.appendChild(groupHeader);
         
                 groupedSales[groupTitle].forEach(sale => {
                     const saleEl = document.createElement('div');
