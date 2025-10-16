@@ -926,17 +926,35 @@ html, body {
 
 /* Receipt & Log Modals */
 .receipt-modal { max-height: 80vh; }
-.receipt-paper { background: #fff; padding: 20px; font-family: var(--font-family); color: #000; border: 1px dashed #ccc; }
-.receipt-header { text-align: center; margin-bottom: 20px; }
-.receipt-header h3 { margin: 0; font-size: 1.2rem; }
-.receipt-header p { margin: 2px 0; font-size: 0.8rem; }
-.receipt-items table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-.receipt-items th, .receipt-items td { text-align: left; padding: 5px 0; }
+.receipt-paper {
+    background: #fff;
+    padding: clamp(15px, 4vw, 20px);
+    font-family: var(--font-family);
+    color: #000;
+    border: 1px dashed #ccc;
+    width: 100%;
+    max-width: 320px; /* Modern, portable width */
+    margin: 0 auto;
+}
+.receipt-header { text-align: center; margin-bottom: 16px; }
+.receipt-header h3 { margin: 0; font-size: clamp(1.1rem, 4.5vw, 1.3rem); }
+.receipt-header p { margin: 2px 0; font-size: clamp(0.7rem, 2.5vw, 0.8rem); }
+.receipt-items table { width: 100%; border-collapse: collapse; font-size: clamp(0.8rem, 3vw, 0.9rem); }
+.receipt-items th, .receipt-items td {
+    text-align: left;
+    padding: 6px 2px;
+    vertical-align: top;
+    word-break: break-word;
+}
 .receipt-items thead tr { border-bottom: 1px solid #000; }
-.receipt-items .col-qty, .receipt-items .col-price, .receipt-items .col-total { text-align: right; }
-.receipt-total { margin-top: 20px; border-top: 2px double #000; padding-top: 10px; }
-.receipt-total .total-row { display: flex; justify-content: space-between; font-weight: bold; font-size: 1.1rem; }
-.receipt-footer { text-align: center; margin-top: 20px; font-size: 0.8rem; }
+.receipt-items .col-qty, .receipt-items .col-price, .receipt-items .col-total { text-align: right; white-space: nowrap; }
+.receipt-items .col-qty { width: 15%; }
+.receipt-items .col-price { width: 25%; }
+.receipt-items .col-total { width: 30%; }
+
+.receipt-total { margin-top: 16px; border-top: 2px double #000; padding-top: 10px; }
+.receipt-total .total-row { display: flex; justify-content: space-between; font-weight: bold; font-size: clamp(1rem, 4vw, 1.2rem); }
+.receipt-footer { text-align: center; margin-top: 16px; font-size: clamp(0.7rem, 2.5vw, 0.8rem); }
 .receipt-footer p { margin: 2px 0; }
 #qr-code-modal { text-align: center; }
 #qr-canvas { width: 90% !important; height: auto !important; max-width: 300px; margin: 0 auto; }

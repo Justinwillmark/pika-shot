@@ -1258,7 +1258,7 @@ document.addEventListener('DOMContentLoaded', () => {
             product.stock -= quantity;
 
             await DB.saveProduct(product);
-            const sale = { id: Date.now(), productId: product.id, productName: product.name, quantity: quantity, price: product.price, total: quantity * product.price, timestamp: new Date(), image: product.image, sharedAsLog: false };
+            const sale = { id: Date.now(), productId: product.id, productName: product.name, quantity: quantity, price: product.price, total: quantity * product.price, timestamp: new Date(), image: product.image, sharedAsLog: false, unit: product.unit };
             await DB.addSale(sale);
 
             // --- SALES LOGGING: START ---
@@ -1332,7 +1332,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             await DB.saveProduct(productToSell);
-            const sale = { id: Date.now() + 1, productId: productToSell.id, productName: name, quantity, price, total: price * quantity, timestamp: new Date(), image: productToSell.image, sharedAsLog: false };
+            const sale = { id: Date.now() + 1, productId: productToSell.id, productName: name, quantity, price, total: price * quantity, timestamp: new Date(), image: productToSell.image, sharedAsLog: false, unit };
             await DB.addSale(sale);
 
             // --- SALES LOGGING: START ---
