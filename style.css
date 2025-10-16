@@ -807,9 +807,22 @@ html, body {
     font-weight: 600;
 }
 
+/* --- FIX: Make confirm-log-modal content scrollable --- */
+#confirm-log-modal h2 {
+    flex-shrink: 0; /* Keep title at top */
+}
+
+#confirm-log-content {
+    flex-grow: 1; /* Allow content to fill space */
+    overflow-y: auto; /* Add scrollbar if content overflows */
+    min-height: 0; /* Allow shrinking */
+}
+
 #confirm-log-modal .modal-actions {
     margin-top: 16px;
+    flex-shrink: 0; /* Keep actions at bottom */
 }
+/* --- END FIX --- */
 
 .log-accept-notice {
     font-size: 0.75rem;
@@ -925,7 +938,10 @@ html, body {
 }
 
 /* Receipt & Log Modals */
-.receipt-modal { max-height: 80vh; }
+.receipt-modal { 
+    max-height: 80vh; 
+    /* This ID is on the .modal-content, which is already display: flex, flex-direction: column */
+}
 .receipt-paper {
     background: #fff;
     padding: clamp(15px, 4vw, 20px);
@@ -935,6 +951,12 @@ html, body {
     width: 100%;
     max-width: 320px; /* Modern, portable width */
     margin: 0 auto;
+
+    /* --- FIX: Make receipt content scrollable --- */
+    flex-grow: 1; /* Take up available space */
+    overflow-y: auto; /* Add scrollbar if content overflows */
+    min-height: 0; /* Allow shrinking in flex container */
+    /* --- END FIX --- */
 }
 .receipt-header { text-align: center; margin-bottom: 16px; }
 .receipt-header h3 { margin: 0; font-size: clamp(1.1rem, 4.5vw, 1.3rem); }
@@ -956,6 +978,15 @@ html, body {
 .receipt-total .total-row { display: flex; justify-content: space-between; font-weight: bold; font-size: clamp(1rem, 4vw, 1.2rem); }
 .receipt-footer { text-align: center; margin-top: 16px; font-size: clamp(0.7rem, 2.5vw, 0.8rem); }
 .receipt-footer p { margin: 2px 0; }
+
+/* --- FIX: Make modal actions sticky --- */
+/* Selects the .modal-actions that is a direct child of .receipt-modal */
+.receipt-modal > .modal-actions {
+    flex-shrink: 0; /* Prevent shrinking */
+    margin-top: 16px; /* Add space between content and buttons */
+}
+/* --- END FIX --- */
+
 #qr-code-modal { text-align: center; }
 #qr-canvas { width: 90% !important; height: auto !important; max-width: 300px; margin: 0 auto; }
 .qr-help-text { font-size: 0.9rem; color: var(--text-light); margin-top: 16px; }
