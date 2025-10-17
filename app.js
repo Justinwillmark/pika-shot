@@ -1563,7 +1563,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } catch (error) {
                 console.error("Error fetching shared log:", error);
-                alert("Could not fetch the transfer data.");
+                alert("Could not fetch the transfer data. Check your internet connection");
             }
         },
 
@@ -2196,11 +2196,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
             let rewardText = '';
             if (count >= 100) {
-                rewardText = '🎉 Wow! Over 100 scans! You are a SUPERSTAR! 🎉';
+                rewardText = 'Over 100 scans! You are a SUPERSTAR! 🎉';
             } else if (count >= 50) {
-                rewardText = '🔥 You are on fire! Keep going! 🔥';
+                rewardText = 'You are on fire! Keep going! 🔥';
             } else if (count >= 25) {
-                rewardText = '🚀 Great start! Let\'s do more! 🚀';
+                rewardText = 'Great start! Let\'s do more! 🚀';
             } else if (count > 0) {
                 rewardText = '👍 Scan more for free airtime!';
             }
