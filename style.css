@@ -838,6 +838,26 @@ html, body {
 .delete-btn-icon:hover svg { stroke: white; }
 @keyframes modal-pop { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
+
+@keyframes modal-pop { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+/* Offline notice for modals */
+.offline-notice {
+    display: none; /* Hidden by default */
+    padding: 10px 16px;
+    margin-bottom: 16px;
+    background-color: #fffbe6; /* Light yellow */
+    color: #8a6d3b; /* Dark yellow text */
+    border: 1px solid #ffeeba; /* Yellow border */
+    border-radius: var(--border-radius);
+    font-size: 0.9rem;
+    font-weight: 500;
+    text-align: center;
+    animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+}
+
+
+
 /* Profile Modal */
 .profile-details {
     display: flex;

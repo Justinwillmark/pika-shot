@@ -83,6 +83,7 @@ document.addEventListener('DOMContentLoaded', () => {
             saleTotalPrice: document.getElementById('sale-total-price'),
             cancelSaleBtn: document.getElementById('cancel-sale-btn'),
             confirmSaleBtn: document.getElementById('confirm-sale-btn'),
+            saleOfflineNotice: document.getElementById('sale-offline-notice'),
             installBtn: document.getElementById('add-to-homescreen-btn'),
             receiptActions: document.getElementById('receipt-actions'),
             generateReceiptBtn: document.getElementById('generate-receipt-btn'),
@@ -1247,6 +1248,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.saleQuantityLabel.textContent = `How many ${product.unit} are you selling?`;
             this.elements.saleQuantityInput.value = '1';
             this.updateSaleTotal();
+            this.elements.saleOfflineNotice.style.display = 'none';
             this.showModal('confirm-sale-modal');
         },
         updateSaleTotal() { const quantity = this.unformatNumber(this.elements.saleQuantityInput.value); const price = this.state.sellingProduct?.price || 0; const total = quantity * price; this.elements.saleTotalPrice.textContent = `₦${this.formatNumber(total)}`; },
@@ -1298,7 +1300,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
             return true;
         },
+        
         async handleConfirmSale() {
+            if (!navigator.onLine) {
+                this.elements.saleOfflineNotice.style.display = 'block';
+                return; // Stop execution
+            }
+            this.elements.saleOfflineNotice.style.display = 'none'; // Hide if online
+
             const success = await this._processSale();
             if (success) {
                 this.hideModal();

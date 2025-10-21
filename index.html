@@ -318,7 +318,7 @@
                     <input type="text" id="product-name" required>
                 </div>
                 <div class="form-row">
-                    <div class="form-group unit-group"><label for="product-unit">Unit Type</label><select id="product-unit" required><option value="sachets">sachets</option><option value="bottles">bottles</option><option value="cans">cans</option><option value="tubes">tubes</option><option value="pieces">pieces</option><option value="packets">packets</option><option value="cartons" class="wholesaler-only">packs/cartons</option></select></div>
+                    <div class="form-group unit-group"><label for="product-unit">Unit Type</label><select id="product-unit" required><option value="sachets">sachets</option><option value="bottles">bottles</option><option value="cans">cans</option><option value="tubs">tubs</option><option value="pieces">pieces</option><option value="packets">packets</option><option value="cartons" class="wholesaler-only">packs/cartons</option></select></div>
                     <div class="form-group price-group"><label for="product-price">Selling Price (₦)</label><input type="text" id="product-price" inputmode="decimal" required></div>
                 </div>
                 <div class="form-row">
@@ -342,7 +342,7 @@
                          <option value="sachets">sachets</option>
                          <option value="bottles">bottles</option>
                          <option value="cans">cans</option>
-                         <option value="tubes">tubes</option>
+                         <option value="tubs">tubs</option>
                          <option value="pieces">pieces</option>
                          <option value="packets">packets</option>
                     </select>
@@ -365,6 +365,7 @@
                 <div class="sale-total"><p>Total</p><h2 id="sale-total-price">₦0</h2></div>
                 <div class="form-group"><label for="sale-quantity" id="sale-quantity-label">Quantity</label><input type="text" id="sale-quantity" inputmode="numeric" value="1" min="1"></div>
             </div>
+            <p id="sale-offline-notice" class="offline-notice" style="display: none;">Please connect to the internet to confirm this sale.</p>
             <div class="modal-actions modal-actions-inline">
                 <button id="cancel-sale-btn" class="btn btn-secondary">Cancel</button>
                 <button id="confirm-sale-btn" class="btn btn-primary">Confirm Sale</button>
@@ -398,7 +399,7 @@
                 <div class="form-group"><label for="manual-product-name">Product Name</label><input type="text" id="manual-product-name" required></div>
                 <div class="form-group"><label for="manual-product-price">Selling Price (₦)</label><input type="text" id="manual-product-price" inputmode="decimal" required></div>
                 <div class="form-group"><label for="manual-sale-quantity">Quantity</label><input type="text" id="manual-sale-quantity" value="1" inputmode="numeric" required></div>
-                <div class="form-group"><label for="manual-product-unit">Unit Type</label><select id="manual-product-unit" required><option value="pieces">pieces</option><option value="sachets">sachets</option><option value="bottles">bottles</option><option value="cans">cans</option><option value="tubes">tubes</option><option value="packets">packets</option></select></div>
+                <div class="form-group"><label for="manual-product-unit">Unit Type</label><select id="manual-product-unit" required><option value="pieces">pieces</option><option value="sachets">sachets</option><option value="bottles">bottles</option><option value="cans">cans</option><option value="tubs">tubs</option><option value="packets">packets</option></select></div>
                 <div class="modal-actions">
                     <button type="button" id="cancel-manual-sale-btn" class="btn btn-secondary">Cancel</button>
                     <button type="submit" class="btn btn-primary">Complete Sale</button>
