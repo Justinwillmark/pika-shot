@@ -1306,15 +1306,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.saleOfflineNotice.style.display = 'block';
                 return; // Stop execution
             }
-            this.elements.saleOfflineNotice.style.display = 'none'; // Hide if online
 
-            const success = await this._processSale();
-            if (success) {
-                this.hideModal();
-                await this.updateDashboard();
-                await this.renderProducts();
-                this.navigateTo('home-view');
+            // --- MODIFICATION START ---
+            try {
+                const success = await this._processSale();
+                
+                // This code only runs if _processSale succeeds
+                this.elements.saleOfflineNotice.style.display = 'none'; // Hide if online
+                if (success) {
+                    this.hideModal();
+                    await this.updateDashboard();
+                    await this.renderProducts();
+                    this.navigateTo('home-view');
+                }
+            } catch (error) {
+                // This block runs if _processSale() fails (e.g., network error)
+                console.error("Sale processing failed, likely offline:", error);
+                this.elements.saleOfflineNotice.style.display = 'block';
             }
+            // --- MODIFICATION END ---
         },
 
         async handleManualSale(e) {
