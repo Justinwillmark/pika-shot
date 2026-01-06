@@ -683,7 +683,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else if (product.needsSetup === 'price') {
                     badgeHtml = '<div class="setup-badge">Add price & image</div>';
                 } else if (product.stock < 7) {
-                    badgeHtml = '<div class="restock-badge">Restock now!</div>';
+                    badgeHtml = '<div class="restock-badge">Low stock!</div>';
                 }
 
                 const words = product.name.split(' ');
