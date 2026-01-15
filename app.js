@@ -373,7 +373,7 @@ document.addEventListener('DOMContentLoaded', () => {
         async navigateTo(viewId, isBackNavigation = false) {
             if (this.state.currentView === 'camera-view') {
                 document.querySelector('#camera-overlay .scan-box').style.display = 'block';
-                this.elements.scanFeedback.textContent = 'Scanning for product...';
+                this.elements.scanFeedback.textContent = 'Scanning for barcode...';
             }
         
             if (this.state.currentView === viewId && !isBackNavigation) return;
@@ -879,7 +879,7 @@ document.addEventListener('DOMContentLoaded', () => {
         startSellScan() {
             if (!this.state.cameraReady) { alert("Scanner is not ready yet. Please wait or check your connection."); return; }
             if (!Camera.barcodeDetector) { alert("Barcode scanning is not available on this browser."); return; }
-            this.elements.scanFeedback.textContent = 'Scanning for product...';
+            this.elements.scanFeedback.textContent = 'Scanning for barcode...';
             this.navigateTo('camera-view');
             Camera.startScan(
                 async (result) => { // onResult
