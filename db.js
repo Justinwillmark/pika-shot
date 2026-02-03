@@ -1,7 +1,8 @@
 const DB = {
     db: null,
     dbName: 'PikaShotDB',
-    dbVersion: 5, // Incremented version to handle schema upgrade
+    dbVersion: 5,
+    userPhone: null, // Track the current user's phone for cloud paths
 
     init() {
         return new Promise((resolve, reject) => {
@@ -15,44 +16,32 @@ const DB = {
             request.onsuccess = (event) => {
                 this.db = event.target.result;
                 console.log("Database opened successfully");
+                // Try to load user to get phone number for cloud sync
+                this.getUser().then(user => {
+                    if(user && user.phone) this.userPhone = user.phone;
+                });
                 resolve();
             };
 
             request.onupgradeneeded = (event) => {
                 const db = event.target.result;
                 const transaction = event.target.transaction;
-
-                // User store
-                if (!db.objectStoreNames.contains('user')) {
-                    db.createObjectStore('user', { keyPath: 'id' });
-                }
-
-                // Products store
+                if (!db.objectStoreNames.contains('user')) db.createObjectStore('user', { keyPath: 'id' });
                 if (!db.objectStoreNames.contains('products')) {
                     const productStore = db.createObjectStore('products', { keyPath: 'id' });
                     productStore.createIndex('barcode', 'barcode', { unique: false });
                 } else {
                     const productStore = transaction.objectStore('products');
-                    if (!productStore.indexNames.contains('barcode')) {
-                         productStore.createIndex('barcode', 'barcode', { unique: false });
-                    }
+                    if (!productStore.indexNames.contains('barcode')) productStore.createIndex('barcode', 'barcode', { unique: false });
                 }
-
-                // Sales store
                 if (!db.objectStoreNames.contains('sales')) {
                     const salesStore = db.createObjectStore('sales', { keyPath: 'id' });
                     salesStore.createIndex('productId', 'productId', { unique: false });
                 } else {
                      const salesStore = transaction.objectStore('sales');
-                    if (!salesStore.indexNames.contains('productId')) {
-                         salesStore.createIndex('productId', 'productId', { unique: false });
-                    }
+                    if (!salesStore.indexNames.contains('productId')) salesStore.createIndex('productId', 'productId', { unique: false });
                 }
-                
-                // Scan Counts store
-                if (!db.objectStoreNames.contains('scan_counts')) {
-                    db.createObjectStore('scan_counts', { keyPath: 'date' });
-                }
+                if (!db.objectStoreNames.contains('scan_counts')) db.createObjectStore('scan_counts', { keyPath: 'date' });
             };
         });
     },
@@ -69,11 +58,88 @@ const DB = {
         });
     },
 
+    // --- CLOUD SYNC HELPERS ---
+    _syncToCloud(collectionName, docId, data) {
+        if (!this.userPhone || !window.fb) return; // Need user phone to know where to save
+        const path = `users/${this.userPhone}${collectionName ? '/' + collectionName : ''}`;
+        
+        try {
+            const ref = docId 
+                ? window.fb.doc(window.fb.db, path, String(docId))
+                : window.fb.doc(window.fb.db, path);
+            
+            // Remove image blobs if any (cannot store blobs directly in Firestore efficiently)
+            const cleanData = {...data};
+            if(cleanData.image) delete cleanData.image; 
+            
+            window.fb.setDoc(ref, cleanData, { merge: true })
+                .catch(err => console.error("Cloud sync failed:", err));
+        } catch (e) {
+            console.error("Error initiating cloud sync:", e);
+        }
+    },
+
+    async syncDataFromCloud(phoneNumber) {
+        if (!window.fb) return false;
+        this.userPhone = phoneNumber;
+        
+        try {
+            // 1. Get User Profile
+            const userRef = window.fb.doc(window.fb.db, 'users', phoneNumber);
+            const userSnap = await window.fb.getDoc(userRef);
+            if (userSnap.exists()) {
+                await this.saveUser(userSnap.data(), false); // false = don't sync back to cloud
+            }
+
+            // 2. Get Products
+            const productsRef = window.fb.collection(window.fb.db, `users/${phoneNumber}/products`);
+            const prodSnaps = await window.fb.getDocs(productsRef);
+            const prodTx = this.db.transaction('products', 'readwrite');
+            prodSnaps.forEach(doc => {
+                const p = doc.data();
+                // Ensure IDs are numbers if they were numbers in IndexedDB
+                if(typeof p.id === 'string' && !isNaN(p.id)) p.id = Number(p.id);
+                prodTx.objectStore('products').put(p);
+            });
+
+            // 3. Get Sales
+            const salesRef = window.fb.collection(window.fb.db, `users/${phoneNumber}/sales`);
+            const saleSnaps = await window.fb.getDocs(salesRef);
+            const saleTx = this.db.transaction('sales', 'readwrite');
+            saleSnaps.forEach(doc => {
+                const s = doc.data();
+                if(typeof s.id === 'string' && !isNaN(s.id)) s.id = Number(s.id);
+                if(s.timestamp && s.timestamp.toDate) s.timestamp = s.timestamp.toDate(); // Convert Firestore Timestamp to Date
+                saleTx.objectStore('sales').put(s);
+            });
+
+            return true;
+        } catch (error) {
+            console.error("Sync from cloud failed:", error);
+            return false;
+        }
+    },
+
     // --- USER ---
-    saveUser(userData) {
+    saveUser(userData, sync = true) {
         const store = this._getStore('user', 'readwrite');
         const user = { id: 1, ...userData };
+        if (sync && userData.phone) {
+            this.userPhone = userData.phone;
+            this._syncToCloud(null, null, userData); // Save to users/{phone}
+        }
         return this._requestToPromise(store.put(user));
+    },
+
+    async clearUser() {
+        const store = this._getStore('user', 'readwrite');
+        // Clear all stores on logout
+        const productsStore = this._getStore('products', 'readwrite');
+        const salesStore = this._getStore('sales', 'readwrite');
+        productsStore.clear();
+        salesStore.clear();
+        this.userPhone = null;
+        return this._requestToPromise(store.clear());
     },
 
     getUser() {
@@ -84,6 +150,7 @@ const DB = {
     // --- PRODUCTS ---
     saveProduct(product) {
         const store = this._getStore('products', 'readwrite');
+        this._syncToCloud('products', product.id, product);
         return this._requestToPromise(store.put(product));
     },
 
@@ -105,6 +172,9 @@ const DB = {
 
     deleteProduct(id) {
         const store = this._getStore('products', 'readwrite');
+        if (this.userPhone) {
+             window.fb.deleteDoc(window.fb.doc(window.fb.db, `users/${this.userPhone}/products`, String(id))).catch(e=>console.error(e));
+        }
         return this._requestToPromise(store.delete(id));
     },
 
@@ -112,11 +182,13 @@ const DB = {
     addSale(sale) {
         const store = this._getStore('sales', 'readwrite');
         const saleWithLogStatus = { ...sale, sharedAsLog: false };
+        this._syncToCloud('sales', sale.id, saleWithLogStatus);
         return this._requestToPromise(store.add(saleWithLogStatus));
     },
 
     updateSale(sale) {
         const store = this._getStore('sales', 'readwrite');
+        this._syncToCloud('sales', sale.id, sale);
         return this._requestToPromise(store.put(sale));
     },
 

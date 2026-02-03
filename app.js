@@ -16,13 +16,30 @@ document.addEventListener('DOMContentLoaded', () => {
             bottomNav: document.getElementById('bottom-nav'),
             navButtons: document.querySelectorAll('.nav-btn'),
             headerTitle: document.getElementById('header-title'),
-            onboardingView: document.getElementById('onboarding-view'),
-            startOnboardingBtn: document.getElementById('start-onboarding-btn'),
+            
+            // Onboarding Elements (UPDATED)
+            onboardingStep1: document.getElementById('onboarding-step-1'),
+            checkPhoneInput: document.getElementById('check-phone'),
+            checkPhoneBtn: document.getElementById('check-phone-btn'),
+            
+            onboardingStepLogin: document.getElementById('onboarding-step-login'),
+            loginPinInput: document.getElementById('login-pin'),
+            loginBtn: document.getElementById('login-btn'),
+            toggleLoginPinBtn: document.getElementById('toggle-login-pin'),
+            copyLoginPinBtn: document.getElementById('copy-login-pin'),
+            backToPhoneBtn: document.getElementById('back-to-phone-btn'),
+
+            onboardingStepRegister: document.getElementById('onboarding-step-register'),
             userNameInput: document.getElementById('user-name'),
             businessNameInput: document.getElementById('business-name'),
-            userPhoneInput: document.getElementById('user-phone'),
             businessTypeInput: document.getElementById('business-type'),
             businessLocationInput: document.getElementById('business-location'),
+            createPinInput: document.getElementById('create-pin'),
+            toggleCreatePinBtn: document.getElementById('toggle-create-pin'),
+            copyCreatePinBtn: document.getElementById('copy-create-pin'),
+            completeRegistrationBtn: document.getElementById('complete-registration-btn'),
+            goBackRegisterBtn: document.getElementById('go-back-register-btn'),
+            
             locationPermissionView: document.getElementById('location-permission-view'),
             grantLocationBtn: document.getElementById('grant-location-btn'),
             cameraPermissionView: document.getElementById('camera-permission-view'),
@@ -140,7 +157,8 @@ document.addEventListener('DOMContentLoaded', () => {
             cartonSubunitTypeInput: document.getElementById('carton-subunit-type'),
             cartonSubunitQuantityInput: document.getElementById('carton-subunit-quantity'),
             cartonQuantityLabel: document.getElementById('carton-quantity-label'),
-            privacyLink: document.getElementById('privacy-link'),
+            privacyLink: document.getElementById('privacy-link'), // Original link
+            privacyLinkTriggers: document.querySelectorAll('.privacy-link-trigger'), // New class for multiple links
             privacyOkBtn: document.getElementById('privacy-ok-btn'),
             profileModal: document.getElementById('profile-modal'),
             profileName: document.getElementById('profile-name'),
@@ -161,6 +179,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // --- APP STATE ---
         state: {
             user: null,
+            tempPhone: null, // For onboarding flow
+            tempUserCloudData: null, // To store data during login before sync
             currentView: null,
             cameraReady: false,
             capturedBlob: null,
@@ -175,11 +195,11 @@ document.addEventListener('DOMContentLoaded', () => {
             selectedSales: new Set(),
             longPressTimer: null,
             firebaseReady: false,
-            retailerListener: null, // For unsubscribing from Firestore listener
+            retailerListener: null,
             tempProductDataForCarton: null,
             productFilter: 'all',
             stockViewFilter: 'customers',
-            acknowledgedSalesData: {}, // To store acknowledgment status
+            acknowledgedSalesData: {}, 
         },
 
         // --- INITIALIZATION ---
@@ -191,19 +211,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
             try {
                 await DB.init();
-                this._requestPersistentStorage(); // Request persistent storage
+                this._requestPersistentStorage();
                 await this.initFirebase();
+                
+                // Check if user is already logged in locally
                 this.state.user = await DB.getUser();
 
                 if (!this.state.user) {
-                    this.showView('onboarding-view');
+                    this.showView('onboarding-step-1');
                 } else {
                     await this.loadMainApp();
                 }
                 this.loadCameraScannerInBackground();
             } catch (error) {
                 console.error("Critical initialization failed:", error);
-                alert("App could not start due to a storage issue. Please ensure you're not in private browsing mode and have available space.");
+                alert("App could not start due to a storage issue. Please ensure you're not in private browsing mode.");
             } finally {
                 this.hideLoader();
             }
@@ -211,15 +233,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         async initFirebase() {
             try {
+                // We use anonymous auth for the connection, but the "user" is defined by phone+pin
                 await window.fb.signInAnonymously(window.fb.auth);
                 this.state.firebaseReady = true;
-                console.log("Firebase anonymous sign-in successful. UID:", window.fb.auth.currentUser.uid);
-                const localUser = await DB.getUser();
-                if (localUser && !localUser.uid) {
-                    localUser.uid = window.fb.auth.currentUser.uid;
-                    await DB.saveUser(localUser);
-                    this.state.user = localUser;
-                }
+                console.log("Firebase anonymous sign-in successful.");
             } catch (error) {
                 console.error("Firebase initialization failed:", error);
                 this.state.firebaseReady = false;
@@ -233,10 +250,40 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.backArrowBtn.addEventListener('click', () => history.back());
             window.addEventListener('popstate', this.handlePopState.bind(this));
 
-            this.elements.startOnboardingBtn.addEventListener('click', this.handleOnboarding.bind(this));
-            this.elements.privacyLink.addEventListener('click', (e) => { e.preventDefault(); this.showModal('privacy-policy-modal'); });
+            // Onboarding Listeners
+            this.elements.checkPhoneBtn.addEventListener('click', this.handleCheckPhone.bind(this));
+            
+            // Login Screen Listeners
+            this.elements.loginBtn.addEventListener('click', this.handleLogin.bind(this));
+            this.elements.toggleLoginPinBtn.addEventListener('click', () => this.togglePinVisibility('login-pin'));
+            this.elements.copyLoginPinBtn.addEventListener('click', () => this.copyPin('login-pin'));
+            this.elements.backToPhoneBtn.addEventListener('click', () => {
+                this.elements.loginPinInput.value = '';
+                this.showView('onboarding-step-1');
+            });
+
+            // Registration Screen Listeners
+            this.elements.completeRegistrationBtn.addEventListener('click', this.handleRegistration.bind(this));
+            this.elements.goBackRegisterBtn.addEventListener('click', () => {
+                this.showView('onboarding-step-1');
+            });
+            this.elements.toggleCreatePinBtn.addEventListener('click', () => this.togglePinVisibility('create-pin'));
+            this.elements.copyCreatePinBtn.addEventListener('click', () => this.copyPin('create-pin'));
+            
+            // Privacy Policy Links
+            this.elements.privacyLinkTriggers.forEach(link => {
+                link.addEventListener('click', (e) => { 
+                    e.preventDefault(); 
+                    this.showModal('privacy-policy-modal'); 
+                });
+            });
+            // Also keep old listener if modal was opened differently
+            if(this.elements.privacyLink) {
+                 this.elements.privacyLink.addEventListener('click', (e) => { e.preventDefault(); this.showModal('privacy-policy-modal'); });
+            }
             this.elements.privacyOkBtn.addEventListener('click', () => this.hideModal());
 
+            // ... (Rest of event listeners) ...
             this.elements.grantLocationBtn.addEventListener('click', this.handleLocationPermission.bind(this));
             this.elements.grantCameraBtn.addEventListener('click', this.handleCameraPermission.bind(this));
             this.elements.navButtons.forEach(btn => btn.addEventListener('click', () => this.navigateTo(btn.dataset.view)));
@@ -284,6 +331,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.cancelCartonDetailsBtn.addEventListener('click', () => { this.hideModal(); this.showModal('product-form-modal'); });
             this.elements.logoutBtn.addEventListener('click', this.handleLogout.bind(this));
             this.elements.cancelProfileBtn.addEventListener('click', () => this.hideModal());
+            
             this.elements.cartonSubunitTypeInput.addEventListener('input', (e) => {
                 const selectedUnit = e.target.value;
                 if (selectedUnit) {
@@ -307,8 +355,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.renderRetailerStocks();
             }));
 
-            // Number formatting listeners
-            const fieldsToFormat = [
+             const fieldsToFormat = [
                 this.elements.productPriceInput, this.elements.productStockInput,
                 this.elements.saleQuantityInput, this.elements.manualProductPrice,
                 this.elements.manualSaleQuantity, this.elements.cartonSubunitQuantityInput
@@ -323,29 +370,163 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             });
 
-            // Phone number validation
-            this.elements.userPhoneInput.addEventListener('input', (e) => {
-                const input = e.target;
-                let value = input.value.replace(/\D/g, ''); // Remove non-digit characters
-                if (value.length > 11) {
-                    value = value.slice(0, 11); // Truncate to 11 digits
-                }
-                input.value = value;
+            this.elements.checkPhoneInput.addEventListener('input', (e) => {
+                e.target.value = e.target.value.replace(/\D/g, '').slice(0, 11);
             });
-
-            // Listen for clicks on disabled stock/unit fields
-            const pointToInfoMessage = (e) => {
-                if (e.target.disabled) {
-                    const sourceInfo = this.elements.productSourceInfo;
-                    sourceInfo.classList.add('input-error-shake');
-                    setTimeout(() => sourceInfo.classList.remove('input-error-shake'), 600);
-                }
-            };
-            this.elements.productStockInput.addEventListener('click', pointToInfoMessage);
-            this.elements.productUnitInput.addEventListener('click', pointToInfoMessage);
+            this.elements.loginPinInput.addEventListener('input', (e) => {
+                e.target.value = e.target.value.replace(/\D/g, '').slice(0, 6);
+            });
+             this.elements.createPinInput.addEventListener('input', (e) => {
+                e.target.value = e.target.value.replace(/\D/g, '').slice(0, 6);
+            });
         },
 
-        // --- UI & NAVIGATION ---
+        // --- AUTH & ONBOARDING LOGIC ---
+        
+        async handleCheckPhone() {
+            const phone = this.elements.checkPhoneInput.value.trim();
+            if (phone.length < 11) {
+                alert("Please enter a valid 11-digit phone number.");
+                return;
+            }
+            
+            this.showLoader();
+            this.state.tempPhone = phone;
+
+            try {
+                // Check if user exists in Firestore
+                const docRef = window.fb.doc(window.fb.db, 'users', phone);
+                const docSnap = await window.fb.getDoc(docRef);
+
+                if (docSnap.exists()) {
+                    this.state.tempUserCloudData = docSnap.data();
+                    this.showView('onboarding-step-login');
+                } else {
+                    this.showView('onboarding-step-register');
+                }
+            } catch (error) {
+                console.error("Error checking phone:", error);
+                alert("Could not connect to server. Please check your internet connection.");
+            } finally {
+                this.hideLoader();
+            }
+        },
+
+        togglePinVisibility(inputId) {
+            const input = document.getElementById(inputId);
+            input.type = input.type === "password" ? "text" : "password";
+        },
+        
+        copyPin(inputId) {
+            const input = document.getElementById(inputId);
+            const pin = input.value;
+            if(pin) {
+                navigator.clipboard.writeText(pin).then(() => {
+                    this.showToast("PIN copied to clipboard");
+                });
+            } else {
+                this.showToast("Nothing to copy");
+            }
+        },
+
+        async handleLogin() {
+            const pin = this.elements.loginPinInput.value.trim();
+            if (pin.length !== 6) {
+                alert("Please enter your 6-digit PIN.");
+                return;
+            }
+
+            // Verify PIN against cloud data
+            if (this.state.tempUserCloudData && String(this.state.tempUserCloudData.pin) === pin) {
+                this.showLoader();
+                // Login successful
+                this.state.user = this.state.tempUserCloudData;
+                await DB.saveUser(this.state.user); // Save locally
+                
+                // Sync data
+                const success = await DB.syncDataFromCloud(this.state.tempPhone);
+                if (!success) {
+                    alert("Logged in, but some data failed to sync. It will sync in background.");
+                }
+
+                this.elements.loginPinInput.value = '';
+                await this.loadMainApp();
+                this.hideLoader();
+            } else {
+                alert("Incorrect PIN. Please try again.");
+                this.elements.loginPinInput.value = '';
+            }
+        },
+
+        async handleRegistration() {
+            const name = this.elements.userNameInput.value.trim();
+            const business = this.elements.businessNameInput.value.trim();
+            const type = this.elements.businessTypeInput.value;
+            const location = this.elements.businessLocationInput.value;
+            const pin = this.elements.createPinInput.value.trim();
+
+            if (!name || !business || !type || !location || pin.length !== 6) {
+                alert('Please fill in all fields and ensure PIN is 6 digits.'); return;
+            }
+
+            this.showLoader();
+            const uid = window.fb.auth.currentUser ? window.fb.auth.currentUser.uid : null;
+            
+            const newUser = {
+                id: 1, // Local ID
+                phone: this.state.tempPhone,
+                pin: pin,
+                name, business, type, location, uid,
+                createdAt: window.fb.serverTimestamp()
+            };
+
+            try {
+                // Save to IndexedDB and Sync to Cloud (handled by db.js)
+                await DB.saveUser(newUser); 
+                this.state.user = newUser;
+                
+                this.showView('location-permission-view');
+            } catch (error) {
+                console.error("Registration failed:", error);
+                alert("Failed to create account. Please try again.");
+            } finally {
+                this.hideLoader();
+            }
+        },
+
+        // --- CORE APP LOGIC (Updated) ---
+        async loadMainApp() {
+            this.elements.appHeader.style.display = 'flex';
+            this.elements.mainContent.style.display = 'block';
+            this.elements.bottomNav.style.display = 'flex';
+
+            const initialView = window.location.hash.substring(1) || 'home-view';
+            history.replaceState({ view: initialView }, '', `#${initialView}`);
+            this.navigateTo(initialView, true);
+
+            await this.updateDashboard();
+            await this.renderProducts();
+        },
+
+        async handleLogout() {
+            if (confirm('Are you sure you want to log out? This will clear local data (it remains safe in the cloud).')) {
+                await DB.clearUser();
+                this.state.user = null;
+                this.state.tempPhone = null;
+                this.state.tempUserCloudData = null;
+                this.hideModal();
+                
+                // Reset views
+                this.elements.appHeader.style.display = 'none';
+                this.elements.mainContent.style.display = 'none';
+                this.elements.bottomNav.style.display = 'none';
+                this.elements.checkPhoneInput.value = '';
+                this.elements.loginPinInput.value = '';
+                
+                this.showView('onboarding-step-1');
+            }
+        },
+
         showLoader() { this.elements.loader.style.display = 'flex'; this.elements.appContainer.style.display = 'none'; },
         hideLoader() { this.elements.loaderSpinner.style.display = 'none'; this.elements.loaderCheck.style.display = 'block'; setTimeout(() => { this.elements.loader.style.opacity = '0'; this.elements.appContainer.style.display = 'flex'; setTimeout(() => { this.elements.loader.style.display = 'none'; }, 500); }, 500); },
         showView(viewId) {
@@ -355,7 +536,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (viewToShow) {
                 viewToShow.classList.add('active');
                 this.state.currentView = viewId;
-                if (!['onboarding-view', 'camera-permission-view', 'location-permission-view'].includes(viewId)) {
+                if (!viewId.includes('onboarding') && viewId !== 'location-permission-view' && viewId !== 'camera-permission-view') {
                     this.updateHeader(viewId);
                 }
             }
@@ -724,22 +905,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.productGrid.appendChild(card);
             });
         },
-
-        // --- CORE APP LOGIC ---
-        async loadMainApp() {
-            this.elements.appHeader.style.display = 'flex';
-            this.elements.mainContent.style.display = 'block';
-            this.elements.bottomNav.style.display = 'flex';
-
-            const initialView = window.location.hash.substring(1) || 'home-view';
-            history.replaceState({ view: initialView }, '', `#${initialView}`);
-            this.navigateTo(initialView, true);
-
-            await this.updateDashboard();
-            await this.renderProducts();
-        },
-
-        // --- ADMIN DASHBOARD INTEGRATION ---
+        
         async _logToFirestore(collectionName, docId, data) {
             if (!this.state.firebaseReady) return;
             try {
@@ -753,25 +919,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         },
 
-        async handleOnboarding(e) {
-            e.preventDefault();
-            const name = this.elements.userNameInput.value.trim();
-            const business = this.elements.businessNameInput.value.trim();
-            const phone = this.elements.userPhoneInput.value.trim();
-            const type = this.elements.businessTypeInput.value;
-            const location = this.elements.businessLocationInput.value;
-            if (!name || !business || !phone || !type || !location) {
-                alert('Please fill in all fields.'); return;
-            }
-            const uid = this.state.firebaseReady ? window.fb.auth.currentUser.uid : null;
-            this.state.user = { id: 1, name, business, phone, type, location, uid };
-            await DB.saveUser(this.state.user);
-
-            const userDataForAdmin = { name, business, phone, type, location, uid, createdAt: window.fb.serverTimestamp() };
-            this._logToFirestore('users', phone, userDataForAdmin);
-
-            this.showView('location-permission-view');
-        },
         handleLocationPermission() {
              navigator.geolocation.getCurrentPosition(
                 (position) => {
@@ -1307,11 +1454,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 return; // Stop execution
             }
 
-            // --- MODIFICATION START ---
             try {
                 const success = await this._processSale();
                 
-                // This code only runs if _processSale succeeds
                 this.elements.saleOfflineNotice.style.display = 'none'; // Hide if online
                 if (success) {
                     this.hideModal();
@@ -1320,11 +1465,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     this.navigateTo('home-view');
                 }
             } catch (error) {
-                // This block runs if _processSale() fails (e.g., network error)
                 console.error("Sale processing failed, likely offline:", error);
                 this.elements.saleOfflineNotice.style.display = 'block';
             }
-            // --- MODIFICATION END ---
         },
 
         async handleManualSale(e) {
@@ -2197,7 +2340,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.profileName.textContent = this.state.user.name;
                 this.elements.profileBusiness.textContent = this.state.user.business;
                 this.elements.profileLocation.textContent = this.state.user.location;
-                this.elements.profilePhone.textContent = this.state.user.phone;
+                this.elements.profilePhone.textContent = this.state.user.phone || this.state.user.phone; // Handle both cases
                 this.elements.profileRole.textContent = this.state.user.type;
                 
                 await this.updateScanTracker();
@@ -2224,15 +2367,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 rewardText = '👍 Scan more for free airtime!';
             }
             this.elements.scanReward.textContent = rewardText;
-        },
-
-        async handleLogout() {
-            if (confirm('Are you sure you want to log out?')) {
-                this.state.user = null;
-                await DB.clearUser();
-                this.hideModal();
-                window.location.reload();
-            }
         },
     
         async fetchAcknowledgedSales() {

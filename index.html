@@ -11,12 +11,10 @@
     <script src="https://cdn.jsdelivr.net/npm/qrcode@1.4.4/build/qrcode.min.js"></script>
 
     <script type="module">
-        // Import the functions you need from the SDKs you need
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-app.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-auth.js";
-        import { getFirestore, collection, doc, getDoc, setDoc, getDocs, serverTimestamp, updateDoc, onSnapshot, query, addDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore.js";
+        import { getFirestore, collection, doc, getDoc, setDoc, getDocs, serverTimestamp, updateDoc, onSnapshot, query, addDoc, deleteDoc, writeBatch } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore.js";
 
-        // Your web app's Firebase configuration
         const firebaseConfig = {
             apiKey: "AIzaSyBKu623PDECcc1gYVe4xof6AVUxDlW7B_A",
             authDomain: "pika-shot.firebaseapp.com",
@@ -26,7 +24,6 @@
             appId: "1:221719282655:web:fefc576166eeb115077a6a"
         };
 
-        // Initialize Firebase and attach to window for access in other scripts
         const app = initializeApp(firebaseConfig);
         window.fb = {
             auth: getAuth(app),
@@ -42,7 +39,8 @@
             onSnapshot,
             query,
             addDoc,
-            deleteDoc
+            deleteDoc,
+            writeBatch
         };
     </script>
 </head>
@@ -57,10 +55,40 @@
 
     <div id="app-container" class="app-container" style="display: none;">
 
-        <div id="onboarding-view" class="view">
+        <div id="onboarding-step-1" class="view active">
             <div class="onboarding-content">
                 <h1>Welcome to pika shot</h1>
-                <p>The simplest way to track your sales and inventory.</p>
+                <p>Enter your phone number to start tracking your sales.</p>
+                <div class="form-group">
+                    <label for="check-phone">Phone Number</label>
+                    <input type="tel" id="check-phone" placeholder="e.g., 08012345678" maxlength="11" required>
+                </div>
+                <button id="check-phone-btn" class="btn btn-primary">Continue</button>
+                <p class="privacy-policy-link">By using Pika-Shot, you agree to our <a href="#" class="privacy-link-trigger">Data & Privacy Policy</a>.</p>
+            </div>
+        </div>
+
+        <div id="onboarding-step-login" class="view">
+            <div class="onboarding-content">
+                <h1>Welcome Back!</h1>
+                <p>Please enter your 6-digit PIN to login.</p>
+                <div class="form-group" style="position: relative;">
+                    <label for="login-pin">Your Security PIN</label>
+                    <input type="password" id="login-pin" placeholder="Enter 6-digit PIN" maxlength="6" inputmode="numeric" style="letter-spacing: 4px; font-weight: bold; padding-right: 80px;">
+                    <div style="position: absolute; right: 10px; top: 42px; display: flex; gap: 8px;">
+                        <button id="toggle-login-pin" class="input-icon-btn" title="Show/Hide" style="background: none; border: none; cursor: pointer; color: #888;">👁️</button>
+                        <button id="copy-login-pin" class="input-icon-btn" title="Copy" style="background: none; border: none; cursor: pointer; color: #4A90E2;">📋</button>
+                    </div>
+                </div>
+                <button id="login-btn" class="btn btn-primary">Login & Sync</button>
+                <button id="back-to-phone-btn" class="btn btn-secondary" style="margin-top: 15px;">Use different number</button>
+            </div>
+        </div>
+
+        <div id="onboarding-step-register" class="view">
+            <div class="onboarding-content">
+                <h1>Create Account</h1>
+                <p>Tell us a bit about your business.</p>
                 <div class="form-group">
                     <label for="user-name">Your Full Name</label>
                     <input type="text" id="user-name" placeholder="e.g., Chiamaka" required>
@@ -69,15 +97,11 @@
                     <label for="business-name">Business Name</label>
                     <input type="text" id="business-name" placeholder="e.g., Amaka's Provisions" required>
                 </div>
-                <div class="form-group">
-                    <label for="user-phone">Phone Number</label>
-                    <input type="tel" id="user-phone" placeholder="e.g., 08012345678" maxlength="11" required>
-                </div>
                 <div class="form-row">
                      <div class="form-group">
                         <label for="business-type">Business Type</label>
                         <select id="business-type" required>
-                            <option value="" disabled selected>Select your type</option>
+                            <option value="" disabled selected>Select type</option>
                             <option value="Retailer">Retailer</option>
                             <option value="Wholesaler">Wholesaler</option>
                             <option value="Salesperson">Role: Salesperson</option>
@@ -86,20 +110,34 @@
                      <div class="form-group">
                         <label for="business-location">Location</label>
                         <select id="business-location" required>
-                            <option value="" disabled selected>Select your area</option>
+                            <option value="" disabled selected>Select area</option>
                             <option value="Lagos Island">Lagos Island</option>
                             <option value="Ikeja">Ikeja</option>
                             <option value="Yaba">Yaba</option>
                             <option value="Surulere">Surulere</option>
                             <option value="Lekki">Lekki</option>
                             <option value="Apapa">Apapa</option>
-                            <option value="Ikeja">Ikot Ekpene</option>
-                            <option value="Ikeja">Uyo</option>
+                            <option value="Ikot Ekpene">Ikot Ekpene</option>
+                            <option value="Uyo">Uyo</option>
                         </select>
                     </div>
                 </div>
-                <button id="start-onboarding-btn" class="btn btn-primary">Get Started</button>
-                <p class="privacy-policy-link">By using Pika-Shot, you agree to our <a href="#" id="privacy-link">Data & Privacy Policy</a>.</p>
+                
+                <div class="form-group" style="position: relative;">
+                    <label for="create-pin">Create 6-digit PIN</label>
+                    <input type="password" id="create-pin" placeholder="123456" maxlength="6" inputmode="numeric" style="letter-spacing: 4px; font-weight: bold; padding-right: 80px;">
+                    <div style="position: absolute; right: 10px; top: 42px; display: flex; gap: 8px;">
+                        <button id="toggle-create-pin" class="input-icon-btn" title="Show/Hide" style="background: none; border: none; cursor: pointer; color: #888;">👁️</button>
+                        <button id="copy-create-pin" class="input-icon-btn" title="Copy" style="background: none; border: none; cursor: pointer; color: #4A90E2;">📋</button>
+                    </div>
+                </div>
+
+                <div class="form-row" style="margin-top: 20px; width: 100%;">
+                    <button id="go-back-register-btn" class="btn btn-secondary" style="flex: 3; margin-right: 10px;">Go Back</button>
+                    <button id="complete-registration-btn" class="btn btn-primary" style="flex: 7;">Create Account</button>
+                </div>
+
+                <p class="privacy-policy-link">By using Pika-Shot, you agree to our <a href="#" class="privacy-link-trigger">Data & Privacy Policy</a>.</p>
             </div>
         </div>
 
@@ -411,10 +449,10 @@
             <h2>Transfer Products via QR</h2>
             <canvas id="qr-canvas"></canvas>
             <p class="qr-help-text">Have the purchasing retailer scan this QR code in their Pikashot app to auto-restock. Applies to salespeople.</p>
-             <div class="modal-actions modal-actions-inline">
-                <button id="cancel-qr-btn" class="btn btn-secondary">Cancel</button>
-                <button id="close-qr-btn" class="btn btn-primary">Done</button>
-            </div>
+                 <div class="modal-actions modal-actions-inline">
+                    <button id="cancel-qr-btn" class="btn btn-secondary">Cancel</button>
+                    <button id="close-qr-btn" class="btn btn-primary">Done</button>
+                </div>
         </div>
 
         <div id="confirm-log-modal" class="modal-content" style="display:none;">
