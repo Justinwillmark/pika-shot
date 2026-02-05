@@ -281,12 +281,18 @@ html, body {
     justify-content: flex-start; /* Aligned to left */
     gap: 12px;
 }
-.discount-label {
+/* UPDATED: Discount label styling */
+.discount-label, .discount-input-container label {
     margin: 0;
-    font-weight: 400; /* Lighter font weight */
-    font-size: 0.9rem; /* Smaller size */
-    color: var(--text-color);
+    font-weight: 600; /* Match other labels */
+    font-size: 0.8rem; /* Small a bit and muted */
+    color: var(--text-light); /* Muted */
 }
+.discount-input-container label {
+    display: block;
+    margin-bottom: 8px;
+}
+
 /* Toggle Switch */
 .switch {
     position: relative;
@@ -350,10 +356,24 @@ input:checked + .slider:before {
     color: var(--text-light);
     pointer-events: none;
 }
+/* UPDATED: Modern input styling for discount box */
 .input-with-prefix input {
+    width: 100%;
+    padding: 14px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    font-size: 1rem;
+    background-color: #fafafa;
+    
     padding-left: 32px !important; /* Space for prefix */
     transition: all 0.2s;
 }
+.input-with-prefix input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2);
+}
+
 .discount-mark {
     font-weight: bold;
     color: var(--primary-color);
