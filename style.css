@@ -528,6 +528,10 @@ input:checked + .slider:before {
 .sale-item.shake-and-show-overlay .sale-item-overlay {
     opacity: 1;
 }
+.sale-item.shake-restricted {
+    animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+    border: 1px solid var(--danger-color); 
+}
 .sale-item img { width: 40px; height: 40px; border-radius: 8px; margin-right: 12px; object-fit: cover; flex-shrink: 0; }
 .sale-info { flex-grow: 1; overflow: hidden; }
 .sale-info p { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: clamp(0.9rem, 2.5vw, 1rem); }

@@ -1627,7 +1627,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
         },
+        
+        triggerRestrictedFeedback(element) {
+            // Visual shake
+            element.classList.add('shake-restricted');
+            setTimeout(() => {
+                element.classList.remove('shake-restricted');
+            }, 500); 
+
+            // Text feedback (Toast)
+            this.showToast("This item has already been transferred.");
+        },
+
         enterSelectionMode(element, sale) {
+            if (sale.sharedAsLog) {
+                this.triggerRestrictedFeedback(element);
+                return;
+            }
             this.state.isSelectionMode = true;
             document.querySelectorAll('.sale-item').forEach(el => el.classList.add('selectable'));
             this.elements.receiptActions.classList.add('visible');
@@ -1644,7 +1660,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.selectionModeHint.textContent = 'Long-press to select';
             }
         },
-        toggleSaleSelection(element, sale) { if (this.state.selectedSales.has(sale.id)) { this.state.selectedSales.delete(sale.id); element.classList.remove('selected'); } else { this.state.selectedSales.add(sale.id); element.classList.add('selected'); } this.elements.generateReceiptBtn.disabled = this.state.selectedSales.size === 0; },
+        toggleSaleSelection(element, sale) { 
+            if (sale.sharedAsLog) {
+                this.triggerRestrictedFeedback(element);
+                return;
+            }
+            if (this.state.selectedSales.has(sale.id)) { this.state.selectedSales.delete(sale.id); element.classList.remove('selected'); } else { this.state.selectedSales.add(sale.id); element.classList.add('selected'); } this.elements.generateReceiptBtn.disabled = this.state.selectedSales.size === 0; 
+        },
         async generateReceipt() {
             const allSales = await DB.getAllSales();
             const selectedSaleObjects = allSales.filter(s => this.state.selectedSales.has(s.id));
@@ -1787,6 +1809,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 const logDocSnap = await window.fb.getDoc(logDocRef);
                 if (logDocSnap.exists()) {
                     const logData = logDocSnap.data();
+                    
+                    if (logData.claimed) {
+                        alert("Items in QR were previously scanned and accepted");
+                        return;
+                    }
+                    
+                    logData.id = logId; // Attach ID
                     this.handlePikaLogScanned(logData);
                 } else {
                     alert("Transfer data not found. It may have been deleted.");
@@ -1971,6 +2000,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 } catch (error) {
                     console.error("Error updating stock to Firebase:", error);
                     alert("Local inventory updated, but failed to sync online.");
+                }
+            }
+            
+            // Mark log as claimed
+            if (this.state.scannedLogData.id && this.state.firebaseReady) {
+                try {
+                     const logRef = window.fb.doc(window.fb.db, 'shared_logs', this.state.scannedLogData.id);
+                     await window.fb.updateDoc(logRef, {
+                         claimed: true,
+                         claimedAt: window.fb.serverTimestamp(),
+                         claimedBy: this.state.user.uid || this.state.user.phone
+                     });
+                } catch (error) {
+                    console.error("Error marking log as claimed:", error);
                 }
             }
         
