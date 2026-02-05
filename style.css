@@ -60,7 +60,16 @@ html, body {
 
 /* === Loader === */
 .loader-container { display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; background-color: var(--surface-color); transition: opacity 0.5s ease; }
-.spinner { width: 50px; height: 50px; border: 5px solid var(--border-color); border-top-color: var(--primary-color); border-radius: 50%; animation: spin 1s linear infinite; }
+/* NEW SPIRAL LOADING */
+.spinner { 
+    width: 50px; 
+    height: 50px; 
+    border-radius: 50%; 
+    background: conic-gradient(#0000 10%, var(--primary-color)); 
+    -webkit-mask: radial-gradient(farthest-side,#0000 calc(100% - 8px),#000 0); 
+    mask: radial-gradient(farthest-side,#0000 calc(100% - 8px),#000 0); 
+    animation: spin 1s infinite linear; 
+}
 .loader-container p { font-size: 1.5rem; font-weight: 600; color: var(--primary-color); margin-top: 20px; }
 .loader-check { font-size: 3rem; color: var(--primary-color); margin-top: -55px; animation: check-pop 0.3s ease-out; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -217,6 +226,140 @@ html, body {
 }
 .stock-group {
     flex: 2;
+}
+
+/* NEW STYLES FOR INPUT ICONS (REPLACED EMOJIS) */
+.input-wrapper {
+    position: relative;
+    width: 100%;
+}
+.input-wrapper input {
+    padding-right: 85px; /* Make space for icons */
+    letter-spacing: 2px;
+    font-weight: 600;
+}
+.input-icons {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    gap: 4px;
+}
+.icon-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #888;
+    padding: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: background-color 0.2s, color 0.2s;
+}
+.icon-btn:hover {
+    background-color: rgba(0,0,0,0.05);
+}
+.icon-btn:active {
+    background-color: rgba(0,0,0,0.1);
+}
+/* Specific copy color */
+#copy-login-pin, #copy-create-pin {
+    color: var(--primary-color);
+}
+
+/* NEW STYLES FOR DISCOUNT UI */
+.discount-section {
+    margin-bottom: 16px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--border-color);
+}
+.discount-header {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start; /* Aligned to left */
+    gap: 12px;
+}
+.discount-label {
+    margin: 0;
+    font-weight: 400; /* Lighter font weight */
+    font-size: 0.9rem; /* Smaller size */
+    color: var(--text-color);
+}
+/* Toggle Switch */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+    flex-shrink: 0;
+}
+.switch input { 
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: .4s;
+    border-radius: 24px;
+}
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+}
+input:checked + .slider {
+    background-color: var(--primary-color);
+}
+input:checked + .slider:before {
+    transform: translateX(20px);
+}
+.discount-input-container {
+    margin-top: 12px;
+    animation: slideDown 0.3s ease-out;
+}
+@keyframes slideDown {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+/* Modern input with prefix */
+.input-with-prefix {
+    position: relative;
+    width: 100%;
+}
+.currency-prefix {
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-weight: 600;
+    color: var(--text-light);
+    pointer-events: none;
+}
+.input-with-prefix input {
+    padding-left: 32px !important; /* Space for prefix */
+    transition: all 0.2s;
+}
+.discount-mark {
+    font-weight: bold;
+    color: var(--primary-color);
+    font-size: 0.8em;
+    margin-left: 2px;
+    vertical-align: super;
 }
 
 

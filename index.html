@@ -72,12 +72,18 @@
             <div class="onboarding-content">
                 <h1>Welcome Back!</h1>
                 <p>Please enter your 6-digit PIN to login.</p>
-                <div class="form-group" style="position: relative;">
+                <div class="form-group">
                     <label for="login-pin">Your Security PIN</label>
-                    <input type="password" id="login-pin" placeholder="Enter 6-digit PIN" maxlength="6" inputmode="numeric" style="letter-spacing: 4px; font-weight: bold; padding-right: 80px;">
-                    <div style="position: absolute; right: 10px; top: 42px; display: flex; gap: 8px;">
-                        <button id="toggle-login-pin" class="input-icon-btn" title="Show/Hide" style="background: none; border: none; cursor: pointer; color: #888;">👁️</button>
-                        <button id="copy-login-pin" class="input-icon-btn" title="Copy" style="background: none; border: none; cursor: pointer; color: #4A90E2;">📋</button>
+                    <div class="input-wrapper">
+                        <input type="password" id="login-pin" placeholder="Enter PIN here" maxlength="6" inputmode="numeric">
+                        <div class="input-icons">
+                            <button id="toggle-login-pin" class="icon-btn" title="Show/Hide">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                            </button>
+                            <button id="copy-login-pin" class="icon-btn" title="Copy">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                            </button>
+                        </div>
                     </div>
                 </div>
                 <button id="login-btn" class="btn btn-primary">Login & Sync</button>
@@ -123,12 +129,18 @@
                     </div>
                 </div>
                 
-                <div class="form-group" style="position: relative;">
+                <div class="form-group">
                     <label for="create-pin">Create 6-digit PIN</label>
-                    <input type="password" id="create-pin" placeholder="123456" maxlength="6" inputmode="numeric" style="letter-spacing: 4px; font-weight: bold; padding-right: 80px;">
-                    <div style="position: absolute; right: 10px; top: 42px; display: flex; gap: 8px;">
-                        <button id="toggle-create-pin" class="input-icon-btn" title="Show/Hide" style="background: none; border: none; cursor: pointer; color: #888;">👁️</button>
-                        <button id="copy-create-pin" class="input-icon-btn" title="Copy" style="background: none; border: none; cursor: pointer; color: #4A90E2;">📋</button>
+                    <div class="input-wrapper">
+                        <input type="password" id="create-pin" placeholder="Enter PIN here" maxlength="6" inputmode="numeric">
+                        <div class="input-icons">
+                            <button id="toggle-create-pin" class="icon-btn" title="Show/Hide">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                            </button>
+                            <button id="copy-create-pin" class="icon-btn" title="Copy">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -401,6 +413,23 @@
                 <h2>Confirm Sale</h2>
                 <div class="sale-item-details"><img id="sale-product-image" src="" alt="Product image"><div><h3 id="sale-product-name">Product Name</h3><p id="sale-product-stock">Stock: 50 sachets</p></div></div>
                 <div class="sale-total"><p>Total</p><h2 id="sale-total-price">₦0</h2></div>
+                
+                <div class="discount-section">
+                    <div class="discount-header">
+                        <label class="switch">
+                            <input type="checkbox" id="discount-toggle">
+                            <span class="slider round"></span>
+                        </label>
+                        <label for="discount-toggle" class="discount-label">Apply Discount</label>
+                    </div>
+                    <div class="discount-input-container" id="discount-input-container" style="display:none;">
+                        <label for="discount-amount">Discount</label>
+                        <div class="input-with-prefix">
+                            <span class="currency-prefix">₦</span>
+                            <input type="text" id="discount-amount" inputmode="numeric" placeholder="0">
+                        </div>
+                    </div>
+                </div>
                 <div class="form-group"><label for="sale-quantity" id="sale-quantity-label">Quantity</label><input type="text" id="sale-quantity" inputmode="numeric" value="1" min="1"></div>
             </div>
             <p id="sale-offline-notice" class="offline-notice" style="display: none;">Please connect to the internet to confirm this sale.</p>

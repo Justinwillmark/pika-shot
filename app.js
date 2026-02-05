@@ -101,6 +101,11 @@ document.addEventListener('DOMContentLoaded', () => {
             cancelSaleBtn: document.getElementById('cancel-sale-btn'),
             confirmSaleBtn: document.getElementById('confirm-sale-btn'),
             saleOfflineNotice: document.getElementById('sale-offline-notice'),
+            // NEW DOM ELEMENTS FOR DISCOUNT
+            discountToggle: document.getElementById('discount-toggle'),
+            discountInputContainer: document.getElementById('discount-input-container'),
+            discountAmountInput: document.getElementById('discount-amount'),
+            
             installBtn: document.getElementById('add-to-homescreen-btn'),
             receiptActions: document.getElementById('receipt-actions'),
             generateReceiptBtn: document.getElementById('generate-receipt-btn'),
@@ -255,7 +260,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Login Screen Listeners
             this.elements.loginBtn.addEventListener('click', this.handleLogin.bind(this));
-            this.elements.toggleLoginPinBtn.addEventListener('click', () => this.togglePinVisibility('login-pin'));
+            this.elements.toggleLoginPinBtn.addEventListener('click', () => this.togglePinVisibility('login-pin', 'toggle-login-pin'));
             this.elements.copyLoginPinBtn.addEventListener('click', () => this.copyPin('login-pin'));
             this.elements.backToPhoneBtn.addEventListener('click', () => {
                 this.elements.loginPinInput.value = '';
@@ -267,7 +272,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.goBackRegisterBtn.addEventListener('click', () => {
                 this.showView('onboarding-step-1');
             });
-            this.elements.toggleCreatePinBtn.addEventListener('click', () => this.togglePinVisibility('create-pin'));
+            this.elements.toggleCreatePinBtn.addEventListener('click', () => this.togglePinVisibility('create-pin', 'toggle-create-pin'));
             this.elements.copyCreatePinBtn.addEventListener('click', () => this.copyPin('create-pin'));
             
             // Privacy Policy Links
@@ -299,6 +304,16 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.scanNewBarcodeBtn.addEventListener('click', this.startBarcodeAssignmentScan.bind(this));
             this.elements.cancelPictureBtn.addEventListener('click', () => this.hideModal());
             this.elements.saleQuantityInput.addEventListener('input', this.updateSaleTotal.bind(this));
+            // NEW LISTENER FOR DISCOUNT
+            this.elements.discountToggle.addEventListener('change', (e) => {
+                this.elements.discountInputContainer.style.display = e.target.checked ? 'block' : 'none';
+                if (!e.target.checked) {
+                    this.elements.discountAmountInput.value = '';
+                    this.updateSaleTotal();
+                }
+            });
+            this.elements.discountAmountInput.addEventListener('input', this.updateSaleTotal.bind(this));
+            
             this.elements.cancelSaleBtn.addEventListener('click', () => this.hideModal());
             this.elements.confirmSaleBtn.addEventListener('click', this.handleConfirmSale.bind(this));
             window.addEventListener('beforeinstallprompt', this.handleBeforeInstallPrompt.bind(this));
@@ -358,7 +373,8 @@ document.addEventListener('DOMContentLoaded', () => {
              const fieldsToFormat = [
                 this.elements.productPriceInput, this.elements.productStockInput,
                 this.elements.saleQuantityInput, this.elements.manualProductPrice,
-                this.elements.manualSaleQuantity, this.elements.cartonSubunitQuantityInput
+                this.elements.manualSaleQuantity, this.elements.cartonSubunitQuantityInput,
+                this.elements.discountAmountInput // Added discount input
             ];
             fieldsToFormat.forEach(input => {
                 input.addEventListener('input', (e) => {
@@ -412,9 +428,21 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         },
 
-        togglePinVisibility(inputId) {
+        togglePinVisibility(inputId, btnId) {
             const input = document.getElementById(inputId);
-            input.type = input.type === "password" ? "text" : "password";
+            const btn = document.getElementById(btnId);
+            const isPassword = input.type === "password";
+            
+            input.type = isPassword ? "text" : "password";
+            
+            // Dynamic SVG swap
+            if (isPassword) {
+                 // Switch to "Eye Off" (Hide) icon
+                btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M1 1l22 22"></path><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"></path></svg>`;
+            } else {
+                 // Switch back to "Eye" (Show) icon
+                btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
+            }
         },
         
         copyPin(inputId) {
@@ -695,7 +723,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 saleEl.dataset.saleId = sale.id;
                 const imageUrl = sale.image ? URL.createObjectURL(sale.image) : 'icons/icon-192.png';
-                saleEl.innerHTML = `<div class="sale-item-overlay">Previously Transferred</div><img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${this.formatNumber(sale.quantity)} x &#8358;${this.formatNumber(sale.price)}</span></div><p class="sale-price">&#8358;${this.formatNumber(sale.total)}</p>`;
+                
+                // Add discount marker if applicable
+                const discountMark = (sale.discount && sale.discount > 0) ? '<sup class="discount-mark">**</sup>' : '';
+                
+                saleEl.innerHTML = `<div class="sale-item-overlay">Previously Transferred</div><img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${this.formatNumber(sale.quantity)} x &#8358;${this.formatNumber(sale.price)}</span></div><p class="sale-price">&#8358;${this.formatNumber(sale.total)}${discountMark}</p>`;
 
                 this.addSaleItemEventListeners(saleEl, sale);
                 targetElement.appendChild(saleEl);
@@ -758,7 +790,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     saleEl.dataset.saleId = sale.id;
                     const imageUrl = sale.image ? URL.createObjectURL(sale.image) : 'icons/icon-192.png';
-                    saleEl.innerHTML = `<div class="sale-item-overlay">Previously Transferred</div><img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${this.formatNumber(sale.quantity)} x &#8358;${this.formatNumber(sale.price)}</span></div><p class="sale-price">&#8358;${this.formatNumber(sale.total)}</p>`;
+                    
+                    // Add discount marker
+                    const discountMark = (sale.discount && sale.discount > 0) ? '<sup class="discount-mark">**</sup>' : '';
+
+                    saleEl.innerHTML = `<div class="sale-item-overlay">Previously Transferred</div><img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${this.formatNumber(sale.quantity)} x &#8358;${this.formatNumber(sale.price)}</span></div><p class="sale-price">&#8358;${this.formatNumber(sale.total)}${discountMark}</p>`;
                     this.addSaleItemEventListeners(saleEl, sale);
                     groupContainer.appendChild(saleEl);
                 });
@@ -1096,7 +1132,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.hideModal();
             const btn = this.elements.addChangePictureBtn;
             const originalContent = '<span>Snap Image</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>';
-            btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+            btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
             btn.classList.add('success');
             setTimeout(() => {
                 btn.classList.remove('success');
@@ -1394,20 +1430,50 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.saleProductStock.textContent = `Stock: ${this.formatNumber(product.stock)} ${product.unit} left`;
             this.elements.saleQuantityLabel.textContent = `How many ${product.unit} are you selling?`;
             this.elements.saleQuantityInput.value = '1';
+            
+            // Reset discount fields
+            this.elements.discountToggle.checked = false;
+            this.elements.discountInputContainer.style.display = 'none';
+            this.elements.discountAmountInput.value = '';
+
             this.updateSaleTotal();
             this.elements.saleOfflineNotice.style.display = 'none';
             this.showModal('confirm-sale-modal');
         },
-        updateSaleTotal() { const quantity = this.unformatNumber(this.elements.saleQuantityInput.value); const price = this.state.sellingProduct?.price || 0; const total = quantity * price; this.elements.saleTotalPrice.textContent = `₦${this.formatNumber(total)}`; },
+        updateSaleTotal() { 
+            const quantity = this.unformatNumber(this.elements.saleQuantityInput.value); 
+            const price = this.state.sellingProduct?.price || 0; 
+            const subtotal = quantity * price; 
+            
+            const discount = this.elements.discountToggle.checked ? (this.unformatNumber(this.elements.discountAmountInput.value) || 0) : 0;
+            const total = Math.max(0, subtotal - discount);
+
+            this.elements.saleTotalPrice.textContent = `₦${this.formatNumber(total)}`; 
+        },
         async _processSale() {
             const quantity = this.unformatNumber(this.elements.saleQuantityInput.value);
             const product = this.state.sellingProduct;
+            const discount = this.elements.discountToggle.checked ? (this.unformatNumber(this.elements.discountAmountInput.value) || 0) : 0;
+
             if (quantity <= 0 || !product || quantity > product.stock) { alert('Invalid quantity or product not available.'); return false; }
 
             product.stock -= quantity;
 
             await DB.saveProduct(product);
-            const sale = { id: Date.now(), productId: product.id, productName: product.name, quantity: quantity, price: product.price, total: quantity * product.price, timestamp: new Date(), image: product.image, sharedAsLog: false, unit: product.unit };
+            const total = Math.max(0, (quantity * product.price) - discount);
+            const sale = { 
+                id: Date.now(), 
+                productId: product.id, 
+                productName: product.name, 
+                quantity: quantity, 
+                price: product.price, 
+                discount: discount, // Save discount
+                total: total, 
+                timestamp: new Date(), 
+                image: product.image, 
+                sharedAsLog: false, 
+                unit: product.unit 
+            };
             await DB.addSale(sale);
 
             // --- SALES LOGGING: START ---
@@ -1589,7 +1655,9 @@ document.addEventListener('DOMContentLoaded', () => {
             let itemsHtml = '';
             selectedSaleObjects.forEach(sale => {
                 totalAmount += sale.total;
-                itemsHtml += `<tr><td>${sale.productName}</td><td class="col-qty">${this.formatNumber(sale.quantity)}</td><td class="col-price">&#8358;${this.formatNumber(sale.price)}</td><td class="col-total">&#8358;${this.formatNumber(sale.total)}</td></tr>`;
+                // Add discount marker if applicable
+                const discountMark = (sale.discount && sale.discount > 0) ? '<sup style="font-weight:bold; color:var(--primary-color);">**</sup>' : '';
+                itemsHtml += `<tr><td>${sale.productName}</td><td class="col-qty">${this.formatNumber(sale.quantity)}</td><td class="col-price">&#8358;${this.formatNumber(sale.price)}</td><td class="col-total">&#8358;${this.formatNumber(sale.total)}${discountMark}</td></tr>`;
             });
             const receiptHtml = `<div class="receipt-header"><h3>${this.state.user.business}</h3><p>${this.state.user.location} | ${this.state.user.phone}</p><p><strong>Receipt ID:</strong> ${receiptId}</p></div><div class="receipt-items"><table><thead><tr><th>Item</th><th class="col-qty">Qty</th><th class="col-price">Price</th><th class="col-total">Total</th></tr></thead><tbody>${itemsHtml}</tbody></table></div><div class="receipt-total"><div class="total-row"><span>TOTAL</span><span>&#8358;${this.formatNumber(totalAmount)}</span></div></div><div class="receipt-footer"><p>Thank you for your patronage!</p><p>${now.toLocaleDateString('en-NG')} ${now.toLocaleTimeString('en-NG')}</p><p style="font-size: 0.7rem; color: #888; margin-top: 10px;">Powered by Pika-Shot</p></div>`;
             this.elements.receiptContent.innerHTML = receiptHtml;
