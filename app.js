@@ -1605,7 +1605,16 @@ document.addEventListener('DOMContentLoaded', () => {
         async showProductSelection() {
             this.hideModal();
             this.state.productSelectionMode = true;
-            this.navigateTo('products-view');
+            
+            // Fix: If already on products-view, navigateTo returns early, so we must force the UI update
+            if (this.state.currentView === 'products-view') {
+                 this.exitSelectionMode(); // Ensure receipt selection mode is off
+                 this.elements.productsView.classList.add('selection-mode');
+                 this.elements.addNewProductBtn.style.display = 'none';
+                 this.updateHeader('products-view'); // Update header title to "Select a Product"
+            } else {
+                this.navigateTo('products-view');
+            }
         },
 
         addSaleItemEventListeners(element, sale) {
