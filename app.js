@@ -226,6 +226,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     this.showView('onboarding-step-1');
                 } else {
                     await this.loadMainApp();
+                    this.startRealtimeSync(); // Start listeners for active user
                 }
                 this.loadCameraScannerInBackground();
             } catch (error) {
@@ -479,6 +480,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 this.elements.loginPinInput.value = '';
                 await this.loadMainApp();
+                this.startRealtimeSync(); // Start listeners
                 this.hideLoader();
             } else {
                 alert("Incorrect PIN. Please try again.");
@@ -535,10 +537,27 @@ document.addEventListener('DOMContentLoaded', () => {
             await this.updateDashboard();
             await this.renderProducts();
         },
+        
+        startRealtimeSync() {
+            if (this.state.user && this.state.user.phone) {
+                DB.setupRealtimeListeners(
+                    this.state.user.phone,
+                    () => { // On Products Change
+                        this.renderProducts(this.elements.productSearchInput.value);
+                    },
+                    () => { // On Sales Change
+                        this.updateDashboard();
+                        if (this.state.currentView === 'all-sales-view') {
+                            this.renderAllSales();
+                        }
+                    }
+                );
+            }
+        },
 
         async handleLogout() {
             if (confirm('Are you sure you want to log out? This will clear local data (it remains safe in the cloud).')) {
-                await DB.clearUser();
+                await DB.clearUser(); // This also stops realtime listeners
                 this.state.user = null;
                 this.state.tempPhone = null;
                 this.state.tempUserCloudData = null;
@@ -1173,6 +1192,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         async handleSaveProduct(e) {
             e.preventDefault();
+            
+            // NEW: Enforce internet connection for product management
+            if (!navigator.onLine) {
+                 this.showToast("Internet connection required to manage products.");
+                 return;
+            }
+
             const isEditing = !!this.state.editingProduct;
 
             let productData = {
@@ -2215,7 +2241,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         
-            const infoIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>`;
+            const infoIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>`;
             const deleteIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
             const status = this.formatTimeAgo(retailer.lastUpdate?.toDate());
         

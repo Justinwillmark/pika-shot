@@ -3,6 +3,8 @@ const DB = {
     dbName: 'PikaShotDB',
     dbVersion: 5,
     userPhone: null, // Track the current user's phone for cloud paths
+    unsubscribeProducts: null,
+    unsubscribeSales: null,
 
     init() {
         return new Promise((resolve, reject) => {
@@ -154,6 +156,79 @@ const DB = {
         }
     },
 
+    // --- REALTIME SYNC (NEW) ---
+    setupRealtimeListeners(phoneNumber, onProductsChange, onSalesChange) {
+        if (!window.fb || !phoneNumber) return;
+        this.stopRealtimeListeners(); // Ensure clean slate
+        this.userPhone = phoneNumber;
+
+        // Products Listener
+        const productsRef = window.fb.collection(window.fb.db, `users/${phoneNumber}/products`);
+        this.unsubscribeProducts = window.fb.onSnapshot(productsRef, (snapshot) => {
+            const tx = this.db.transaction('products', 'readwrite');
+            const store = tx.objectStore('products');
+            let hasChanges = false;
+            
+            snapshot.docChanges().forEach((change) => {
+                hasChanges = true;
+                const data = change.doc.data();
+                if (data.id && typeof data.id === 'string' && !isNaN(Number(data.id))) {
+                    data.id = Number(data.id);
+                }
+                
+                if (change.type === "added" || change.type === "modified") {
+                    store.put(data);
+                } else if (change.type === "removed") {
+                    store.delete(Number(change.doc.id));
+                }
+            });
+            
+            if (hasChanges && onProductsChange) {
+                tx.oncomplete = () => onProductsChange();
+            }
+        }, (error) => console.error("Products listener error:", error));
+
+        // Sales Listener
+        const salesRef = window.fb.collection(window.fb.db, `users/${phoneNumber}/sales`);
+        this.unsubscribeSales = window.fb.onSnapshot(salesRef, (snapshot) => {
+            const tx = this.db.transaction('sales', 'readwrite');
+            const store = tx.objectStore('sales');
+            let hasChanges = false;
+
+            snapshot.docChanges().forEach((change) => {
+                hasChanges = true;
+                const data = change.doc.data();
+                 if (data.id && typeof data.id === 'string' && !isNaN(Number(data.id))) {
+                    data.id = Number(data.id);
+                }
+                if (data.timestamp && data.timestamp.toDate) {
+                    data.timestamp = data.timestamp.toDate();
+                }
+
+                if (change.type === "added" || change.type === "modified") {
+                    store.put(data);
+                } else if (change.type === "removed") {
+                    store.delete(Number(change.doc.id));
+                }
+            });
+
+            if (hasChanges && onSalesChange) {
+                tx.oncomplete = () => onSalesChange();
+            }
+        }, (error) => console.error("Sales listener error:", error));
+    },
+
+    stopRealtimeListeners() {
+        if (this.unsubscribeProducts) {
+            this.unsubscribeProducts();
+            this.unsubscribeProducts = null;
+        }
+        if (this.unsubscribeSales) {
+            this.unsubscribeSales();
+            this.unsubscribeSales = null;
+        }
+    },
+
     // --- USER ---
     saveUser(userData, sync = true) {
         const store = this._getStore('user', 'readwrite');
@@ -166,6 +241,7 @@ const DB = {
     },
 
     async clearUser() {
+        this.stopRealtimeListeners(); // Stop syncing
         const store = this._getStore('user', 'readwrite');
         // Clear all stores on logout
         const productsStore = this._getStore('products', 'readwrite');
