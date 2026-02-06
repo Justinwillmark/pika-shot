@@ -1640,10 +1640,6 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         enterSelectionMode(element, sale) {
-            if (sale.sharedAsLog) {
-                this.triggerRestrictedFeedback(element);
-                return;
-            }
             this.state.isSelectionMode = true;
             document.querySelectorAll('.sale-item').forEach(el => el.classList.add('selectable'));
             this.elements.receiptActions.classList.add('visible');
@@ -1661,10 +1657,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         },
         toggleSaleSelection(element, sale) { 
-            if (sale.sharedAsLog) {
-                this.triggerRestrictedFeedback(element);
-                return;
-            }
             if (this.state.selectedSales.has(sale.id)) { this.state.selectedSales.delete(sale.id); element.classList.remove('selected'); } else { this.state.selectedSales.add(sale.id); element.classList.add('selected'); } this.elements.generateReceiptBtn.disabled = this.state.selectedSales.size === 0; 
         },
         async generateReceipt() {
@@ -1707,6 +1699,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.showToast("Please select at least one sale to transfer.");
                 return;
             }
+
+            // --- NEW VALIDATION: Check for already transferred items ---
+            const alreadyTransferred = selectedSaleObjects.filter(s => s.sharedAsLog);
+            if (alreadyTransferred.length > 0) {
+                // Trigger feedback for each invalid item
+                alreadyTransferred.forEach(sale => {
+                    const el = document.querySelector(`.sale-item[data-sale-id="${sale.id}"]`);
+                    if (el) this.triggerRestrictedFeedback(el);
+                });
+                this.showToast("Some selected items have already been transferred.");
+                return; // Stop execution
+            }
+            // -----------------------------------------------------------
         
             const groupedSales = selectedSaleObjects.reduce((acc, sale) => {
                 const key = sale.productId;
@@ -1810,12 +1815,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (logDocSnap.exists()) {
                     const logData = logDocSnap.data();
                     
+                    // NEW: Check if claimed
                     if (logData.claimed) {
                         alert("Items in QR were previously scanned and accepted");
                         return;
                     }
                     
-                    logData.id = logId; // Attach ID
+                    logData.id = logId; // Attach ID so we can update it later
                     this.handlePikaLogScanned(logData);
                 } else {
                     alert("Transfer data not found. It may have been deleted.");
@@ -2003,7 +2009,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
             
-            // Mark log as claimed
+            // NEW: Mark log as claimed in Firestore
             if (this.state.scannedLogData.id && this.state.firebaseReady) {
                 try {
                      const logRef = window.fb.doc(window.fb.db, 'shared_logs', this.state.scannedLogData.id);
