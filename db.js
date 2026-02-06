@@ -68,10 +68,15 @@ const DB = {
                 ? window.fb.doc(window.fb.db, path, String(docId))
                 : window.fb.doc(window.fb.db, path);
             
-            // Remove image blobs if any (cannot store blobs directly in Firestore efficiently)
+            // Remove image blobs and add server timestamp
             const cleanData = {...data};
             if(cleanData.image) delete cleanData.image; 
             
+            // Optimization: Add lastUpdate timestamp to track changes
+            if (window.fb.serverTimestamp) {
+                cleanData.lastUpdate = window.fb.serverTimestamp();
+            }
+
             window.fb.setDoc(ref, cleanData, { merge: true })
                 .catch(err => console.error("Cloud sync failed:", err));
         } catch (e) {
@@ -82,18 +87,33 @@ const DB = {
     async syncDataFromCloud(phoneNumber) {
         if (!window.fb) return false;
         this.userPhone = phoneNumber;
-        
+        const syncStartTime = new Date(); // Capture start time to set as new lastSync
+
         try {
-            // 1. Get User Profile
+            // Get local user to check for lastSync timestamp
+            const localUser = await this.getUser();
+            const lastSyncDate = localUser?.lastSync || null;
+
+            // 1. Sync User Profile
             const userRef = window.fb.doc(window.fb.db, 'users', phoneNumber);
             const userSnap = await window.fb.getDoc(userRef);
             if (userSnap.exists()) {
-                await this.saveUser(userSnap.data(), false); // false = don't sync back to cloud
+                const cloudUserData = userSnap.data();
+                // Preserve local lastSync when overwriting user data
+                if (lastSyncDate) cloudUserData.lastSync = lastSyncDate;
+                await this.saveUser(cloudUserData, false); // false = don't sync back to cloud
             }
 
-            // 2. Get Products
+            // 2. Get Products (Optimization: Fetch only changes if lastSync exists)
             const productsRef = window.fb.collection(window.fb.db, `users/${phoneNumber}/products`);
-            const prodSnaps = await window.fb.getDocs(productsRef);
+            let productsQuery = productsRef;
+            
+            if (lastSyncDate && window.fb.where && window.fb.query) {
+                // If we have synced before, only get items updated since then
+                productsQuery = window.fb.query(productsRef, window.fb.where('lastUpdate', '>', lastSyncDate));
+            }
+
+            const prodSnaps = await window.fb.getDocs(productsQuery);
             const prodTx = this.db.transaction('products', 'readwrite');
             prodSnaps.forEach(doc => {
                 const p = doc.data();
@@ -102,9 +122,16 @@ const DB = {
                 prodTx.objectStore('products').put(p);
             });
 
-            // 3. Get Sales
+            // 3. Get Sales (Optimization: Fetch only changes if lastSync exists)
             const salesRef = window.fb.collection(window.fb.db, `users/${phoneNumber}/sales`);
-            const saleSnaps = await window.fb.getDocs(salesRef);
+            let salesQuery = salesRef;
+
+            if (lastSyncDate && window.fb.where && window.fb.query) {
+                // Fetch sales updated (or created) after the last sync
+                salesQuery = window.fb.query(salesRef, window.fb.where('lastUpdate', '>', lastSyncDate));
+            }
+
+            const saleSnaps = await window.fb.getDocs(salesQuery);
             const saleTx = this.db.transaction('sales', 'readwrite');
             saleSnaps.forEach(doc => {
                 const s = doc.data();
@@ -112,6 +139,13 @@ const DB = {
                 if(s.timestamp && s.timestamp.toDate) s.timestamp = s.timestamp.toDate(); // Convert Firestore Timestamp to Date
                 saleTx.objectStore('sales').put(s);
             });
+
+            // 4. Update lastSync in IDB upon successful sync
+            const updatedUser = await this.getUser();
+            if (updatedUser) {
+                updatedUser.lastSync = syncStartTime;
+                await this.saveUser(updatedUser, false);
+            }
 
             return true;
         } catch (error) {
