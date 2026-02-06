@@ -978,7 +978,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.state.cameraReady = true;
                 this.elements.addNewProductBtn.classList.remove('disabled');
                 this.elements.sellItemBtnMain.classList.remove('disabled');
-                this.elements.sellItemBtnText.textContent = 'Sell Item';
+                this.elements.sellItemBtnText.textContent = 'Record Sale';
                 console.log("Barcode scanner ready.");
             } catch (error) {
                 console.error("Failed to initialize scanner:", error);
