@@ -726,7 +726,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
         renderSalesList(sales, targetElement, limit) {
             targetElement.innerHTML = '';
-            const sortedSales = sales.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+            
+            const sortedSales = sales.sort((a, b) => {
+                const dateA = new Date(a.timestamp);
+                const dateB = new Date(b.timestamp);
+                if (isNaN(dateA.getTime())) return 1;
+                if (isNaN(dateB.getTime())) return -1;
+                return dateB - dateA;
+            });
+            
             const salesToRender = limit ? sortedSales.slice(0, limit) : sortedSales;
 
             if (salesToRender.length === 0) {
@@ -755,7 +763,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         async renderAllSales() {
             const allSales = await DB.getAllSales();
-            const sortedSales = allSales.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+            const sortedSales = allSales.sort((a, b) => {
+                const dateA = new Date(a.timestamp);
+                const dateB = new Date(b.timestamp);
+                if (isNaN(dateA.getTime())) return 1;
+                if (isNaN(dateB.getTime())) return -1;
+                return dateB - dateA;
+            });
+            
             this.elements.allSalesList.innerHTML = '';
         
             if (this.state.user.type === 'Salesperson') {
@@ -833,6 +848,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
             sales.forEach(sale => {
                 const saleDate = new Date(sale.timestamp);
+                
+                // Safe Check for invalid dates
+                if (isNaN(saleDate.getTime())) return;
+                
                 saleDate.setHours(0, 0, 0, 0);
 
                 let groupTitle;
@@ -857,7 +876,15 @@ document.addEventListener('DOMContentLoaded', () => {
         async renderProducts(searchText = '') {
             const filterType = this.state.productFilter;
             const allProducts = await DB.getAllProducts();
-            allProducts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)); // Sort by newest first
+            
+            // Sort safely
+            allProducts.sort((a, b) => {
+                const dateA = new Date(a.createdAt);
+                const dateB = new Date(b.createdAt);
+                if (isNaN(dateA.getTime())) return 1;
+                if (isNaN(dateB.getTime())) return -1;
+                return dateB - dateA;
+            }); // Sort by newest first
 
             this.elements.productGrid.innerHTML = '';
             this.elements.productSkuCount.textContent = `${allProducts.length} SKUs`;

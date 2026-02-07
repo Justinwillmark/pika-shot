@@ -156,7 +156,7 @@ const DB = {
         }
     },
 
-    // --- REALTIME SYNC (NEW) ---
+    // --- REALTIME SYNC (NEW & ROBUST) ---
     setupRealtimeListeners(phoneNumber, onProductsChange, onSalesChange) {
         if (!window.fb || !phoneNumber) return;
         this.stopRealtimeListeners(); // Ensure clean slate
@@ -165,6 +165,9 @@ const DB = {
         // Products Listener
         const productsRef = window.fb.collection(window.fb.db, `users/${phoneNumber}/products`);
         this.unsubscribeProducts = window.fb.onSnapshot(productsRef, (snapshot) => {
+             // Check if snapshot is empty to avoid opening transaction unnecessarily
+            if (snapshot.docChanges().length === 0) return;
+
             const tx = this.db.transaction('products', 'readwrite');
             const store = tx.objectStore('products');
             let hasChanges = false;
@@ -172,25 +175,47 @@ const DB = {
             snapshot.docChanges().forEach((change) => {
                 hasChanges = true;
                 const data = change.doc.data();
-                if (data.id && typeof data.id === 'string' && !isNaN(Number(data.id))) {
-                    data.id = Number(data.id);
-                }
                 
-                if (change.type === "added" || change.type === "modified") {
-                    store.put(data);
-                } else if (change.type === "removed") {
-                    store.delete(Number(change.doc.id));
+                try {
+                     // Safe ID conversion
+                    if (data.id && typeof data.id === 'string' && !isNaN(Number(data.id))) {
+                        data.id = Number(data.id);
+                    } else if (!data.id) {
+                         // Fallback to doc ID if internal ID is missing
+                        const docIdNum = Number(change.doc.id);
+                        if (!isNaN(docIdNum)) data.id = docIdNum;
+                    }
+
+                    // Safe Timestamp conversion for products (createdAt)
+                    if (data.createdAt && typeof data.createdAt.toDate === 'function') {
+                        data.createdAt = data.createdAt.toDate();
+                    } else if (data.createdAt && !(data.createdAt instanceof Date)) {
+                         data.createdAt = new Date(data.createdAt);
+                    }
+                    
+                    if (change.type === "added" || change.type === "modified") {
+                        if (data.id) store.put(data);
+                    } else if (change.type === "removed") {
+                        if (data.id) store.delete(data.id);
+                        else store.delete(Number(change.doc.id));
+                    }
+                } catch (e) {
+                    console.error("Error processing product change:", e);
                 }
             });
             
             if (hasChanges && onProductsChange) {
-                tx.oncomplete = () => onProductsChange();
+                tx.oncomplete = () => {
+                     try { onProductsChange(); } catch(e) { console.error("UI update failed (products)", e); }
+                };
             }
         }, (error) => console.error("Products listener error:", error));
 
         // Sales Listener
         const salesRef = window.fb.collection(window.fb.db, `users/${phoneNumber}/sales`);
         this.unsubscribeSales = window.fb.onSnapshot(salesRef, (snapshot) => {
+             if (snapshot.docChanges().length === 0) return;
+
             const tx = this.db.transaction('sales', 'readwrite');
             const store = tx.objectStore('sales');
             let hasChanges = false;
@@ -198,22 +223,40 @@ const DB = {
             snapshot.docChanges().forEach((change) => {
                 hasChanges = true;
                 const data = change.doc.data();
-                 if (data.id && typeof data.id === 'string' && !isNaN(Number(data.id))) {
-                    data.id = Number(data.id);
-                }
-                if (data.timestamp && data.timestamp.toDate) {
-                    data.timestamp = data.timestamp.toDate();
-                }
+                
+                try {
+                     // Safe ID conversion
+                    if (data.id && typeof data.id === 'string' && !isNaN(Number(data.id))) {
+                        data.id = Number(data.id);
+                    } else if (!data.id) {
+                         // Fallback to doc ID if internal ID is missing
+                        const docIdNum = Number(change.doc.id);
+                        if (!isNaN(docIdNum)) data.id = docIdNum;
+                    }
 
-                if (change.type === "added" || change.type === "modified") {
-                    store.put(data);
-                } else if (change.type === "removed") {
-                    store.delete(Number(change.doc.id));
+                    // Robust Timestamp conversion
+                    if (data.timestamp && typeof data.timestamp.toDate === 'function') {
+                        data.timestamp = data.timestamp.toDate();
+                    } else if (data.timestamp && !(data.timestamp instanceof Date)) {
+                        // Handle numeric or string timestamps
+                         data.timestamp = new Date(data.timestamp);
+                    }
+
+                    if (change.type === "added" || change.type === "modified") {
+                        if (data.id) store.put(data);
+                    } else if (change.type === "removed") {
+                        if (data.id) store.delete(data.id);
+                        else store.delete(Number(change.doc.id));
+                    }
+                } catch (e) {
+                    console.error("Error processing sale change:", e);
                 }
             });
 
             if (hasChanges && onSalesChange) {
-                tx.oncomplete = () => onSalesChange();
+                tx.oncomplete = () => {
+                     try { onSalesChange(); } catch(e) { console.error("UI update failed (sales)", e); }
+                };
             }
         }, (error) => console.error("Sales listener error:", error));
     },
@@ -324,7 +367,8 @@ const DB = {
 
                 const todaysSales = allSalesRequest.result.filter(sale => {
                     const saleDate = new Date(sale.timestamp);
-                    return saleDate >= today;
+                    // Safe date check
+                    return !isNaN(saleDate.getTime()) && saleDate >= today;
                 });
                 resolve(todaysSales);
             };
