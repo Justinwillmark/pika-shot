@@ -20,7 +20,7 @@ const DB = {
                 console.log("Database opened successfully");
                 // Try to load user to get phone number for cloud sync
                 this.getUser().then(user => {
-                    if(user && user.phone) this.userPhone = user.phone;
+                    if (user && user.phone) this.userPhone = user.phone;
                 });
                 resolve();
             };
@@ -40,7 +40,7 @@ const DB = {
                     const salesStore = db.createObjectStore('sales', { keyPath: 'id' });
                     salesStore.createIndex('productId', 'productId', { unique: false });
                 } else {
-                     const salesStore = transaction.objectStore('sales');
+                    const salesStore = transaction.objectStore('sales');
                     if (!salesStore.indexNames.contains('productId')) salesStore.createIndex('productId', 'productId', { unique: false });
                 }
                 if (!db.objectStoreNames.contains('scan_counts')) db.createObjectStore('scan_counts', { keyPath: 'date' });
@@ -61,19 +61,37 @@ const DB = {
     },
 
     // --- CLOUD SYNC HELPERS ---
+    _normalizeTimestamp(ts) {
+        if (!ts) return new Date();
+        // Firestore Timestamp object
+        if (ts.toDate && typeof ts.toDate === 'function') return ts.toDate();
+        // Already a Date
+        if (ts instanceof Date) return ts;
+        // Epoch number (milliseconds)
+        if (typeof ts === 'number') return new Date(ts);
+        // ISO string or other parseable string
+        if (typeof ts === 'string') {
+            const d = new Date(ts);
+            return isNaN(d.getTime()) ? new Date() : d;
+        }
+        // Firestore-like plain object {seconds, nanoseconds}
+        if (ts.seconds !== undefined) return new Date(ts.seconds * 1000);
+        return new Date();
+    },
+
     _syncToCloud(collectionName, docId, data) {
         if (!this.userPhone || !window.fb) return; // Need user phone to know where to save
         const path = `users/${this.userPhone}${collectionName ? '/' + collectionName : ''}`;
-        
+
         try {
-            const ref = docId 
+            const ref = docId
                 ? window.fb.doc(window.fb.db, path, String(docId))
                 : window.fb.doc(window.fb.db, path);
-            
+
             // Remove image blobs and add server timestamp
-            const cleanData = {...data};
-            if(cleanData.image) delete cleanData.image; 
-            
+            const cleanData = { ...data };
+            if (cleanData.image) delete cleanData.image;
+
             // Optimization: Add lastUpdate timestamp to track changes
             if (window.fb.serverTimestamp) {
                 cleanData.lastUpdate = window.fb.serverTimestamp();
@@ -89,65 +107,46 @@ const DB = {
     async syncDataFromCloud(phoneNumber) {
         if (!window.fb) return false;
         this.userPhone = phoneNumber;
-        const syncStartTime = new Date(); // Capture start time to set as new lastSync
 
         try {
-            // Get local user to check for lastSync timestamp
-            const localUser = await this.getUser();
-            const lastSyncDate = localUser?.lastSync || null;
-
             // 1. Sync User Profile
             const userRef = window.fb.doc(window.fb.db, 'users', phoneNumber);
             const userSnap = await window.fb.getDoc(userRef);
             if (userSnap.exists()) {
                 const cloudUserData = userSnap.data();
-                // Preserve local lastSync when overwriting user data
-                if (lastSyncDate) cloudUserData.lastSync = lastSyncDate;
                 await this.saveUser(cloudUserData, false); // false = don't sync back to cloud
             }
 
-            // 2. Get Products (Optimization: Fetch only changes if lastSync exists)
+            // 2. Get ALL Products (always fetch all to avoid sync gaps)
             const productsRef = window.fb.collection(window.fb.db, `users/${phoneNumber}/products`);
-            let productsQuery = productsRef;
-            
-            if (lastSyncDate && window.fb.where && window.fb.query) {
-                // If we have synced before, only get items updated since then
-                productsQuery = window.fb.query(productsRef, window.fb.where('lastUpdate', '>', lastSyncDate));
-            }
-
-            const prodSnaps = await window.fb.getDocs(productsQuery);
-            const prodTx = this.db.transaction('products', 'readwrite');
-            prodSnaps.forEach(doc => {
-                const p = doc.data();
-                // Ensure IDs are numbers if they were numbers in IndexedDB
-                if(typeof p.id === 'string' && !isNaN(p.id)) p.id = Number(p.id);
-                prodTx.objectStore('products').put(p);
+            const prodSnaps = await window.fb.getDocs(productsRef);
+            await new Promise((resolve, reject) => {
+                const prodTx = this.db.transaction('products', 'readwrite');
+                const store = prodTx.objectStore('products');
+                prodSnaps.forEach(doc => {
+                    const p = doc.data();
+                    if (typeof p.id === 'string' && !isNaN(p.id)) p.id = Number(p.id);
+                    store.put(p);
+                });
+                prodTx.oncomplete = () => resolve();
+                prodTx.onerror = () => reject(prodTx.error);
             });
 
-            // 3. Get Sales (Optimization: Fetch only changes if lastSync exists)
+            // 3. Get ALL Sales (always fetch all to avoid sync gaps)
             const salesRef = window.fb.collection(window.fb.db, `users/${phoneNumber}/sales`);
-            let salesQuery = salesRef;
-
-            if (lastSyncDate && window.fb.where && window.fb.query) {
-                // Fetch sales updated (or created) after the last sync
-                salesQuery = window.fb.query(salesRef, window.fb.where('lastUpdate', '>', lastSyncDate));
-            }
-
-            const saleSnaps = await window.fb.getDocs(salesQuery);
-            const saleTx = this.db.transaction('sales', 'readwrite');
-            saleSnaps.forEach(doc => {
-                const s = doc.data();
-                if(typeof s.id === 'string' && !isNaN(s.id)) s.id = Number(s.id);
-                if(s.timestamp && s.timestamp.toDate) s.timestamp = s.timestamp.toDate(); // Convert Firestore Timestamp to Date
-                saleTx.objectStore('sales').put(s);
+            const saleSnaps = await window.fb.getDocs(salesRef);
+            await new Promise((resolve, reject) => {
+                const saleTx = this.db.transaction('sales', 'readwrite');
+                const store = saleTx.objectStore('sales');
+                saleSnaps.forEach(doc => {
+                    const s = doc.data();
+                    if (typeof s.id === 'string' && !isNaN(s.id)) s.id = Number(s.id);
+                    s.timestamp = this._normalizeTimestamp(s.timestamp);
+                    store.put(s);
+                });
+                saleTx.oncomplete = () => resolve();
+                saleTx.onerror = () => reject(saleTx.error);
             });
-
-            // 4. Update lastSync in IDB upon successful sync
-            const updatedUser = await this.getUser();
-            if (updatedUser) {
-                updatedUser.lastSync = syncStartTime;
-                await this.saveUser(updatedUser, false);
-            }
 
             return true;
         } catch (error) {
@@ -168,21 +167,21 @@ const DB = {
             const tx = this.db.transaction('products', 'readwrite');
             const store = tx.objectStore('products');
             let hasChanges = false;
-            
+
             snapshot.docChanges().forEach((change) => {
                 hasChanges = true;
                 const data = change.doc.data();
                 if (data.id && typeof data.id === 'string' && !isNaN(Number(data.id))) {
                     data.id = Number(data.id);
                 }
-                
+
                 if (change.type === "added" || change.type === "modified") {
                     store.put(data);
                 } else if (change.type === "removed") {
                     store.delete(Number(change.doc.id));
                 }
             });
-            
+
             if (hasChanges && onProductsChange) {
                 tx.oncomplete = () => onProductsChange();
             }
@@ -198,12 +197,10 @@ const DB = {
             snapshot.docChanges().forEach((change) => {
                 hasChanges = true;
                 const data = change.doc.data();
-                 if (data.id && typeof data.id === 'string' && !isNaN(Number(data.id))) {
+                if (data.id && typeof data.id === 'string' && !isNaN(Number(data.id))) {
                     data.id = Number(data.id);
                 }
-                if (data.timestamp && data.timestamp.toDate) {
-                    data.timestamp = data.timestamp.toDate();
-                }
+                data.timestamp = this._normalizeTimestamp(data.timestamp);
 
                 if (change.type === "added" || change.type === "modified") {
                     store.put(data);
@@ -283,7 +280,7 @@ const DB = {
     deleteProduct(id) {
         const store = this._getStore('products', 'readwrite');
         if (this.userPhone) {
-             window.fb.deleteDoc(window.fb.doc(window.fb.db, `users/${this.userPhone}/products`, String(id))).catch(e=>console.error(e));
+            window.fb.deleteDoc(window.fb.doc(window.fb.db, `users/${this.userPhone}/products`, String(id))).catch(e => console.error(e));
         }
         return this._requestToPromise(store.delete(id));
     },
@@ -293,7 +290,7 @@ const DB = {
         const store = this._getStore('sales', 'readwrite');
         const saleWithLogStatus = { ...sale, sharedAsLog: false };
         this._syncToCloud('sales', sale.id, saleWithLogStatus);
-        return this._requestToPromise(store.add(saleWithLogStatus));
+        return this._requestToPromise(store.put(saleWithLogStatus));
     },
 
     updateSale(sale) {
@@ -306,7 +303,7 @@ const DB = {
         const store = this._getStore('sales', 'readonly');
         return this._requestToPromise(store.getAll());
     },
-    
+
     getSalesByProductId(productId) {
         const store = this._getStore('sales', 'readonly');
         const index = store.index('productId');
