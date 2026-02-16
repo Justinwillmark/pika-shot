@@ -327,12 +327,11 @@ const DB = {
     },
 
     // --- SALES ---
-    async addSale(sale) {
-        const saleWithLogStatus = { ...sale, sharedAsLog: false };
-        // Await the cloud write to ensure other devices get the sale
-        await this._syncToCloud('sales', sale.id, saleWithLogStatus);
-        // Open IDB transaction AFTER the await — IDB transactions auto-commit when idle
+    addSale(sale) {
         const store = this._getStore('sales', 'readwrite');
+        const saleWithLogStatus = { ...sale, sharedAsLog: false };
+        // Fire-and-forget cloud sync (matching saveProduct pattern exactly)
+        this._syncToCloud('sales', sale.id, saleWithLogStatus);
         return this._requestToPromise(store.put(saleWithLogStatus));
     },
 
@@ -363,7 +362,7 @@ const DB = {
                 today.setHours(0, 0, 0, 0);
 
                 const todaysSales = allSalesRequest.result.filter(sale => {
-                    const saleDate = new Date(sale.timestamp);
+                    const saleDate = this._normalizeTimestamp(sale.timestamp);
                     return saleDate >= today;
                 });
                 resolve(todaysSales);
