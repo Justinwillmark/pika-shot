@@ -16,12 +16,12 @@ document.addEventListener('DOMContentLoaded', () => {
             bottomNav: document.getElementById('bottom-nav'),
             navButtons: document.querySelectorAll('.nav-btn'),
             headerTitle: document.getElementById('header-title'),
-            
+
             // Onboarding Elements (UPDATED)
             onboardingStep1: document.getElementById('onboarding-step-1'),
             checkPhoneInput: document.getElementById('check-phone'),
             checkPhoneBtn: document.getElementById('check-phone-btn'),
-            
+
             onboardingStepLogin: document.getElementById('onboarding-step-login'),
             loginPinInput: document.getElementById('login-pin'),
             loginBtn: document.getElementById('login-btn'),
@@ -39,7 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
             copyCreatePinBtn: document.getElementById('copy-create-pin'),
             completeRegistrationBtn: document.getElementById('complete-registration-btn'),
             goBackRegisterBtn: document.getElementById('go-back-register-btn'),
-            
+
             locationPermissionView: document.getElementById('location-permission-view'),
             grantLocationBtn: document.getElementById('grant-location-btn'),
             cameraPermissionView: document.getElementById('camera-permission-view'),
@@ -105,7 +105,7 @@ document.addEventListener('DOMContentLoaded', () => {
             discountToggle: document.getElementById('discount-toggle'),
             discountInputContainer: document.getElementById('discount-input-container'),
             discountAmountInput: document.getElementById('discount-amount'),
-            
+
             installBtn: document.getElementById('add-to-homescreen-btn'),
             receiptActions: document.getElementById('receipt-actions'),
             generateReceiptBtn: document.getElementById('generate-receipt-btn'),
@@ -204,7 +204,7 @@ document.addEventListener('DOMContentLoaded', () => {
             tempProductDataForCarton: null,
             productFilter: 'all',
             stockViewFilter: 'customers',
-            acknowledgedSalesData: {}, 
+            acknowledgedSalesData: {},
         },
 
         // --- INITIALIZATION ---
@@ -218,7 +218,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 await DB.init();
                 this._requestPersistentStorage();
                 await this.initFirebase();
-                
+
                 // Check if user is already logged in locally
                 this.state.user = await DB.getUser();
 
@@ -258,7 +258,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Onboarding Listeners
             this.elements.checkPhoneBtn.addEventListener('click', this.handleCheckPhone.bind(this));
-            
+
             // Login Screen Listeners
             this.elements.loginBtn.addEventListener('click', this.handleLogin.bind(this));
             this.elements.toggleLoginPinBtn.addEventListener('click', () => this.togglePinVisibility('login-pin', 'toggle-login-pin'));
@@ -275,17 +275,17 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             this.elements.toggleCreatePinBtn.addEventListener('click', () => this.togglePinVisibility('create-pin', 'toggle-create-pin'));
             this.elements.copyCreatePinBtn.addEventListener('click', () => this.copyPin('create-pin'));
-            
+
             // Privacy Policy Links
             this.elements.privacyLinkTriggers.forEach(link => {
-                link.addEventListener('click', (e) => { 
-                    e.preventDefault(); 
-                    this.showModal('privacy-policy-modal'); 
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    this.showModal('privacy-policy-modal');
                 });
             });
             // Also keep old listener if modal was opened differently
-            if(this.elements.privacyLink) {
-                 this.elements.privacyLink.addEventListener('click', (e) => { e.preventDefault(); this.showModal('privacy-policy-modal'); });
+            if (this.elements.privacyLink) {
+                this.elements.privacyLink.addEventListener('click', (e) => { e.preventDefault(); this.showModal('privacy-policy-modal'); });
             }
             this.elements.privacyOkBtn.addEventListener('click', () => this.hideModal());
 
@@ -314,7 +314,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
             this.elements.discountAmountInput.addEventListener('input', this.updateSaleTotal.bind(this));
-            
+
             this.elements.cancelSaleBtn.addEventListener('click', () => this.hideModal());
             this.elements.confirmSaleBtn.addEventListener('click', this.handleConfirmSale.bind(this));
             window.addEventListener('beforeinstallprompt', this.handleBeforeInstallPrompt.bind(this));
@@ -347,7 +347,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.cancelCartonDetailsBtn.addEventListener('click', () => { this.hideModal(); this.showModal('product-form-modal'); });
             this.elements.logoutBtn.addEventListener('click', this.handleLogout.bind(this));
             this.elements.cancelProfileBtn.addEventListener('click', () => this.hideModal());
-            
+
             this.elements.cartonSubunitTypeInput.addEventListener('input', (e) => {
                 const selectedUnit = e.target.value;
                 if (selectedUnit) {
@@ -363,7 +363,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.state.productFilter = e.target.dataset.filter;
                 this.renderProducts(this.elements.productSearchInput.value);
             }));
-            
+
             this.elements.stockFilterTabs.forEach(btn => btn.addEventListener('click', (e) => {
                 this.elements.stockFilterTabs.forEach(b => b.classList.remove('active'));
                 e.target.classList.add('active');
@@ -371,7 +371,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.renderRetailerStocks();
             }));
 
-             const fieldsToFormat = [
+            const fieldsToFormat = [
                 this.elements.productPriceInput, this.elements.productStockInput,
                 this.elements.saleQuantityInput, this.elements.manualProductPrice,
                 this.elements.manualSaleQuantity, this.elements.cartonSubunitQuantityInput,
@@ -393,20 +393,20 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.loginPinInput.addEventListener('input', (e) => {
                 e.target.value = e.target.value.replace(/\D/g, '').slice(0, 6);
             });
-             this.elements.createPinInput.addEventListener('input', (e) => {
+            this.elements.createPinInput.addEventListener('input', (e) => {
                 e.target.value = e.target.value.replace(/\D/g, '').slice(0, 6);
             });
         },
 
         // --- AUTH & ONBOARDING LOGIC ---
-        
+
         async handleCheckPhone() {
             const phone = this.elements.checkPhoneInput.value.trim();
             if (phone.length < 11) {
                 alert("Please enter a valid 11-digit phone number.");
                 return;
             }
-            
+
             this.showLoader();
             this.state.tempPhone = phone;
 
@@ -433,23 +433,23 @@ document.addEventListener('DOMContentLoaded', () => {
             const input = document.getElementById(inputId);
             const btn = document.getElementById(btnId);
             const isPassword = input.type === "password";
-            
+
             input.type = isPassword ? "text" : "password";
-            
+
             // Dynamic SVG swap
             if (isPassword) {
-                 // Switch to "Eye Off" (Hide) icon
+                // Switch to "Eye Off" (Hide) icon
                 btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M1 1l22 22"></path><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"></path></svg>`;
             } else {
-                 // Switch back to "Eye" (Show) icon
+                // Switch back to "Eye" (Show) icon
                 btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
             }
         },
-        
+
         copyPin(inputId) {
             const input = document.getElementById(inputId);
             const pin = input.value;
-            if(pin) {
+            if (pin) {
                 navigator.clipboard.writeText(pin).then(() => {
                     this.showToast("PIN copied to clipboard");
                 });
@@ -471,7 +471,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Login successful
                 this.state.user = this.state.tempUserCloudData;
                 await DB.saveUser(this.state.user); // Save locally
-                
+
                 // Sync data
                 const success = await DB.syncDataFromCloud(this.state.tempPhone);
                 if (!success) {
@@ -501,7 +501,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             this.showLoader();
             const uid = window.fb.auth.currentUser ? window.fb.auth.currentUser.uid : null;
-            
+
             const newUser = {
                 id: 1, // Local ID
                 phone: this.state.tempPhone,
@@ -512,9 +512,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
             try {
                 // Save to IndexedDB and Sync to Cloud (handled by db.js)
-                await DB.saveUser(newUser); 
+                await DB.saveUser(newUser);
                 this.state.user = newUser;
-                
+
                 this.showView('location-permission-view');
             } catch (error) {
                 console.error("Registration failed:", error);
@@ -537,7 +537,7 @@ document.addEventListener('DOMContentLoaded', () => {
             await this.updateDashboard();
             await this.renderProducts();
         },
-        
+
         startRealtimeSync() {
             if (this.state.user && this.state.user.phone) {
                 DB.setupRealtimeListeners(
@@ -552,24 +552,44 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     }
                 );
+
+                // Re-fetch sales when user returns to the app tab
+                // This catches any sales missed while the listener was disconnected
+                if (this._visibilityHandler) {
+                    document.removeEventListener('visibilitychange', this._visibilityHandler);
+                }
+                this._visibilityHandler = async () => {
+                    if (document.visibilityState === 'visible' && this.state.user) {
+                        await DB.resyncSalesFromCloud();
+                        this.updateDashboard();
+                        if (this.state.currentView === 'all-sales-view') {
+                            this.renderAllSales();
+                        }
+                    }
+                };
+                document.addEventListener('visibilitychange', this._visibilityHandler);
             }
         },
 
         async handleLogout() {
             if (confirm('Are you sure you want to log out? This will clear local data (it remains safe in the cloud).')) {
                 await DB.clearUser(); // This also stops realtime listeners
+                if (this._visibilityHandler) {
+                    document.removeEventListener('visibilitychange', this._visibilityHandler);
+                    this._visibilityHandler = null;
+                }
                 this.state.user = null;
                 this.state.tempPhone = null;
                 this.state.tempUserCloudData = null;
                 this.hideModal();
-                
+
                 // Reset views
                 this.elements.appHeader.style.display = 'none';
                 this.elements.mainContent.style.display = 'none';
                 this.elements.bottomNav.style.display = 'none';
                 this.elements.checkPhoneInput.value = '';
                 this.elements.loginPinInput.value = '';
-                
+
                 this.showView('onboarding-step-1');
             }
         },
@@ -603,24 +623,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.querySelector('#camera-overlay .scan-box').style.display = 'block';
                 this.elements.scanFeedback.textContent = 'Scanning for barcode...';
             }
-        
+
             if (this.state.currentView === viewId && !isBackNavigation) return;
-        
+
             if (!isBackNavigation) {
                 history.pushState({ view: viewId }, '', `#${viewId}`);
             }
-        
+
             if (this.state.productSelectionMode && viewId !== 'products-view') {
                 this.state.productSelectionMode = false;
             }
-        
+
             if (viewId === 'all-sales-view') {
                 if (this.state.user.type === 'Salesperson') {
                     await this.fetchAcknowledgedSales();
                 }
                 this.renderAllSales();
             }
-        
+
             if (viewId === 'stock-levels-view') {
                 this.renderRetailerStocks();
                 window.addEventListener('online', this.handleOnlineStatusChange);
@@ -633,7 +653,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     this.state.retailerListener = null;
                 }
             }
-        
+
             if (viewId === 'products-view' && !this.state.productSelectionMode) {
                 this.elements.productSearchInput.value = '';
                 this.state.productFilter = 'all';
@@ -642,10 +662,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 this.renderProducts();
             }
-        
+
             this.showView(viewId);
             this.elements.navButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.view === viewId));
-        
+
             if (viewId === 'home-view') {
                 this.elements.menuBtn.style.display = 'block';
                 this.elements.backArrowBtn.style.display = 'none';
@@ -653,10 +673,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.menuBtn.style.display = 'none';
                 this.elements.backArrowBtn.style.display = 'block';
             }
-        
+
             this.elements.productsView.classList.toggle('selection-mode', this.state.productSelectionMode);
             this.elements.addNewProductBtn.style.display = (this.state.productSelectionMode || viewId !== 'products-view' || (this.state.user && this.state.user.type === 'Salesperson')) ? 'none' : 'flex';
-        
+
             this.exitSelectionMode();
         },
 
@@ -742,10 +762,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 saleEl.dataset.saleId = sale.id;
                 const imageUrl = sale.image ? URL.createObjectURL(sale.image) : 'icons/icon-192.png';
-                
+
                 // Add discount marker if applicable
                 const discountMark = (sale.discount && sale.discount > 0) ? '<sup class="discount-mark">**</sup>' : '';
-                
+
                 saleEl.innerHTML = `<div class="sale-item-overlay">Previously Transferred</div><img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${this.formatNumber(sale.quantity)} x &#8358;${this.formatNumber(sale.price)}</span></div><p class="sale-price">&#8358;${this.formatNumber(sale.total)}${discountMark}</p>`;
 
                 this.addSaleItemEventListeners(saleEl, sale);
@@ -757,59 +777,59 @@ document.addEventListener('DOMContentLoaded', () => {
             const allSales = await DB.getAllSales();
             const sortedSales = allSales.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
             this.elements.allSalesList.innerHTML = '';
-        
+
             if (this.state.user.type === 'Salesperson') {
                 this.elements.salesLegend.style.display = 'block';
             } else {
                 this.elements.salesLegend.style.display = 'none';
             }
-        
+
             if (sortedSales.length === 0) {
                 this.elements.allSalesList.innerHTML = `<p class="empty-state">No sales recorded yet.</p>`;
                 return;
             }
-        
+
             const groupedSales = this.groupSalesByDate(sortedSales);
             for (const groupTitle in groupedSales) {
                 const groupContainer = document.createElement('div');
                 groupContainer.className = 'sales-group';
-        
+
                 const dailyTotal = groupedSales[groupTitle].reduce((sum, sale) => sum + sale.total, 0);
-        
+
                 const groupHeader = document.createElement('div');
                 groupHeader.className = 'sales-group-header';
-        
+
                 const safeDateKey = groupTitle.split(', ')[1] ? new Date(groupTitle.split(', ')[1] + ' ' + new Date().getFullYear()).toLocaleDateString('en-NG', { year: 'numeric', month: 'short', day: 'numeric' }).replace(/[^a-zA-Z0-9]/g, '_') : groupTitle.replace(/[^a-zA-Z0-9]/g, '_');
-                
+
                 const acknowledgement = this.state.acknowledgedSalesData[safeDateKey];
                 let totalHtml = `<p class="sales-group-total">&#8358;${this.formatNumber(dailyTotal)}</p>`;
                 let acknowledgedHtml = '';
-        
+
                 if (acknowledgement && acknowledgement.acknowledged) {
                     const wholesalerName = acknowledgement.wholesalerName || 'your wholesaler';
                     const checkmarkIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="checkmark-icon"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
                     totalHtml = `<p class="sales-group-total acknowledged">${checkmarkIcon} &#8358;${this.formatNumber(dailyTotal)}</p>`;
-                    
+
                     const ackDate = new Date(groupTitle.split(', ')[1]).toLocaleDateString('en-NG', { month: 'short', day: 'numeric' });
                     acknowledgedHtml = `<span class="acknowledgement-text">Payment for ${ackDate} acknowledged by ${wholesalerName}.</span>`;
                 }
-        
+
                 groupHeader.innerHTML = `<h3>${groupTitle}</h3>${totalHtml}`;
                 groupContainer.appendChild(groupHeader);
-        
+
                 if (acknowledgedHtml) {
                     groupHeader.insertAdjacentHTML('afterend', acknowledgedHtml);
                 }
-        
+
                 groupedSales[groupTitle].forEach(sale => {
                     const saleEl = document.createElement('div');
                     saleEl.className = 'sale-item';
-                     if (sale.sharedAsLog) {
+                    if (sale.sharedAsLog) {
                         saleEl.classList.add('shared-log');
                     }
                     saleEl.dataset.saleId = sale.id;
                     const imageUrl = sale.image ? URL.createObjectURL(sale.image) : 'icons/icon-192.png';
-                    
+
                     // Add discount marker
                     const discountMark = (sale.discount && sale.discount > 0) ? '<sup class="discount-mark">**</sup>' : '';
 
@@ -882,7 +902,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.productSkuCount.style.display = 'block';
             } else {
                 this.elements.productSearchContainer.style.display = 'none';
-                 document.querySelector('#products-view .product-filter-tabs').style.display = 'none';
+                document.querySelector('#products-view .product-filter-tabs').style.display = 'none';
                 this.elements.productSkuCount.style.display = 'none';
             }
 
@@ -960,7 +980,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.productGrid.appendChild(card);
             });
         },
-        
+
         async _logToFirestore(collectionName, docId, data) {
             if (!this.state.firebaseReady) return;
             try {
@@ -975,7 +995,7 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         handleLocationPermission() {
-             navigator.geolocation.getCurrentPosition(
+            navigator.geolocation.getCurrentPosition(
                 (position) => {
                     console.log('Location permission granted:', position.coords);
                     this.showView('camera-permission-view');
@@ -1050,7 +1070,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 barcode: result.data.pikaLogVersion ? 'PIKA_LOG' : result.data,
                 timestamp: window.fb.serverTimestamp()
             });
-            
+
             this._handleSuccessfulScan();
 
             switch (result.type) {
@@ -1092,9 +1112,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         barcode: result.data.pikaLogVersion ? 'PIKA_LOG' : result.data,
                         timestamp: window.fb.serverTimestamp()
                     });
-                    
+
                     this._handleSuccessfulScan();
-                    
+
                     history.back();
                     if (result.type === 'barcode') {
                         const product = await DB.getProductByBarcode(result.data);
@@ -1192,11 +1212,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         async handleSaveProduct(e) {
             e.preventDefault();
-            
+
             // NEW: Enforce internet connection for product management
             if (!navigator.onLine) {
-                 this.showToast("Internet connection required to manage products.");
-                 return;
+                this.showToast("Internet connection required to manage products.");
+                return;
             }
 
             const isEditing = !!this.state.editingProduct;
@@ -1301,20 +1321,20 @@ document.addEventListener('DOMContentLoaded', () => {
             const picBtn = this.elements.addChangePictureBtn;
             picBtn.style.display = 'flex';
             picBtn.innerHTML = '<span>Snap Image</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>';
-            
+
             if (product.image) {
                 picBtn.classList.add('success');
             } else {
-                 picBtn.classList.remove('success');
+                picBtn.classList.remove('success');
             }
-            
+
             this.elements.productIdInput.value = product.id;
             this.elements.productNameInput.value = product.name;
             this.elements.productPriceInput.value = this.formatNumber(product.price);
             this.elements.productStockInput.value = this.formatNumber(product.stock);
             this.elements.productUnitInput.value = product.unit;
             this.state.capturedBlob = product.image;
-            
+
             const isSalesperson = this.state.user && this.state.user.type === 'Salesperson';
             this.elements.productNameInput.disabled = isSalesperson;
             this.elements.productPriceInput.disabled = isSalesperson;
@@ -1384,11 +1404,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         async handleAddOrChangePicture() {
             this.hideModal();
-            
+
             // Hide scan-related UI elements for photo capture
             document.querySelector('#camera-overlay .scan-box').style.display = 'none';
             this.elements.scanFeedback.textContent = 'Hold steady...';
-            
+
             this.navigateTo('camera-view');
             try {
                 const { blob } = await Camera.capturePhoto(this.elements.scanTimerDisplay, this.elements.scanFeedback);
@@ -1456,7 +1476,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.saleProductStock.textContent = `Stock: ${this.formatNumber(product.stock)} ${product.unit} left`;
             this.elements.saleQuantityLabel.textContent = `How many ${product.unit} are you selling?`;
             this.elements.saleQuantityInput.value = '1';
-            
+
             // Reset discount fields
             this.elements.discountToggle.checked = false;
             this.elements.discountInputContainer.style.display = 'none';
@@ -1466,15 +1486,15 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.saleOfflineNotice.style.display = 'none';
             this.showModal('confirm-sale-modal');
         },
-        updateSaleTotal() { 
-            const quantity = this.unformatNumber(this.elements.saleQuantityInput.value); 
-            const price = this.state.sellingProduct?.price || 0; 
-            const subtotal = quantity * price; 
-            
+        updateSaleTotal() {
+            const quantity = this.unformatNumber(this.elements.saleQuantityInput.value);
+            const price = this.state.sellingProduct?.price || 0;
+            const subtotal = quantity * price;
+
             const discount = this.elements.discountToggle.checked ? (this.unformatNumber(this.elements.discountAmountInput.value) || 0) : 0;
             const total = Math.max(0, subtotal - discount);
 
-            this.elements.saleTotalPrice.textContent = `₦${this.formatNumber(total)}`; 
+            this.elements.saleTotalPrice.textContent = `₦${this.formatNumber(total)}`;
         },
         async _processSale() {
             const quantity = this.unformatNumber(this.elements.saleQuantityInput.value);
@@ -1487,18 +1507,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
             await DB.saveProduct(product);
             const total = Math.max(0, (quantity * product.price) - discount);
-            const sale = { 
-                id: Date.now(), 
-                productId: product.id, 
-                productName: product.name, 
-                quantity: quantity, 
-                price: product.price, 
+            const sale = {
+                id: Date.now(),
+                productId: product.id,
+                productName: product.name,
+                quantity: quantity,
+                price: product.price,
                 discount: discount, // Save discount
-                total: total, 
-                timestamp: new Date(), 
-                image: product.image, 
-                sharedAsLog: false, 
-                unit: product.unit 
+                total: total,
+                timestamp: new Date(),
+                image: product.image,
+                sharedAsLog: false,
+                unit: product.unit
             };
             await DB.addSale(sale);
 
@@ -1517,11 +1537,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     const updateData = {};
                     const firebaseProductName = product.originalName || product.name;
                     updateData[`products.${firebaseProductName}.stock`] = product.stock;
-                     updateData[`products.${firebaseProductName}.lastSaleTimestamp`] = window.fb.serverTimestamp();
+                    updateData[`products.${firebaseProductName}.lastSaleTimestamp`] = window.fb.serverTimestamp();
                     updateData.lastUpdate = window.fb.serverTimestamp();
 
                     await window.fb.updateDoc(retailerDocRef, updateData);
-                    
+
                     if (product.isSalesperson) {
                         const saleDataForWholesaler = {
                             ...sale,
@@ -1539,7 +1559,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             return true;
         },
-        
+
         async handleConfirmSale() {
             if (!navigator.onLine) {
                 this.elements.saleOfflineNotice.style.display = 'block';
@@ -1548,7 +1568,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             try {
                 const success = await this._processSale();
-                
+
                 this.elements.saleOfflineNotice.style.display = 'none'; // Hide if online
                 if (success) {
                     this.hideModal();
@@ -1608,7 +1628,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     updateData.lastUpdate = window.fb.serverTimestamp();
 
                     await window.fb.updateDoc(retailerDocRef, updateData);
-                    
+
                     if (productToSell.isSalesperson) {
                         const saleDataForWholesaler = {
                             ...sale,
@@ -1631,13 +1651,13 @@ document.addEventListener('DOMContentLoaded', () => {
         async showProductSelection() {
             this.hideModal();
             this.state.productSelectionMode = true;
-            
+
             // Fix: If already on products-view, navigateTo returns early, so we must force the UI update
             if (this.state.currentView === 'products-view') {
-                 this.exitSelectionMode(); // Ensure receipt selection mode is off
-                 this.elements.productsView.classList.add('selection-mode');
-                 this.elements.addNewProductBtn.style.display = 'none';
-                 this.updateHeader('products-view'); // Update header title to "Select a Product"
+                this.exitSelectionMode(); // Ensure receipt selection mode is off
+                this.elements.productsView.classList.add('selection-mode');
+                this.elements.addNewProductBtn.style.display = 'none';
+                this.updateHeader('products-view'); // Update header title to "Select a Product"
             } else {
                 this.navigateTo('products-view');
             }
@@ -1662,13 +1682,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
         },
-        
+
         triggerRestrictedFeedback(element) {
             // Visual shake
             element.classList.add('shake-restricted');
             setTimeout(() => {
                 element.classList.remove('shake-restricted');
-            }, 500); 
+            }, 500);
 
             // Text feedback (Toast)
             this.showToast("This item has already been transferred.");
@@ -1687,12 +1707,12 @@ document.addEventListener('DOMContentLoaded', () => {
             this.state.selectedSales.clear();
             document.querySelectorAll('.sale-item').forEach(el => { el.classList.remove('selectable'); el.classList.remove('selected'); });
             this.elements.receiptActions.classList.remove('visible');
-             if (this.elements.recentSalesList.children.length > 0 && this.elements.recentSalesList.children[0].className !== 'empty-state') {
+            if (this.elements.recentSalesList.children.length > 0 && this.elements.recentSalesList.children[0].className !== 'empty-state') {
                 this.elements.selectionModeHint.textContent = 'Long-press to select';
             }
         },
-        toggleSaleSelection(element, sale) { 
-            if (this.state.selectedSales.has(sale.id)) { this.state.selectedSales.delete(sale.id); element.classList.remove('selected'); } else { this.state.selectedSales.add(sale.id); element.classList.add('selected'); } this.elements.generateReceiptBtn.disabled = this.state.selectedSales.size === 0; 
+        toggleSaleSelection(element, sale) {
+            if (this.state.selectedSales.has(sale.id)) { this.state.selectedSales.delete(sale.id); element.classList.remove('selected'); } else { this.state.selectedSales.add(sale.id); element.classList.add('selected'); } this.elements.generateReceiptBtn.disabled = this.state.selectedSales.size === 0;
         },
         async generateReceipt() {
             const allSales = await DB.getAllSales();
@@ -1713,7 +1733,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.showModal('receipt-modal');
         },
         async shareReceipt() { const receiptElement = this.elements.receiptContent; try { const canvas = await html2canvas(receiptElement, { scale: 2 }); canvas.toBlob(async (blob) => { if (navigator.share && blob) { try { await navigator.share({ files: [new File([blob], 'pika-shot-receipt.png', { type: 'image/png' })], title: 'Your Receipt', text: 'Here is your receipt from ' + this.state.user.business, }); } catch (error) { console.error('Error sharing:', error); } } else { alert('Sharing is not supported on this browser, or there was an error creating the image.'); } }, 'image/png'); } catch (error) { console.error('Error generating receipt image:', error); alert('Could not generate receipt image.'); } },
-        
+
         async generateQrLog() {
             if (!navigator.onLine) {
                 this.showToast("Please connect to the internet to transfer products.");
@@ -1726,10 +1746,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.showToast("Cannot generate transfer QR: not connected to online services.");
                 return;
             }
-        
+
             const allSales = await DB.getAllSales();
             const selectedSaleObjects = allSales.filter(s => this.state.selectedSales.has(s.id));
-        
+
             if (selectedSaleObjects.length === 0) {
                 this.showToast("Please select at least one sale to transfer.");
                 return;
@@ -1747,7 +1767,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 return; // Stop execution
             }
             // -----------------------------------------------------------
-        
+
             const groupedSales = selectedSaleObjects.reduce((acc, sale) => {
                 const key = sale.productId;
                 if (!acc[key]) {
@@ -1756,10 +1776,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 acc[key].quantity += sale.quantity;
                 return acc;
             }, {});
-        
+
             const aggregatedSaleObjects = Object.values(groupedSales);
             const allProducts = await DB.getAllProducts();
-        
+
             const logData = {
                 pikaLogVersion: 2,
                 senderStore: this.state.user.business,
@@ -1768,7 +1788,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 items: aggregatedSaleObjects.map(sale => {
                     const product = allProducts.find(p => p.id === sale.productId);
                     const isSalespersonSharingCarton = this.state.user.type === 'Salesperson' && product && product.unit === 'cartons';
-        
+
                     if (isSalespersonSharingCarton) {
                         return {
                             name: product.originalName || product.name,
@@ -1849,13 +1869,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 const logDocSnap = await window.fb.getDoc(logDocRef);
                 if (logDocSnap.exists()) {
                     const logData = logDocSnap.data();
-                    
+
                     // NEW: Check if claimed
                     if (logData.claimed) {
                         alert("Items in QR were previously scanned and accepted");
                         return;
                     }
-                    
+
                     logData.id = logId; // Attach ID so we can update it later
                     this.handlePikaLogScanned(logData);
                 } else {
@@ -1870,7 +1890,7 @@ document.addEventListener('DOMContentLoaded', () => {
         async handlePikaLogScanned(logData) {
             const senderRole = logData.senderRole;
             const currentUserRole = this.state.user.type;
-        
+
             if (currentUserRole === 'Salesperson') {
                 const allProducts = await DB.getAllProducts();
                 const existingStock = allProducts.filter(p => p.stock > 0 && p.supplierId);
@@ -1882,7 +1902,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
             }
-        
+
             if (currentUserRole === 'Salesperson' && senderRole === 'Salesperson') {
                 this.showToast("Salespeople cannot accept transfers from other salespeople.");
                 return;
@@ -1891,19 +1911,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.showToast("Wholesalers cannot accept transfers from salespeople.");
                 return;
             }
-        
+
             this.state.scannedLogData = logData;
             this.elements.confirmLogTitle.textContent = `Accept Transfer from ${logData.senderStore}?`;
-        
+
             const totalCost = logData.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
             const dateScanned = new Date().toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' });
-        
+
             const itemsHtml = logData.items.map(item => {
                 let displayName = `${item.name} (${this.formatNumber(item.quantity)} ${item.unit})`;
                 if (item.unit === 'cartons' && item.subUnitType && item.subUnitQuantity > 0) {
                     displayName = `${item.name} (${this.formatNumber(item.quantity)} ${item.unit} -> ${this.formatNumber(item.quantity * item.subUnitQuantity)} ${item.subUnitType})`;
                 }
-        
+
                 return `
                 <div class="log-details-row">
                     <div class="log-details-cell item">${displayName}</div>
@@ -1911,11 +1931,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="log-details-cell total">&#8358;${this.formatNumber(item.quantity * item.price)}</div>
                 </div>
             `}).join('');
-        
+
             const noticeText = currentUserRole === 'Salesperson'
                 ? "Accept for instant restocking. The wholesaler will see stock levels, and sales in real time."
                 : "Accept for instant restocking. The wholesaler will only see stock levels in real time for offers.";
-        
+
             const contentHtml = `
                 <div class="log-summary">
                     <p><strong>From:</strong> ${logData.senderStore}</p>
@@ -1935,27 +1955,27 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
                 <p class="log-accept-notice">${noticeText}</p>
             `;
-        
+
             this.elements.confirmLogContent.innerHTML = contentHtml;
             this.showModal('confirm-log-modal');
         },
 
         async acceptPikaLog() {
             if (!this.state.scannedLogData) return;
-        
+
             const isSalesperson = this.state.user.type === 'Salesperson';
             const isRetailerReceiving = this.state.user.type === 'Retailer';
-        
+
             const allProducts = await DB.getAllProducts();
             const productUpdates = [];
             let updatedProductsForFirebase = {};
             const supplierId = this.state.scannedLogData.senderId;
-        
+
             for (const item of this.state.scannedLogData.items) {
                 let stockToAdd, unitType, costPrice, needsSetup, barcode, originalName, wholesalerPrice, subUnitType, subUnitQuantity;
-        
+
                 const isCarton = item.unit === 'cartons' && item.subUnitType && item.subUnitQuantity > 0;
-        
+
                 if (isSalesperson) {
                     stockToAdd = item.quantity;
                     unitType = item.unit;
@@ -1972,17 +1992,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     costPrice = item.price;
                     needsSetup = 'price';
                 }
-        
+
                 wholesalerPrice = item.price;
                 barcode = item.barcode;
                 originalName = item.name;
                 subUnitType = item.subUnitType;
                 subUnitQuantity = item.subUnitQuantity;
-        
+
                 const existingProduct = allProducts.find(p => (p.originalName || p.name).toLowerCase() === originalName.toLowerCase());
-        
+
                 let finalProduct;
-        
+
                 if (existingProduct) {
                     existingProduct.stock += stockToAdd;
                     existingProduct.supplierId = supplierId;
@@ -2024,9 +2044,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 productUpdates.push(DB.saveProduct(finalProduct));
                 updatedProductsForFirebase[finalProduct.originalName] = { stock: finalProduct.stock, unit: finalProduct.unit, isSalesperson };
             }
-        
+
             await Promise.all(productUpdates);
-        
+
             if (this.state.firebaseReady && supplierId && this.state.user.uid) {
                 try {
                     const retailerDocRef = window.fb.doc(window.fb.db, `retailer_stocks/${supplierId}/supplied_retailers/${this.state.user.uid}`);
@@ -2043,21 +2063,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     alert("Local inventory updated, but failed to sync online.");
                 }
             }
-            
+
             // NEW: Mark log as claimed in Firestore
             if (this.state.scannedLogData.id && this.state.firebaseReady) {
                 try {
-                     const logRef = window.fb.doc(window.fb.db, 'shared_logs', this.state.scannedLogData.id);
-                     await window.fb.updateDoc(logRef, {
-                         claimed: true,
-                         claimedAt: window.fb.serverTimestamp(),
-                         claimedBy: this.state.user.uid || this.state.user.phone
-                     });
+                    const logRef = window.fb.doc(window.fb.db, 'shared_logs', this.state.scannedLogData.id);
+                    await window.fb.updateDoc(logRef, {
+                        claimed: true,
+                        claimedAt: window.fb.serverTimestamp(),
+                        claimedBy: this.state.user.uid || this.state.user.phone
+                    });
                 } catch (error) {
                     console.error("Error marking log as claimed:", error);
                 }
             }
-        
+
             this.hideModal();
             this.state.scannedLogData = null;
             const successMessage = isSalesperson
@@ -2138,15 +2158,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     this.elements.retailerStockView.innerHTML = customersHtml || `<p class="empty-state">No customers found.</p>`;
                     this.elements.salespeopleView.innerHTML = salespeopleHtml || `<p class="empty-state">No salespeople found.</p>`;
-                    
+
                     this.addDeleteEventListeners();
                     this.addSalespersonEventListeners();
 
                 }, (error) => {
-                     console.error("Error fetching retailer stocks in real-time:", error);
-                     const errorHtml = `<p class="empty-state">Error loading data.</p>`;
-                     this.elements.retailerStockView.innerHTML = errorHtml;
-                     this.elements.salespeopleView.innerHTML = errorHtml;
+                    console.error("Error fetching retailer stocks in real-time:", error);
+                    const errorHtml = `<p class="empty-state">Error loading data.</p>`;
+                    this.elements.retailerStockView.innerHTML = errorHtml;
+                    this.elements.salespeopleView.innerHTML = errorHtml;
                 });
             } catch (error) {
                 console.error("Error setting up retailer stocks listener:", error);
@@ -2155,7 +2175,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.salespeopleView.innerHTML = errorHtml;
             }
         },
-        
+
         buildCustomerCard(retailer) {
             let productsHtml = '';
             if (retailer.products && Object.keys(retailer.products).length > 0) {
@@ -2194,10 +2214,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const salesData = await this.getSalespersonSales(retailer.id);
             const today = new Date();
             today.setHours(0, 0, 0, 0);
-        
+
             const todaysSales = salesData.filter(s => new Date(s.timestamp) >= today);
             const totalSalesToday = todaysSales.reduce((sum, s) => sum + s.total, 0);
-        
+
             let todaysSalesHtml = '<p class="empty-state" style="font-size: 0.8rem; padding: 5px 0;">No sales for today yet.</p>';
             if (todaysSales.length > 0) {
                 const salesByProduct = todaysSales.reduce((acc, sale) => {
@@ -2207,21 +2227,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     acc[sale.productName].quantity += sale.quantity;
                     return acc;
                 }, {});
-        
+
                 todaysSalesHtml = Object.entries(salesByProduct)
                     .map(([name, data]) => `<div class="sales-day-item"><span>${name}</span> <span>${this.formatNumber(data.quantity)} ${data.unit} sold</span></div>`)
                     .join('');
             }
-        
+
             const previousSalesByDay = this.groupSalesByDate(
                 salesData.filter(s => new Date(s.timestamp) < today)
             );
-        
+
             let previousDaysHtml = '';
             for (const date in previousSalesByDay) {
                 const dayData = previousSalesByDay[date];
                 const safeDateKey = date.split(', ')[1] ? new Date(date.split(', ')[1] + ' ' + new Date().getFullYear()).toLocaleDateString('en-NG', { year: 'numeric', month: 'short', day: 'numeric' }).replace(/[^a-zA-Z0-9]/g, '_') : date.replace(/[^a-zA-Z0-9]/g, '_');
-        
+
                 if (!retailer.acknowledgedSales || !retailer.acknowledgedSales[safeDateKey]) {
                     const total = dayData.reduce((sum, s) => sum + s.total, 0);
                     previousDaysHtml += `
@@ -2240,11 +2260,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>`;
                 }
             }
-        
+
             const infoIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>`;
             const deleteIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
             const status = this.formatTimeAgo(retailer.lastUpdate?.toDate());
-        
+
             return `
                 <div class="card salesperson-card" data-retailer-id="${retailer.id}" data-retailer-name="${retailer.retailerName}">
                     <div class="retailer-header">
@@ -2276,7 +2296,7 @@ document.addEventListener('DOMContentLoaded', () => {
             sales.forEach(sale => {
                 const saleDate = new Date(sale.timestamp).toLocaleDateString('en-NG', { year: 'numeric', month: 'short', day: 'numeric' });
                 if (!salesByDay[saleDate]) {
-                    salesByDay[saleDate] = { total: 0, date: saleDate, timestamp: new Date(sale.timestamp).setHours(0,0,0,0) };
+                    salesByDay[saleDate] = { total: 0, date: saleDate, timestamp: new Date(sale.timestamp).setHours(0, 0, 0, 0) };
                 }
                 salesByDay[saleDate].total += sale.total;
             });
@@ -2312,20 +2332,20 @@ document.addEventListener('DOMContentLoaded', () => {
                     this.showSalespersonStockModal(retailerId);
                 });
             });
-        
+
             document.querySelectorAll('.btn-yes').forEach(button => {
                 button.addEventListener('click', (e) => {
                     const card = e.target.closest('.card');
                     const retailerId = card.dataset.retailerId;
                     const date = e.target.dataset.date;
                     const total = e.target.dataset.total;
-        
+
                     if (confirm(`Are you sure you want to confirm receipt of payment (₦${this.formatNumber(total)}) for ${date}? This action cannot be undone.`)) {
                         this.acknowledgeSales(retailerId, date);
                     }
                 });
             });
-        
+
             document.querySelectorAll('.btn-no').forEach(button => {
                 button.addEventListener('click', (e) => {
                     // When "No" is clicked, we just remove the action buttons for that day for this session.
@@ -2334,7 +2354,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             });
         },
-        
+
         async showSalespersonStockModal(retailerId) {
             if (!this.state.firebaseReady) {
                 this.showToast("Not connected to online services.");
@@ -2343,7 +2363,7 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const docRef = window.fb.doc(window.fb.db, `retailer_stocks/${this.state.user.uid}/supplied_retailers/${retailerId}`);
                 const docSnap = await window.fb.getDoc(docRef);
-        
+
                 if (docSnap.exists()) {
                     const retailer = docSnap.data();
                     let productsHtml = '';
@@ -2356,14 +2376,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     } else {
                         productsHtml = `<p class="empty-state">No product data available.</p>`;
                     }
-        
+
                     // For simplicity, using a generic modal. You could create a dedicated one.
                     this.elements.confirmLogTitle.textContent = `${retailer.retailerName}'s Stock`;
                     this.elements.confirmLogContent.innerHTML = `<div class="retailer-product-list" style="padding: 0;">${productsHtml}</div>`;
                     this.elements.rejectLogBtn.textContent = "Close";
                     this.elements.acceptLogBtn.style.display = 'none';
                     this.showModal('confirm-log-modal');
-        
+
                     // Reset modal for next use
                     this.elements.rejectLogBtn.onclick = () => {
                         this.hideModal();
@@ -2380,10 +2400,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.showToast("Failed to load stock data.");
             }
         },
-        
+
         async acknowledgeSales(retailerId, date) {
             if (!this.state.firebaseReady || !this.state.user || !this.state.user.uid) {
-                 this.showToast("Failed to acknowledge payment: Not connected.");
+                this.showToast("Failed to acknowledge payment: Not connected.");
                 return;
             }
             try {
@@ -2394,7 +2414,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     acknowledged: true,
                     wholesalerName: this.state.user.business
                 };
-                
+
                 await window.fb.updateDoc(docRef, updateData);
                 this.showToast(`Payment for ${date} acknowledged.`);
             } catch (error) {
@@ -2410,7 +2430,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const card = e.target.closest('.card');
                     const retailerId = card.dataset.retailerId;
                     const retailerName = card.dataset.retailerName;
-                    
+
                     if (confirm(`Are you sure you want to remove ${retailerName}? This will delete their data from your view.`)) {
                         try {
                             const docRef = window.fb.doc(window.fb.db, `retailer_stocks/${this.state.user.uid}/supplied_retailers/${retailerId}`);
@@ -2494,9 +2514,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.profileLocation.textContent = this.state.user.location;
                 this.elements.profilePhone.textContent = this.state.user.phone || this.state.user.phone; // Handle both cases
                 this.elements.profileRole.textContent = this.state.user.type;
-                
+
                 await this.updateScanTracker();
-                
+
                 this.showModal('profile-modal');
             }
         },
@@ -2504,7 +2524,7 @@ document.addEventListener('DOMContentLoaded', () => {
         async updateScanTracker() {
             const count = await DB.getScanCountForToday();
             this.elements.scanCount.textContent = count;
-            
+
             const progress = Math.min((count / 100) * 100, 100);
             this.elements.scanProgress.style.width = `${progress}%`;
 
@@ -2520,10 +2540,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             this.elements.scanReward.textContent = rewardText;
         },
-    
+
         async fetchAcknowledgedSales() {
             if (this.state.user.type !== 'Salesperson' || !this.state.firebaseReady) return;
-        
+
             const allProducts = await DB.getAllProducts();
             const productWithSupplier = allProducts.find(p => p.supplierId);
             if (!productWithSupplier) {
@@ -2531,7 +2551,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             const supplierId = productWithSupplier.supplierId;
-        
+
             try {
                 const docRef = window.fb.doc(window.fb.db, `retailer_stocks/${supplierId}/supplied_retailers/${this.state.user.uid}`);
                 const docSnap = await window.fb.getDoc(docRef);

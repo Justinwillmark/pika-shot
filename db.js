@@ -80,7 +80,7 @@ const DB = {
     },
 
     _syncToCloud(collectionName, docId, data) {
-        if (!this.userPhone || !window.fb) return; // Need user phone to know where to save
+        if (!this.userPhone || !window.fb) return Promise.resolve(); // Need user phone to know where to save
         const path = `users/${this.userPhone}${collectionName ? '/' + collectionName : ''}`;
 
         try {
@@ -97,10 +97,11 @@ const DB = {
                 cleanData.lastUpdate = window.fb.serverTimestamp();
             }
 
-            window.fb.setDoc(ref, cleanData, { merge: true })
+            return window.fb.setDoc(ref, cleanData, { merge: true })
                 .catch(err => console.error("Cloud sync failed:", err));
         } catch (e) {
             console.error("Error initiating cloud sync:", e);
+            return Promise.resolve();
         }
     },
 
@@ -155,13 +156,20 @@ const DB = {
         }
     },
 
-    // --- REALTIME SYNC (NEW) ---
+    // --- REALTIME SYNC ---
     setupRealtimeListeners(phoneNumber, onProductsChange, onSalesChange) {
         if (!window.fb || !phoneNumber) return;
         this.stopRealtimeListeners(); // Ensure clean slate
         this.userPhone = phoneNumber;
+        this._realtimePhone = phoneNumber;
+        this._realtimeCallbacks = { onProductsChange, onSalesChange };
 
-        // Products Listener
+        this._startProductsListener(phoneNumber, onProductsChange);
+        this._startSalesListener(phoneNumber, onSalesChange);
+    },
+
+    _startProductsListener(phoneNumber, onProductsChange, retryDelay) {
+        if (this._realtimePhone !== phoneNumber) return; // User changed, don't reconnect
         const productsRef = window.fb.collection(window.fb.db, `users/${phoneNumber}/products`);
         this.unsubscribeProducts = window.fb.onSnapshot(productsRef, (snapshot) => {
             const tx = this.db.transaction('products', 'readwrite');
@@ -174,7 +182,6 @@ const DB = {
                 if (data.id && typeof data.id === 'string' && !isNaN(Number(data.id))) {
                     data.id = Number(data.id);
                 }
-
                 if (change.type === "added" || change.type === "modified") {
                     store.put(data);
                 } else if (change.type === "removed") {
@@ -185,9 +192,15 @@ const DB = {
             if (hasChanges && onProductsChange) {
                 tx.oncomplete = () => onProductsChange();
             }
-        }, (error) => console.error("Products listener error:", error));
+        }, (error) => {
+            console.error("Products listener error, will reconnect:", error);
+            const delay = Math.min(retryDelay || 2000, 30000);
+            setTimeout(() => this._startProductsListener(phoneNumber, onProductsChange, delay * 2), delay);
+        });
+    },
 
-        // Sales Listener
+    _startSalesListener(phoneNumber, onSalesChange, retryDelay) {
+        if (this._realtimePhone !== phoneNumber) return; // User changed, don't reconnect
         const salesRef = window.fb.collection(window.fb.db, `users/${phoneNumber}/sales`);
         this.unsubscribeSales = window.fb.onSnapshot(salesRef, (snapshot) => {
             const tx = this.db.transaction('sales', 'readwrite');
@@ -212,10 +225,38 @@ const DB = {
             if (hasChanges && onSalesChange) {
                 tx.oncomplete = () => onSalesChange();
             }
-        }, (error) => console.error("Sales listener error:", error));
+        }, (error) => {
+            console.error("Sales listener error, will reconnect:", error);
+            const delay = Math.min(retryDelay || 2000, 30000);
+            setTimeout(() => this._startSalesListener(phoneNumber, onSalesChange, delay * 2), delay);
+        });
+    },
+
+    // Re-fetch all sales from cloud (used on visibility change)
+    async resyncSalesFromCloud() {
+        if (!window.fb || !this.userPhone) return;
+        try {
+            const salesRef = window.fb.collection(window.fb.db, `users/${this.userPhone}/sales`);
+            const saleSnaps = await window.fb.getDocs(salesRef);
+            await new Promise((resolve, reject) => {
+                const saleTx = this.db.transaction('sales', 'readwrite');
+                const store = saleTx.objectStore('sales');
+                saleSnaps.forEach(doc => {
+                    const s = doc.data();
+                    if (typeof s.id === 'string' && !isNaN(s.id)) s.id = Number(s.id);
+                    s.timestamp = this._normalizeTimestamp(s.timestamp);
+                    store.put(s);
+                });
+                saleTx.oncomplete = () => resolve();
+                saleTx.onerror = () => reject(saleTx.error);
+            });
+        } catch (error) {
+            console.error("Resync sales failed:", error);
+        }
     },
 
     stopRealtimeListeners() {
+        this._realtimePhone = null; // Prevent auto-reconnect after stop
         if (this.unsubscribeProducts) {
             this.unsubscribeProducts();
             this.unsubscribeProducts = null;
@@ -286,10 +327,12 @@ const DB = {
     },
 
     // --- SALES ---
-    addSale(sale) {
-        const store = this._getStore('sales', 'readwrite');
+    async addSale(sale) {
         const saleWithLogStatus = { ...sale, sharedAsLog: false };
-        this._syncToCloud('sales', sale.id, saleWithLogStatus);
+        // Await the cloud write to ensure other devices get the sale
+        await this._syncToCloud('sales', sale.id, saleWithLogStatus);
+        // Open IDB transaction AFTER the await — IDB transactions auto-commit when idle
+        const store = this._getStore('sales', 'readwrite');
         return this._requestToPromise(store.put(saleWithLogStatus));
     },
 
