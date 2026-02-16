@@ -127,7 +127,15 @@ const DB = {
                 prodSnaps.forEach(doc => {
                     const p = doc.data();
                     if (typeof p.id === 'string' && !isNaN(p.id)) p.id = Number(p.id);
-                    store.put(p);
+                    // Preserve local image (images are stripped before cloud upload)
+                    const getReq = store.get(p.id);
+                    getReq.onsuccess = () => {
+                        const existing = getReq.result;
+                        if (existing && existing.image && !p.image) {
+                            p.image = existing.image;
+                        }
+                        store.put(p);
+                    };
                 });
                 prodTx.oncomplete = () => resolve();
                 prodTx.onerror = () => reject(prodTx.error);
@@ -183,7 +191,15 @@ const DB = {
                     data.id = Number(data.id);
                 }
                 if (change.type === "added" || change.type === "modified") {
-                    store.put(data);
+                    // Preserve local image (images are stripped before cloud upload)
+                    const getReq = store.get(data.id);
+                    getReq.onsuccess = () => {
+                        const existing = getReq.result;
+                        if (existing && existing.image && !data.image) {
+                            data.image = existing.image;
+                        }
+                        store.put(data);
+                    };
                 } else if (change.type === "removed") {
                     store.delete(Number(change.doc.id));
                 }
