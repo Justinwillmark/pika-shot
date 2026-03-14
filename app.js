@@ -741,10 +741,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.seeLastSalesContainer.style.display = 'none';
             }
 
-            this.renderSalesList(todaysSales, this.elements.recentSalesList, 6);
+            await this.renderSalesList(todaysSales, this.elements.recentSalesList, 6);
         },
 
-        renderSalesList(sales, targetElement, limit) {
+        async renderSalesList(sales, targetElement, limit) {
             targetElement.innerHTML = '';
             const sortedSales = sales.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
             const salesToRender = limit ? sortedSales.slice(0, limit) : sortedSales;
@@ -754,6 +754,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
+            // Fetch all products once to look up images by productId
+            const allProducts = await DB.getAllProducts();
+            const productMap = {};
+            allProducts.forEach(p => { productMap[p.id] = p; });
+
             salesToRender.forEach(sale => {
                 const saleEl = document.createElement('div');
                 saleEl.className = 'sale-item';
@@ -761,7 +766,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     saleEl.classList.add('shared-log');
                 }
                 saleEl.dataset.saleId = sale.id;
-                const imageUrl = sale.image ? URL.createObjectURL(sale.image) : 'icons/icon-192.png';
+                // Look up image from the product (survives cloud sync), fall back to sale.image, then default icon
+                const matchedProduct = productMap[sale.productId];
+                const imageBlob = (matchedProduct && matchedProduct.image) || sale.image;
+                const imageUrl = imageBlob ? URL.createObjectURL(imageBlob) : 'icons/icon-192.png';
 
                 // Add discount marker if applicable
                 const discountMark = (sale.discount && sale.discount > 0) ? '<sup class="discount-mark">**</sup>' : '';
@@ -788,6 +796,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.allSalesList.innerHTML = `<p class="empty-state">No sales recorded yet.</p>`;
                 return;
             }
+
+            // Fetch all products once to look up images by productId
+            const allProducts = await DB.getAllProducts();
+            const productMap = {};
+            allProducts.forEach(p => { productMap[p.id] = p; });
 
             const groupedSales = this.groupSalesByDate(sortedSales);
             for (const groupTitle in groupedSales) {
@@ -828,7 +841,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         saleEl.classList.add('shared-log');
                     }
                     saleEl.dataset.saleId = sale.id;
-                    const imageUrl = sale.image ? URL.createObjectURL(sale.image) : 'icons/icon-192.png';
+                    // Look up image from the product (survives cloud sync), fall back to sale.image, then default icon
+                    const matchedProduct = productMap[sale.productId];
+                    const imageBlob = (matchedProduct && matchedProduct.image) || sale.image;
+                    const imageUrl = imageBlob ? URL.createObjectURL(imageBlob) : 'icons/icon-192.png';
 
                     // Add discount marker
                     const discountMark = (sale.discount && sale.discount > 0) ? '<sup class="discount-mark">**</sup>' : '';
@@ -1999,7 +2015,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 subUnitType = item.subUnitType;
                 subUnitQuantity = item.subUnitQuantity;
 
-                const existingProduct = allProducts.find(p => (p.originalName || p.name).toLowerCase() === originalName.toLowerCase());
+                // Match by barcode first (so same-barcode products aren't duplicated even if named differently)
+                let existingProduct = null;
+                if (barcode) {
+                    existingProduct = allProducts.find(p => p.barcode && p.barcode === barcode);
+                }
+                // Fall back to name matching if no barcode match
+                if (!existingProduct) {
+                    existingProduct = allProducts.find(p => (p.originalName || p.name).toLowerCase() === originalName.toLowerCase());
+                }
 
                 let finalProduct;
 
