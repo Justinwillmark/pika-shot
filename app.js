@@ -365,14 +365,14 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.shareReceiptBtn.addEventListener('click', this.shareReceipt.bind(this));
             this.elements.printReceiptBtn.addEventListener('click', () => window.print());
             // Log Mode Listeners
-            this.elements.exitLogModeBtn.addEventListener('click', this.exitLogMode.bind(this));
-            this.elements.selectAllLogBtn.addEventListener('click', this.selectAllForLog.bind(this));
-            this.elements.shareLogBtn.addEventListener('click', () => {
+            this.elements.exitLogModeBtn?.addEventListener('click', this.exitLogMode.bind(this));
+            this.elements.selectAllLogBtn?.addEventListener('click', this.selectAllForLog.bind(this));
+            this.elements.shareLogBtn?.addEventListener('click', () => {
                 this.elements.transferPhoneInput.value = '';
                 this.showModal('transfer-modal');
             });
-            this.elements.closeQrBtn.addEventListener('click', this.handleLogShared.bind(this));
-            this.elements.cancelQrBtn.addEventListener('click', () => this.hideModal());
+            this.elements.closeQrBtn?.addEventListener('click', this.handleLogShared.bind(this));
+            this.elements.cancelQrBtn?.addEventListener('click', () => this.hideModal());
             this.elements.productSearchInput.addEventListener('input', (e) => this.renderProducts(e.target.value));
             this.elements.cancelEntryChoiceBtn.addEventListener('click', () => this.hideModal());
             this.elements.manualEntryBtn.addEventListener('click', () => { this.hideModal(); this.elements.manualSaleForm.reset(); this.showModal('manual-sale-modal'); });
@@ -422,7 +422,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.discountAmountInput // Added discount input
             ];
             fieldsToFormat.forEach(input => {
-                input.addEventListener('input', (e) => {
+                input?.addEventListener('input', (e) => {
                     const originalValue = this.unformatNumber(e.target.value);
                     const formattedValue = this.formatNumber(originalValue);
                     if (e.target.value !== formattedValue) {
