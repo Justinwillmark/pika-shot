@@ -1053,7 +1053,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else if (searchText) {
                     this.elements.productGrid.innerHTML = '<p class="empty-state">No products match your search.</p>';
                 } else if (filterType !== 'all') {
-                    this.elements.productGrid.innerHTML = '<p class="empty-state">No products in this filter.</p>';
+                    const message = filterType === 'restock' ? 'No products below 7 units yet' : 'No products currently out of stock';
+                    this.elements.productGrid.innerHTML = `<p class="empty-state">${message}</p>`;
                 } else {
                     this.elements.productGrid.innerHTML = '<p class="empty-state">No products added yet. Tap the "+" button to add your first product!</p>';
                 }
@@ -1660,16 +1661,16 @@ document.addEventListener('DOMContentLoaded', () => {
             const total = Math.max(0, (quantity * product.price) - discount);
             const sale = {
                 id: Date.now(),
-                productId: product.id,
-                productName: product.name,
-                quantity: quantity,
-                price: product.price,
-                discount: discount, // Save discount
-                total: total,
+                productId: product.id || null,
+                productName: product.name || 'Unknown',
+                quantity: quantity || 0,
+                price: product.price || 0,
+                discount: discount || 0,
+                total: total || 0,
                 timestamp: new Date(),
-                image: product.image,
+                image: product.image || null,
                 sharedAsLog: false,
-                unit: product.unit
+                unit: product.unit || null
             };
             await DB.addSale(sale);
 
@@ -1712,15 +1713,11 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         async handleConfirmSale() {
-            if (!navigator.onLine) {
-                this.elements.saleOfflineNotice.style.display = 'block';
-                return; // Stop execution
-            }
 
             try {
                 const success = await this._processSale();
 
-                this.elements.saleOfflineNotice.style.display = 'none'; // Hide if online
+                this.elements.saleOfflineNotice.style.display = 'none';
                 if (success) {
                     this.hideModal();
                     await this.updateDashboard();
@@ -1728,8 +1725,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     this.navigateTo('home-view');
                 }
             } catch (error) {
-                console.error("Sale processing failed, likely offline:", error);
-                this.elements.saleOfflineNotice.style.display = 'block';
+                console.error("Sale processing failed:", error);
+                alert("An error occurred while confirming the sale: " + error.message);
+                this.elements.saleOfflineNotice.style.display = 'none';
             }
         },
 
@@ -2383,7 +2381,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.state.retailerListener = window.fb.onSnapshot(q, async (querySnapshot) => {
                     if (querySnapshot.empty) {
                         const emptyHtmlRetailer = `<p class="empty-state">No data found. Sell and transfer products to the purchasing retailer to see their real-time stock level here.</p>`;
-                        const emptyHtmlSalespeople = `<p class="empty-state">No data found. Sell and transfer products to your salespeople to see their real-time stock level and sales here.</p>`;
+                        const emptyHtmlSalespeople = `<p class="empty-state">Add your salespeople and see their daily sales summary here.</p>`;
                         this.elements.retailerStockView.innerHTML = emptyHtmlRetailer;
                         this.elements.salespeopleView.innerHTML = emptyHtmlSalespeople;
                         return;
