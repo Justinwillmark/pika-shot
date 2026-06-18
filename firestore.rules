@@ -1,0 +1,40 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global rule for pre_registered_salespeople
+    match /pre_registered_salespeople/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Global rule for shared_logs (Transfers)
+    match /shared_logs/{logId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Global rule for retailer_stocks
+    match /retailer_stocks/{userId}/supplied_retailers/{retailerId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // User's own documents (products, sales, customers, etc.)
+    match /users/{userId}/{document=**} {
+      // User can read/write their own data
+      allow read, write: if request.auth != null && 
+        (request.auth.uid == get(/databases/$(database)/documents/users/$(userId)).data.uid ||
+         request.auth.token.phone_number == userId);
+         
+      // Salesperson can read their Wholesaler's products
+      allow read: if request.auth != null &&
+        exists(/databases/$(database)/documents/users/$(userId)/salespeople/$(request.auth.token.phone_number)) &&
+        document.split('/')[0] == 'products';
+    }
+
+    match /users/{userId}/salespeople/{salespersonPhone} {
+      // Wholesaler can manage their salespeople
+      allow read, write: if request.auth != null && request.auth.uid == get(/databases/$(database)/documents/users/$(userId)).data.uid;
+      // Salesperson can read their own entry
+      allow read: if request.auth != null && salespersonPhone == request.auth.token.phone_number;
+    }
+  }
+}

@@ -30,7 +30,11 @@ document.addEventListener('DOMContentLoaded', () => {
             backToPhoneBtn: document.getElementById('back-to-phone-btn'),
 
             onboardingStepRegister: document.getElementById('onboarding-step-register'),
-            userNameInput: document.getElementById('user-name'),
+            firstNameInput: document.getElementById('first-name'),
+            lastNameInput: document.getElementById('last-name'),
+            businessDetailsGroup: document.getElementById('business-details-group'),
+            uniqueCodeGroup: document.getElementById('unique-code-group'),
+            uniqueCodeInput: document.getElementById('unique-code'),
             businessNameInput: document.getElementById('business-name'),
             businessTypeInput: document.getElementById('business-type'),
             businessLocationInput: document.getElementById('business-location'),
@@ -80,6 +84,18 @@ document.addEventListener('DOMContentLoaded', () => {
             productSourceInfo: document.getElementById('product-source-info'),
             productBarcodeDisplay: document.getElementById('product-barcode-display'),
             deleteProductBtn: document.getElementById('delete-product-btn'),
+            
+            // --- Modals ---
+            addSalespersonFab: document.getElementById('add-salesperson-fab'),
+            transferModal: document.getElementById('transfer-modal'),
+            transferPhoneInput: document.getElementById('transfer-phone'),
+            cancelTransferBtn: document.getElementById('cancel-transfer-btn'),
+            confirmTransferBtn: document.getElementById('confirm-transfer-btn'),
+            addSalespersonModal: document.getElementById('add-salesperson-modal'),
+            addSalespersonPhoneInput: document.getElementById('add-salesperson-phone'),
+            cancelAddSalespersonBtn: document.getElementById('cancel-add-salesperson-btn'),
+            confirmAddSalespersonBtn: document.getElementById('confirm-add-salesperson-btn'),
+
             productForm: document.getElementById('product-form'),
             productFormTitle: document.getElementById('product-form-title'),
             productIdInput: document.getElementById('product-id'),
@@ -262,6 +278,28 @@ document.addEventListener('DOMContentLoaded', () => {
             // Login Screen Listeners
             this.elements.loginBtn.addEventListener('click', this.handleLogin.bind(this));
             this.elements.toggleLoginPinBtn.addEventListener('click', () => this.togglePinVisibility('login-pin', 'toggle-login-pin'));
+            
+            // Salesperson Modals
+            if (this.elements.addSalespersonFab) {
+                this.elements.addSalespersonFab.addEventListener('click', () => {
+                    this.elements.addSalespersonPhoneInput.value = '';
+                    this.showModal('add-salesperson-modal');
+                });
+            }
+            if (this.elements.cancelAddSalespersonBtn) {
+                this.elements.cancelAddSalespersonBtn.addEventListener('click', () => this.hideModal(this.elements.addSalespersonModal));
+            }
+            if (this.elements.confirmAddSalespersonBtn) {
+                this.elements.confirmAddSalespersonBtn.addEventListener('click', this.handleAddSalesperson.bind(this));
+            }
+            
+            // Transfer Modals
+            if (this.elements.cancelTransferBtn) {
+                this.elements.cancelTransferBtn.addEventListener('click', () => this.hideModal(this.elements.transferModal));
+            }
+            if (this.elements.confirmTransferBtn) {
+                this.elements.confirmTransferBtn.addEventListener('click', this.handleConfirmTransfer.bind(this));
+            }
             this.elements.copyLoginPinBtn.addEventListener('click', () => this.copyPin('login-pin'));
             this.elements.backToPhoneBtn.addEventListener('click', () => {
                 this.elements.loginPinInput.value = '';
@@ -326,7 +364,13 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.closeReceiptBtn.addEventListener('click', () => this.hideModal());
             this.elements.shareReceiptBtn.addEventListener('click', this.shareReceipt.bind(this));
             this.elements.printReceiptBtn.addEventListener('click', () => window.print());
-            this.elements.shareLogBtn.addEventListener('click', this.generateQrLog.bind(this));
+            // Log Mode Listeners
+            this.elements.exitLogModeBtn.addEventListener('click', this.exitLogMode.bind(this));
+            this.elements.selectAllLogBtn.addEventListener('click', this.selectAllForLog.bind(this));
+            this.elements.shareLogBtn.addEventListener('click', () => {
+                this.elements.transferPhoneInput.value = '';
+                this.showModal('transfer-modal');
+            });
             this.elements.closeQrBtn.addEventListener('click', this.handleLogShared.bind(this));
             this.elements.cancelQrBtn.addEventListener('click', () => this.hideModal());
             this.elements.productSearchInput.addEventListener('input', (e) => this.renderProducts(e.target.value));
@@ -419,6 +463,34 @@ document.addEventListener('DOMContentLoaded', () => {
                     this.state.tempUserCloudData = docSnap.data();
                     this.showView('onboarding-step-login');
                 } else {
+                    // Check if phone is a pre-registered salesperson
+                    const spQuery = window.fb.query(window.fb.collection(window.fb.db, 'pre_registered_salespeople'), window.fb.where('phone', '==', phone));
+                    const spSnaps = await window.fb.getDocs(spQuery);
+
+                    if (!spSnaps.empty) {
+                        const spData = spSnaps.docs[0].data();
+                        this.state.isSalespersonSignup = true;
+                        this.state.wholesalerPhoneForSignup = spData.wholesalerPhone;
+                        
+                        // Hide business details, show unique code
+                        this.elements.businessDetailsGroup.style.display = 'none';
+                        this.elements.uniqueCodeGroup.style.display = 'block';
+
+                        // Remove required attr from hidden fields
+                        this.elements.businessNameInput.removeAttribute('required');
+                        this.elements.businessTypeInput.removeAttribute('required');
+                        this.elements.businessLocationInput.removeAttribute('required');
+                        this.elements.uniqueCodeInput.setAttribute('required', 'true');
+                    } else {
+                        this.state.isSalespersonSignup = false;
+                        this.elements.businessDetailsGroup.style.display = 'block';
+                        this.elements.uniqueCodeGroup.style.display = 'none';
+                        
+                        this.elements.businessNameInput.setAttribute('required', 'true');
+                        this.elements.businessTypeInput.setAttribute('required', 'true');
+                        this.elements.businessLocationInput.setAttribute('required', 'true');
+                        this.elements.uniqueCodeInput.removeAttribute('required');
+                    }
                     this.showView('onboarding-step-register');
                 }
             } catch (error) {
@@ -489,13 +561,46 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         async handleRegistration() {
-            const name = this.elements.userNameInput.value.trim();
-            const business = this.elements.businessNameInput.value.trim();
-            const type = this.elements.businessTypeInput.value;
-            const location = this.elements.businessLocationInput.value;
+            const firstName = this.elements.firstNameInput.value.trim();
+            const lastName = this.elements.lastNameInput.value.trim();
+            const name = firstName + ' ' + lastName;
+            
+            let business = '';
+            let type = '';
+            let location = '';
+            let wholesalerPhone = null;
+
+            if (this.state.isSalespersonSignup) {
+                const uniqueCode = this.elements.uniqueCodeInput.value.trim();
+                if (!uniqueCode) { alert('Please enter your unique code.'); return; }
+                
+                // Verify unique code
+                const spQuery = window.fb.query(window.fb.collection(window.fb.db, 'pre_registered_salespeople'), window.fb.where('phone', '==', this.state.tempPhone));
+                const spSnaps = await window.fb.getDocs(spQuery);
+                if (spSnaps.empty) { alert('Salesperson record not found.'); return; }
+                
+                const spData = spSnaps.docs[0].data();
+                if (spData.uniqueCode !== uniqueCode) { alert('Invalid unique code.'); return; }
+
+                // Fetch wholesaler details
+                wholesalerPhone = spData.wholesalerPhone;
+                const wsRef = window.fb.doc(window.fb.db, 'users', wholesalerPhone);
+                const wsSnap = await window.fb.getDoc(wsRef);
+                if (!wsSnap.exists()) { alert('Wholesaler not found.'); return; }
+                const wsData = wsSnap.data();
+                
+                business = wsData.business;
+                type = 'Salesperson';
+                location = wsData.location;
+            } else {
+                business = this.elements.businessNameInput.value.trim();
+                type = this.elements.businessTypeInput.value;
+                location = this.elements.businessLocationInput.value;
+            }
+
             const pin = this.elements.createPinInput.value.trim();
 
-            if (!name || !business || !type || !location || pin.length !== 6) {
+            if (!firstName || !lastName || !business || !type || !location || pin.length !== 6) {
                 alert('Please fill in all fields and ensure PIN is 6 digits.'); return;
             }
 
@@ -507,6 +612,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 phone: this.state.tempPhone,
                 pin: pin,
                 name, business, type, location, uid,
+                wholesalerPhone: wholesalerPhone,
                 createdAt: window.fb.serverTimestamp()
             };
 
@@ -553,6 +659,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 );
 
+                // Realtime listener for incoming transfers
+                const transfersQuery = window.fb.query(
+                    window.fb.collection(window.fb.db, 'shared_logs'),
+                    window.fb.where('recipientPhone', '==', this.state.user.phone),
+                    window.fb.where('status', '==', 'pending')
+                );
+
+                this.unsubscribeTransfers = window.fb.onSnapshot(transfersQuery, (snapshot) => {
+                    snapshot.docChanges().forEach((change) => {
+                        if (change.type === 'added') {
+                            this.handleIncomingTransfer(change.doc);
+                        }
+                    });
+                });
+
                 // Re-fetch sales when user returns to the app tab
                 // This catches any sales missed while the listener was disconnected
                 if (this._visibilityHandler) {
@@ -572,6 +693,10 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         async handleLogout() {
+            if (this.unsubscribeTransfers) {
+                this.unsubscribeTransfers();
+                this.unsubscribeTransfers = null;
+            }
             if (confirm('Are you sure you want to log out? This will clear local data (it remains safe in the cloud).')) {
                 await DB.clearUser(); // This also stops realtime listeners
                 if (this._visibilityHandler) {
@@ -962,9 +1087,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 const displayName = words.length > 2 ? words.slice(0, 2).join(' ') + '...' : product.name;
 
                 const pencilIconSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>`;
+                let editBtnHtml = '';
+                if (!(this.state.user && this.state.user.type === 'Salesperson')) {
+                    editBtnHtml = `<button class="edit-btn-icon">${pencilIconSVG}</button>`;
+                }
                 card.innerHTML = `
                     ${badgeHtml}
-                    <button class="edit-btn-icon">${pencilIconSVG}</button>
+                    ${editBtnHtml}
                     <div class="product-card-image-wrapper">
                         <img src="${imageUrl}" alt="${product.name}">
                     </div>
@@ -975,10 +1104,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>`;
 
                 const editBtn = card.querySelector('.edit-btn-icon');
-                editBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    this.handleEditProduct(product)
-                });
+                if (editBtn) {
+                    editBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        this.handleEditProduct(product);
+                    });
+                }
 
                 card.addEventListener('click', () => {
                     if (this.state.productSelectionMode) {
@@ -987,7 +1118,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         this.elements.productsView.classList.remove('selection-mode');
                         this.elements.addNewProductBtn.style.display = (this.state.user && this.state.user.type === 'Salesperson') ? 'none' : 'flex';
                     } else {
-                        if (product.needsSetup || this.state.user.type === 'Wholesaler' || this.state.user.type === 'Salesperson' || product.lockedUntilOOS) {
+                        if (this.state.user && this.state.user.type === 'Salesperson') {
+                            // Salespeople cannot edit products. Do nothing.
+                            return;
+                        }
+                        if (product.needsSetup || this.state.user.type === 'Wholesaler' || product.lockedUntilOOS) {
                             this.handleEditProduct(product);
                         }
                     }
@@ -1376,7 +1511,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.productStockInput.disabled = true;
                 this.elements.productUnitInput.disabled = true;
                 if (!isSalesperson) {
-                    this.elements.productSourceInfo.textContent = 'Stock and unit for this item cannot be edited.';
+                    this.elements.productSourceInfo.textContent = 'No manual stock update for transferred products until out of stock.';
                     this.elements.productSourceInfo.style.display = 'block';
                 }
             }
@@ -1750,107 +1885,141 @@ document.addEventListener('DOMContentLoaded', () => {
         },
         async shareReceipt() { const receiptElement = this.elements.receiptContent; try { const canvas = await html2canvas(receiptElement, { scale: 2 }); canvas.toBlob(async (blob) => { if (navigator.share && blob) { try { await navigator.share({ files: [new File([blob], 'pika-shot-receipt.png', { type: 'image/png' })], title: 'Your Receipt', text: 'Here is your receipt from ' + this.state.user.business, }); } catch (error) { console.error('Error sharing:', error); } } else { alert('Sharing is not supported on this browser, or there was an error creating the image.'); } }, 'image/png'); } catch (error) { console.error('Error generating receipt image:', error); alert('Could not generate receipt image.'); } },
 
-        async generateQrLog() {
+        async handleConfirmTransfer() {
+            const targetPhone = this.elements.transferPhoneInput.value.trim();
+            if (targetPhone.length !== 11) { alert("Please enter a valid 11-digit phone number."); return; }
+
             if (!navigator.onLine) {
                 this.showToast("Please connect to the internet to transfer products.");
-                const shareLogBtn = this.elements.shareLogBtn;
-                shareLogBtn.classList.add('input-error-shake');
-                setTimeout(() => shareLogBtn.classList.remove('input-error-shake'), 600);
                 return;
             }
             if (!this.state.firebaseReady || !this.state.user.uid) {
-                this.showToast("Cannot generate transfer QR: not connected to online services.");
+                this.showToast("Cannot transfer: not connected to online services.");
                 return;
             }
 
-            const allSales = await DB.getAllSales();
-            const selectedSaleObjects = allSales.filter(s => this.state.selectedSales.has(s.id));
-
-            if (selectedSaleObjects.length === 0) {
-                this.showToast("Please select at least one sale to transfer.");
-                return;
-            }
-
-            // --- NEW VALIDATION: Check for already transferred items ---
-            const alreadyTransferred = selectedSaleObjects.filter(s => s.sharedAsLog);
-            if (alreadyTransferred.length > 0) {
-                // Trigger feedback for each invalid item
-                alreadyTransferred.forEach(sale => {
-                    const el = document.querySelector(`.sale-item[data-sale-id="${sale.id}"]`);
-                    if (el) this.triggerRestrictedFeedback(el);
-                });
-                this.showToast("Some selected items have already been transferred.");
-                return; // Stop execution
-            }
-            // -----------------------------------------------------------
-
-            const groupedSales = selectedSaleObjects.reduce((acc, sale) => {
-                const key = sale.productId;
-                if (!acc[key]) {
-                    acc[key] = { ...sale, quantity: 0 };
-                }
-                acc[key].quantity += sale.quantity;
-                return acc;
-            }, {});
-
-            const aggregatedSaleObjects = Object.values(groupedSales);
-            const allProducts = await DB.getAllProducts();
-
-            const logData = {
-                pikaLogVersion: 2,
-                senderStore: this.state.user.business,
-                senderId: this.state.user.uid,
-                senderRole: this.state.user.type,
-                items: aggregatedSaleObjects.map(sale => {
-                    const product = allProducts.find(p => p.id === sale.productId);
-                    const isSalespersonSharingCarton = this.state.user.type === 'Salesperson' && product && product.unit === 'cartons';
-
-                    if (isSalespersonSharingCarton) {
-                        return {
-                            name: product.originalName || product.name,
-                            price: product.wholesalerPrice,
-                            quantity: sale.quantity,
-                            unit: 'cartons',
-                            barcode: product.barcode,
-                            subUnitType: product.subUnitType,
-                            subUnitQuantity: product.subUnitQuantity
-                        };
-                    } else {
-                        const item = {
-                            name: sale.productName,
-                            price: sale.price,
-                            quantity: sale.quantity,
-                            unit: product ? product.unit : 'pieces',
-                            barcode: product ? product.barcode : null
-                        };
-                        if (product && product.unit === 'cartons') {
-                            item.subUnitType = product.subUnitType;
-                            item.subUnitQuantity = product.subUnitQuantity;
-                        }
-                        return item;
-                    }
-                })
-            };
-
+            this.showLoader();
             try {
-                const logCollectionRef = window.fb.collection(window.fb.db, 'shared_logs');
-                const logDocRef = window.fb.doc(logCollectionRef);
-                await window.fb.setDoc(logDocRef, logData);
-                const logId = logDocRef.id;
+                // Check if target user exists
+                const userSnap = await window.fb.getDoc(window.fb.doc(window.fb.db, 'users', targetPhone));
+                if (!userSnap.exists()) {
+                    alert("User not found. Help them get started on Pika-Shot!");
+                    this.hideLoader();
+                    return;
+                }
 
-                QRCode.toCanvas(this.elements.qrCanvas, `pika-log-id:${logId}`, { width: 300 }, (error) => {
-                    if (error) {
-                        console.error(error);
-                        alert("Could not generate QR code.");
-                        return;
+                const allSales = await DB.getAllSales();
+                const selectedSaleObjects = allSales.filter(s => this.state.selectedSales.has(s.id));
+
+                if (selectedSaleObjects.length === 0) {
+                    this.showToast("Please select at least one sale to transfer.");
+                    this.hideLoader();
+                    return;
+                }
+
+                const alreadyTransferred = selectedSaleObjects.filter(s => s.sharedAsLog);
+                if (alreadyTransferred.length > 0) {
+                    this.showToast("Some selected items have already been transferred.");
+                    this.hideLoader();
+                    return;
+                }
+
+                const groupedSales = selectedSaleObjects.reduce((acc, sale) => {
+                    const key = sale.productId;
+                    if (!acc[key]) {
+                        acc[key] = { ...sale, quantity: 0 };
                     }
-                    this.hideModal();
-                    this.showModal('qr-code-modal');
-                });
+                    acc[key].quantity += sale.quantity;
+                    return acc;
+                }, {});
+
+                const aggregatedSaleObjects = Object.values(groupedSales);
+                const allProducts = await DB.getAllProducts();
+
+                const logData = {
+                    pikaLogVersion: 2,
+                    senderStore: this.state.user.business,
+                    senderId: this.state.user.uid,
+                    senderRole: this.state.user.type,
+                    recipientPhone: targetPhone,
+                    status: 'pending',
+                    createdAt: window.fb.serverTimestamp(),
+                    items: aggregatedSaleObjects.map(sale => {
+                        const product = allProducts.find(p => p.id === sale.productId);
+                        const isSalespersonSharingCarton = this.state.user.type === 'Salesperson' && product && product.unit === 'cartons';
+
+                        if (isSalespersonSharingCarton) {
+                            return {
+                                name: product.originalName || product.name,
+                                price: product.wholesalerPrice,
+                                quantity: sale.quantity,
+                                unit: 'cartons',
+                                barcode: product.barcode,
+                                subUnitType: product.subUnitType,
+                                subUnitQuantity: product.subUnitQuantity
+                            };
+                        } else {
+                            const item = {
+                                name: sale.productName,
+                                price: sale.price,
+                                quantity: sale.quantity,
+                                unit: product ? product.unit : 'pieces',
+                                barcode: product ? product.barcode : null
+                            };
+                            if (product && product.unit === 'cartons') {
+                                item.subUnitType = product.subUnitType;
+                                item.subUnitQuantity = product.subUnitQuantity;
+                            }
+                            return item;
+                        }
+                    })
+                };
+
+                const logCollectionRef = window.fb.collection(window.fb.db, 'shared_logs');
+                await window.fb.addDoc(logCollectionRef, logData);
+                
+                this.hideModal();
+                this.showToast("Transfer sent to " + targetPhone);
+                await this.handleLogShared();
 
             } catch (error) {
                 console.error("Error creating shared log:", error);
-                alert("Could not create the transfer QR code. Please check your internet connection.");
+                alert("Could not complete transfer. Please check your internet connection.");
+            } finally {
+                this.hideLoader();
+            }
+        },
+        
+        async handleAddSalesperson() {
+            const phone = this.elements.addSalespersonPhoneInput.value.trim();
+            if (phone.length !== 11) { alert("Invalid phone number. Must be 11 digits."); return; }
+            this.showLoader();
+            try {
+                // Check if already registered
+                const usersRef = window.fb.collection(window.fb.db, 'users');
+                const q = window.fb.query(usersRef, window.fb.where('phone', '==', phone));
+                const snap = await window.fb.getDocs(q);
+                if (!snap.empty) { alert("This number is already registered."); this.hideLoader(); return; }
+
+                const spRef = window.fb.doc(window.fb.db, 'pre_registered_salespeople', phone);
+                const spSnap = await window.fb.getDoc(spRef);
+                if (spSnap.exists()) { alert("This number is already added as a salesperson."); this.hideLoader(); return; }
+
+                // Generate unique 6-char code
+                const uniqueCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+
+                const spDoc = { phone, wholesalerPhone: this.state.user.phone, uniqueCode, createdAt: window.fb.serverTimestamp() };
+                await window.fb.setDoc(spRef, spDoc);
+                await window.fb.setDoc(window.fb.doc(window.fb.db, `users/${this.state.user.phone}/salespeople`, phone), spDoc);
+                
+                this.hideModal(this.elements.addSalespersonModal);
+                // alert unique code to wholesaler
+                alert(`Salesperson added! Their unique code is: ${uniqueCode}`);
+            } catch(e) {
+                console.error(e);
+                alert("Failed to add salesperson.");
+            } finally {
+                this.hideLoader();
             }
         },
 
@@ -1873,6 +2042,60 @@ document.addEventListener('DOMContentLoaded', () => {
             if (this.state.currentView === 'all-sales-view') {
                 await this.renderAllSales();
             }
+        },
+
+        handleIncomingTransfer(docSnap) {
+            const transferId = docSnap.id;
+            const logData = docSnap.data();
+            this.state.scannedLogData = logData;
+            this.state.scannedLogId = transferId;
+            
+            this.elements.confirmLogTitle.textContent = 'Accept Transfer?';
+            
+            let itemsHtml = '<ul style="text-align:left; margin-bottom: 15px;">';
+            logData.items.forEach(item => {
+                itemsHtml += `<li>${item.quantity} ${item.unit} of ${item.name}</li>`;
+            });
+            itemsHtml += '</ul>';
+
+            this.elements.confirmLogContent.innerHTML = `
+                <p><strong>${logData.senderStore}</strong> has sent you products.</p>
+                ${itemsHtml}
+            `;
+
+            // Reset event listeners for accept/reject
+            const newAcceptBtn = this.elements.acceptLogBtn.cloneNode(true);
+            this.elements.acceptLogBtn.parentNode.replaceChild(newAcceptBtn, this.elements.acceptLogBtn);
+            this.elements.acceptLogBtn = newAcceptBtn;
+
+            const newRejectBtn = this.elements.rejectLogBtn.cloneNode(true);
+            this.elements.rejectLogBtn.parentNode.replaceChild(newRejectBtn, this.elements.rejectLogBtn);
+            this.elements.rejectLogBtn = newRejectBtn;
+
+            this.elements.rejectLogBtn.addEventListener('click', async () => {
+                this.hideModal();
+                try {
+                    await window.fb.updateDoc(window.fb.doc(window.fb.db, 'shared_logs', transferId), { status: 'rejected' });
+                    this.showToast("Transfer rejected.");
+                } catch(e) { console.error(e); }
+            });
+
+            this.elements.acceptLogBtn.addEventListener('click', async () => {
+                this.hideModal();
+                this.showLoader();
+                try {
+                    await this.processLogData(logData);
+                    await window.fb.updateDoc(window.fb.doc(window.fb.db, 'shared_logs', transferId), { status: 'accepted' });
+                    this.showToast("Transfer accepted and added to products!");
+                } catch (error) {
+                    console.error("Error accepting transfer:", error);
+                    alert("An error occurred while accepting the transfer.");
+                } finally {
+                    this.hideLoader();
+                }
+            });
+
+            this.showModal('confirm-log-modal');
         },
 
         async handlePikaLogIdScanned(logId) {
@@ -2125,14 +2348,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.stockViewFilterTabs.style.display = 'none';
                 this.elements.retailerStockView.style.display = 'block';
                 this.elements.salespeopleView.style.display = 'none';
+                if (this.elements.addSalespersonFab) this.elements.addSalespersonFab.style.display = 'none';
             } else {
                 this.elements.stockViewFilterTabs.style.display = 'flex';
                 if (this.state.stockViewFilter === 'customers') {
                     this.elements.retailerStockView.style.display = 'block';
                     this.elements.salespeopleView.style.display = 'none';
+                    if (this.elements.addSalespersonFab) this.elements.addSalespersonFab.style.display = 'none';
                 } else {
                     this.elements.retailerStockView.style.display = 'none';
                     this.elements.salespeopleView.style.display = 'block';
+                    if (this.elements.addSalespersonFab) this.elements.addSalespersonFab.style.display = 'block';
                 }
             }
 
@@ -2454,14 +2680,30 @@ document.addEventListener('DOMContentLoaded', () => {
                     const card = e.target.closest('.card');
                     const retailerId = card.dataset.retailerId;
                     const retailerName = card.dataset.retailerName;
+                    const isSalesperson = card.classList.contains('salesperson-card');
 
-                    if (confirm(`Are you sure you want to remove ${retailerName}? This will delete their data from your view.`)) {
+                    const entityType = isSalesperson ? 'salesperson' : 'customer';
+
+                    if (confirm(`Are you sure you want to remove this ${entityType} (${retailerName})? This will delete their data from your view.`)) {
                         try {
                             const docRef = window.fb.doc(window.fb.db, `retailer_stocks/${this.state.user.uid}/supplied_retailers/${retailerId}`);
                             await window.fb.deleteDoc(docRef);
+
+                            if (isSalesperson) {
+                                // Also delete from users subcollection and pre_registered
+                                const spDocRef = window.fb.doc(window.fb.db, `users/${this.state.user.phone}/salespeople/${retailerId}`);
+                                await window.fb.deleteDoc(spDocRef);
+
+                                const spQuery = window.fb.query(window.fb.collection(window.fb.db, 'pre_registered_salespeople'), window.fb.where('phone', '==', retailerId));
+                                const spSnaps = await window.fb.getDocs(spQuery);
+                                spSnaps.forEach(async (docSnap) => {
+                                    await window.fb.deleteDoc(window.fb.doc(window.fb.db, 'pre_registered_salespeople', docSnap.id));
+                                });
+                            }
+
                             this.showToast(`${retailerName} has been removed.`);
                         } catch (error) {
-                            console.error("Error removing retailer: ", error);
+                            console.error(`Error removing ${entityType}: `, error);
                             this.showToast(`Failed to remove ${retailerName}.`);
                         }
                     }
