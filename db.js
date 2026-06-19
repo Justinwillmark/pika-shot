@@ -1,82 +1,163 @@
 const DB = {
-    userPhone: null,
-    wholesalerPhone: null,
+    db: null,
+    dbName: 'PikaShotDB',
+    dbVersion: 5,
+    userPhone: null, // Track the current user's phone for cloud paths
     unsubscribeProducts: null,
     unsubscribeSales: null,
 
-    async init() {
-        return Promise.resolve();
+    init() {
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.open(this.dbName, this.dbVersion);
+
+            request.onerror = (event) => {
+                console.error("Database error:", event.target.error);
+                reject("Database error");
+            };
+
+            request.onsuccess = (event) => {
+                this.db = event.target.result;
+                console.log("Database opened successfully");
+                // Try to load user to get phone number for cloud sync
+                this.getUser().then(user => {
+                    if (user && user.phone) this.userPhone = user.phone;
+                });
+                resolve();
+            };
+
+            request.onupgradeneeded = (event) => {
+                const db = event.target.result;
+                const transaction = event.target.transaction;
+                if (!db.objectStoreNames.contains('user')) db.createObjectStore('user', { keyPath: 'id' });
+                if (!db.objectStoreNames.contains('products')) {
+                    const productStore = db.createObjectStore('products', { keyPath: 'id' });
+                    productStore.createIndex('barcode', 'barcode', { unique: false });
+                } else {
+                    const productStore = transaction.objectStore('products');
+                    if (!productStore.indexNames.contains('barcode')) productStore.createIndex('barcode', 'barcode', { unique: false });
+                }
+                if (!db.objectStoreNames.contains('sales')) {
+                    const salesStore = db.createObjectStore('sales', { keyPath: 'id' });
+                    salesStore.createIndex('productId', 'productId', { unique: false });
+                } else {
+                    const salesStore = transaction.objectStore('sales');
+                    if (!salesStore.indexNames.contains('productId')) salesStore.createIndex('productId', 'productId', { unique: false });
+                }
+                if (!db.objectStoreNames.contains('scan_counts')) db.createObjectStore('scan_counts', { keyPath: 'date' });
+            };
+        });
     },
 
+    _getStore(storeName, mode) {
+        const transaction = this.db.transaction(storeName, mode);
+        return transaction.objectStore(storeName);
+    },
+
+    _requestToPromise(request) {
+        return new Promise((resolve, reject) => {
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+    },
+
+    // --- CLOUD SYNC HELPERS ---
     _normalizeTimestamp(ts) {
         if (!ts) return new Date();
+        // Firestore Timestamp object
         if (ts.toDate && typeof ts.toDate === 'function') return ts.toDate();
+        // Already a Date
         if (ts instanceof Date) return ts;
+        // Epoch number (milliseconds)
         if (typeof ts === 'number') return new Date(ts);
+        // ISO string or other parseable string
         if (typeof ts === 'string') {
             const d = new Date(ts);
             return isNaN(d.getTime()) ? new Date() : d;
         }
+        // Firestore-like plain object {seconds, nanoseconds}
         if (ts.seconds !== undefined) return new Date(ts.seconds * 1000);
         return new Date();
     },
 
-    getProductsPath() {
-        if (this.wholesalerPhone) {
-            return `users/${this.wholesalerPhone}/products`;
+    _syncToCloud(collectionName, docId, data) {
+        if (!this.userPhone || !window.fb) return Promise.resolve(); // Need user phone to know where to save
+        const path = `users/${this.userPhone}${collectionName ? '/' + collectionName : ''}`;
+
+        try {
+            const ref = docId
+                ? window.fb.doc(window.fb.db, path, String(docId))
+                : window.fb.doc(window.fb.db, path);
+
+            // Remove image blobs and add server timestamp
+            const cleanData = { ...data };
+            if (cleanData.image) delete cleanData.image;
+
+            // Optimization: Add lastUpdate timestamp to track changes
+            if (window.fb.serverTimestamp) {
+                cleanData.lastUpdate = window.fb.serverTimestamp();
+            }
+
+            return window.fb.setDoc(ref, cleanData, { merge: true })
+                .catch(err => console.error("Cloud sync failed:", err));
+        } catch (e) {
+            console.error("Error initiating cloud sync:", e);
+            return Promise.resolve();
         }
-        return `users/${this.userPhone}/products`;
-    },
-
-    getSalesPath() {
-        return `users/${this.userPhone}/sales`;
-    },
-
-    // --- USER ---
-    async saveUser(userData, sync = true) {
-        this.userPhone = userData.phone;
-        this.wholesalerPhone = userData.wholesalerPhone || null;
-        
-        localStorage.setItem('pika_user', JSON.stringify(userData));
-
-        if (sync && userData.phone) {
-            try {
-                await window.fb.setDoc(window.fb.doc(window.fb.db, 'users', userData.phone), userData, { merge: true });
-            } catch(e) { console.error("Error saving user to cloud", e); }
-        }
-        return userData;
-    },
-
-    async clearUser() {
-        this.stopRealtimeListeners();
-        localStorage.removeItem('pika_user');
-        this.userPhone = null;
-        this.wholesalerPhone = null;
-        return Promise.resolve();
-    },
-
-    async getUser() {
-        const local = localStorage.getItem('pika_user');
-        if (local) {
-            const user = JSON.parse(local);
-            this.userPhone = user.phone;
-            this.wholesalerPhone = user.wholesalerPhone || null;
-            return user;
-        }
-        return null;
     },
 
     async syncDataFromCloud(phoneNumber) {
+        if (!window.fb) return false;
         this.userPhone = phoneNumber;
+
         try {
+            // 1. Sync User Profile
             const userRef = window.fb.doc(window.fb.db, 'users', phoneNumber);
             const userSnap = await window.fb.getDoc(userRef);
             if (userSnap.exists()) {
                 const cloudUserData = userSnap.data();
-                await this.saveUser(cloudUserData, false);
-                return true;
+                await this.saveUser(cloudUserData, false); // false = don't sync back to cloud
             }
-            return false;
+
+            // 2. Get ALL Products (always fetch all to avoid sync gaps)
+            const productsRef = window.fb.collection(window.fb.db, `users/${phoneNumber}/products`);
+            const prodSnaps = await window.fb.getDocs(productsRef);
+            await new Promise((resolve, reject) => {
+                const prodTx = this.db.transaction('products', 'readwrite');
+                const store = prodTx.objectStore('products');
+                prodSnaps.forEach(doc => {
+                    const p = doc.data();
+                    if (typeof p.id === 'string' && !isNaN(p.id)) p.id = Number(p.id);
+                    // Preserve local image (images are stripped before cloud upload)
+                    const getReq = store.get(p.id);
+                    getReq.onsuccess = () => {
+                        const existing = getReq.result;
+                        if (existing && existing.image && !p.image) {
+                            p.image = existing.image;
+                        }
+                        store.put(p);
+                    };
+                });
+                prodTx.oncomplete = () => resolve();
+                prodTx.onerror = () => reject(prodTx.error);
+            });
+
+            // 3. Get ALL Sales (always fetch all to avoid sync gaps)
+            const salesRef = window.fb.collection(window.fb.db, `users/${phoneNumber}/sales`);
+            const saleSnaps = await window.fb.getDocs(salesRef);
+            await new Promise((resolve, reject) => {
+                const saleTx = this.db.transaction('sales', 'readwrite');
+                const store = saleTx.objectStore('sales');
+                saleSnaps.forEach(doc => {
+                    const s = doc.data();
+                    if (typeof s.id === 'string' && !isNaN(s.id)) s.id = Number(s.id);
+                    s.timestamp = this._normalizeTimestamp(s.timestamp);
+                    store.put(s);
+                });
+                saleTx.oncomplete = () => resolve();
+                saleTx.onerror = () => reject(saleTx.error);
+            });
+
+            return true;
         } catch (error) {
             console.error("Sync from cloud failed:", error);
             return false;
@@ -86,35 +167,112 @@ const DB = {
     // --- REALTIME SYNC ---
     setupRealtimeListeners(phoneNumber, onProductsChange, onSalesChange) {
         if (!window.fb || !phoneNumber) return;
-        this.stopRealtimeListeners();
+        this.stopRealtimeListeners(); // Ensure clean slate
         this.userPhone = phoneNumber;
-        
-        const local = localStorage.getItem('pika_user');
-        if (local) {
-            const user = JSON.parse(local);
-            this.wholesalerPhone = user.wholesalerPhone || null;
-        }
+        this._realtimePhone = phoneNumber;
+        this._realtimeCallbacks = { onProductsChange, onSalesChange };
 
-        const productsRef = window.fb.collection(window.fb.db, this.getProductsPath());
-        this.unsubscribeProducts = window.fb.onSnapshot(productsRef, { includeMetadataChanges: true }, (snapshot) => {
-            if (onProductsChange) onProductsChange();
-        }, (error) => {
-            console.error("Products listener error:", error);
-        });
+        this._startProductsListener(phoneNumber, onProductsChange);
+        this._startSalesListener(phoneNumber, onSalesChange);
+    },
 
-        const salesRef = window.fb.collection(window.fb.db, this.getSalesPath());
-        this.unsubscribeSales = window.fb.onSnapshot(salesRef, { includeMetadataChanges: true }, (snapshot) => {
-            if (onSalesChange) onSalesChange();
+    _startProductsListener(phoneNumber, onProductsChange, retryDelay) {
+        if (this._realtimePhone !== phoneNumber) return; // User changed, don't reconnect
+        const productsRef = window.fb.collection(window.fb.db, `users/${phoneNumber}/products`);
+        this.unsubscribeProducts = window.fb.onSnapshot(productsRef, (snapshot) => {
+            const tx = this.db.transaction('products', 'readwrite');
+            const store = tx.objectStore('products');
+            let hasChanges = false;
+
+            snapshot.docChanges().forEach((change) => {
+                hasChanges = true;
+                const data = change.doc.data();
+                if (data.id && typeof data.id === 'string' && !isNaN(Number(data.id))) {
+                    data.id = Number(data.id);
+                }
+                if (change.type === "added" || change.type === "modified") {
+                    // Preserve local image (images are stripped before cloud upload)
+                    const getReq = store.get(data.id);
+                    getReq.onsuccess = () => {
+                        const existing = getReq.result;
+                        if (existing && existing.image && !data.image) {
+                            data.image = existing.image;
+                        }
+                        store.put(data);
+                    };
+                } else if (change.type === "removed") {
+                    store.delete(Number(change.doc.id));
+                }
+            });
+
+            if (hasChanges && onProductsChange) {
+                tx.oncomplete = () => onProductsChange();
+            }
         }, (error) => {
-            console.error("Sales listener error:", error);
+            console.error("Products listener error, will reconnect:", error);
+            const delay = Math.min(retryDelay || 2000, 30000);
+            setTimeout(() => this._startProductsListener(phoneNumber, onProductsChange, delay * 2), delay);
         });
     },
 
+    _startSalesListener(phoneNumber, onSalesChange, retryDelay) {
+        if (this._realtimePhone !== phoneNumber) return; // User changed, don't reconnect
+        const salesRef = window.fb.collection(window.fb.db, `users/${phoneNumber}/sales`);
+        this.unsubscribeSales = window.fb.onSnapshot(salesRef, (snapshot) => {
+            const tx = this.db.transaction('sales', 'readwrite');
+            const store = tx.objectStore('sales');
+            let hasChanges = false;
+
+            snapshot.docChanges().forEach((change) => {
+                hasChanges = true;
+                const data = change.doc.data();
+                if (data.id && typeof data.id === 'string' && !isNaN(Number(data.id))) {
+                    data.id = Number(data.id);
+                }
+                data.timestamp = this._normalizeTimestamp(data.timestamp);
+
+                if (change.type === "added" || change.type === "modified") {
+                    store.put(data);
+                } else if (change.type === "removed") {
+                    store.delete(Number(change.doc.id));
+                }
+            });
+
+            if (hasChanges && onSalesChange) {
+                tx.oncomplete = () => onSalesChange();
+            }
+        }, (error) => {
+            console.error("Sales listener error, will reconnect:", error);
+            const delay = Math.min(retryDelay || 2000, 30000);
+            setTimeout(() => this._startSalesListener(phoneNumber, onSalesChange, delay * 2), delay);
+        });
+    },
+
+    // Re-fetch all sales from cloud (used on visibility change)
     async resyncSalesFromCloud() {
-        return Promise.resolve();
+        if (!window.fb || !this.userPhone) return;
+        try {
+            const salesRef = window.fb.collection(window.fb.db, `users/${this.userPhone}/sales`);
+            const saleSnaps = await window.fb.getDocs(salesRef);
+            await new Promise((resolve, reject) => {
+                const saleTx = this.db.transaction('sales', 'readwrite');
+                const store = saleTx.objectStore('sales');
+                saleSnaps.forEach(doc => {
+                    const s = doc.data();
+                    if (typeof s.id === 'string' && !isNaN(s.id)) s.id = Number(s.id);
+                    s.timestamp = this._normalizeTimestamp(s.timestamp);
+                    store.put(s);
+                });
+                saleTx.oncomplete = () => resolve();
+                saleTx.onerror = () => reject(saleTx.error);
+            });
+        } catch (error) {
+            console.error("Resync sales failed:", error);
+        }
     },
 
     stopRealtimeListeners() {
+        this._realtimePhone = null; // Prevent auto-reconnect after stop
         if (this.unsubscribeProducts) {
             this.unsubscribeProducts();
             this.unsubscribeProducts = null;
@@ -125,188 +283,125 @@ const DB = {
         }
     },
 
-    // --- HELPER: Blob to Base64 ---
-    _blobToBase64(blob) {
-        return new Promise((resolve, reject) => {
-            if (!blob) { resolve(null); return; }
-            if (typeof blob === 'string') { resolve(blob); return; } // Already base64
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result);
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-        });
-    },
-    
-    _base64ToBlob(base64) {
-        if (!base64 || typeof base64 !== 'string') return base64; // already a blob or null
-        const parts = base64.split(';base64,');
-        if (parts.length !== 2) return null;
-        const contentType = parts[0].split(':')[1];
-        const raw = window.atob(parts[1]);
-        const rawLength = raw.length;
-        const uInt8Array = new Uint8Array(rawLength);
-        for (let i = 0; i < rawLength; ++i) {
-            uInt8Array[i] = raw.charCodeAt(i);
+    // --- USER ---
+    saveUser(userData, sync = true) {
+        const store = this._getStore('user', 'readwrite');
+        const user = { id: 1, ...userData };
+        if (sync && userData.phone) {
+            this.userPhone = userData.phone;
+            this._syncToCloud(null, null, userData); // Save to users/{phone}
         }
-        return new Blob([uInt8Array], { type: contentType });
+        return this._requestToPromise(store.put(user));
+    },
+
+    async clearUser() {
+        this.stopRealtimeListeners(); // Stop syncing
+        const store = this._getStore('user', 'readwrite');
+        // Clear all stores on logout
+        const productsStore = this._getStore('products', 'readwrite');
+        const salesStore = this._getStore('sales', 'readwrite');
+        productsStore.clear();
+        salesStore.clear();
+        this.userPhone = null;
+        return this._requestToPromise(store.clear());
+    },
+
+    getUser() {
+        const store = this._getStore('user', 'readonly');
+        return this._requestToPromise(store.get(1));
     },
 
     // --- PRODUCTS ---
-    async saveProduct(product) {
-        if (!this.userPhone) return;
-        try {
-            const cleanData = { ...product };
-            if (cleanData.image && typeof cleanData.image !== 'string') {
-                cleanData.imageBase64 = await this._blobToBase64(cleanData.image);
-            } else if (cleanData.image && typeof cleanData.image === 'string') {
-                cleanData.imageBase64 = cleanData.image;
-            }
-            delete cleanData.image; 
-            cleanData.lastUpdate = window.fb.serverTimestamp();
-            
-            const ref = window.fb.doc(window.fb.db, this.getProductsPath(), String(product.id));
-            await window.fb.setDoc(ref, cleanData, { merge: true });
-        } catch(e) {
-            console.error("Save product failed", e);
-            throw e;
+    saveProduct(product) {
+        const store = this._getStore('products', 'readwrite');
+        this._syncToCloud('products', product.id, product);
+        return this._requestToPromise(store.put(product));
+    },
+
+    getProduct(id) {
+        const store = this._getStore('products', 'readonly');
+        return this._requestToPromise(store.get(id));
+    },
+
+    getProductByBarcode(barcode) {
+        const store = this._getStore('products', 'readonly');
+        const index = store.index('barcode');
+        return this._requestToPromise(index.get(barcode));
+    },
+
+    getAllProducts() {
+        const store = this._getStore('products', 'readonly');
+        return this._requestToPromise(store.getAll());
+    },
+
+    deleteProduct(id) {
+        const store = this._getStore('products', 'readwrite');
+        if (this.userPhone) {
+            window.fb.deleteDoc(window.fb.doc(window.fb.db, `users/${this.userPhone}/products`, String(id))).catch(e => console.error(e));
         }
-    },
-
-    async getProduct(id) {
-        try {
-            const ref = window.fb.doc(window.fb.db, this.getProductsPath(), String(id));
-            const snap = await window.fb.getDoc(ref);
-            if (snap.exists()) {
-                const data = snap.data();
-                if (data.imageBase64) {
-                    data.image = this._base64ToBlob(data.imageBase64);
-                }
-                return data;
-            }
-            return null;
-        } catch(e) { console.error(e); return null; }
-    },
-
-    async getProductByBarcode(barcode) {
-        try {
-            const q = window.fb.query(window.fb.collection(window.fb.db, this.getProductsPath()), window.fb.where('barcode', '==', barcode));
-            const snaps = await window.fb.getDocs(q);
-            if (!snaps.empty) {
-                const data = snaps.docs[0].data();
-                if (data.imageBase64) data.image = this._base64ToBlob(data.imageBase64);
-                return data;
-            }
-            return null;
-        } catch(e) { console.error(e); return null; }
-    },
-
-    async getAllProducts() {
-        try {
-            const snaps = await window.fb.getDocs(window.fb.collection(window.fb.db, this.getProductsPath()));
-            const products = [];
-            snaps.forEach(doc => {
-                const data = doc.data();
-                if (data.imageBase64) data.image = this._base64ToBlob(data.imageBase64);
-                products.push(data);
-            });
-            return products;
-        } catch(e) { console.error(e); return []; }
-    },
-
-    async deleteProduct(id) {
-        if (!this.userPhone) return;
-        try {
-            await window.fb.deleteDoc(window.fb.doc(window.fb.db, this.getProductsPath(), String(id)));
-        } catch(e) { console.error(e); throw e; }
+        return this._requestToPromise(store.delete(id));
     },
 
     // --- SALES ---
-    async addSale(sale) {
-        if (!this.userPhone) return;
-        try {
-            const saleWithLogStatus = { ...sale, sharedAsLog: false };
-            if (saleWithLogStatus.image && typeof saleWithLogStatus.image !== 'string') {
-                saleWithLogStatus.imageBase64 = await this._blobToBase64(saleWithLogStatus.image);
-            } else if (saleWithLogStatus.image && typeof saleWithLogStatus.image === 'string') {
-                saleWithLogStatus.imageBase64 = saleWithLogStatus.image;
-            }
-            delete saleWithLogStatus.image;
-            if (!saleWithLogStatus.timestamp) saleWithLogStatus.timestamp = window.fb.serverTimestamp();
-            
-            const ref = window.fb.doc(window.fb.db, this.getSalesPath(), String(sale.id));
-            await window.fb.setDoc(ref, saleWithLogStatus, { merge: true });
-        } catch(e) { console.error("Add sale failed", e); throw e; }
+    addSale(sale) {
+        const store = this._getStore('sales', 'readwrite');
+        const saleWithLogStatus = { ...sale, sharedAsLog: false };
+        // Fire-and-forget cloud sync (matching saveProduct pattern exactly)
+        this._syncToCloud('sales', sale.id, saleWithLogStatus);
+        return this._requestToPromise(store.put(saleWithLogStatus));
     },
 
-    async updateSale(sale) {
-        if (!this.userPhone) return;
-        try {
-            const cleanData = { ...sale };
-            if (cleanData.image && typeof cleanData.image !== 'string') {
-                cleanData.imageBase64 = await this._blobToBase64(cleanData.image);
-            } else if (cleanData.image && typeof cleanData.image === 'string') {
-                cleanData.imageBase64 = cleanData.image;
-            }
-            delete cleanData.image;
-            cleanData.lastUpdate = window.fb.serverTimestamp();
-
-            const ref = window.fb.doc(window.fb.db, this.getSalesPath(), String(sale.id));
-            await window.fb.setDoc(ref, cleanData, { merge: true });
-        } catch(e) { console.error("Update sale failed", e); throw e; }
+    updateSale(sale) {
+        const store = this._getStore('sales', 'readwrite');
+        this._syncToCloud('sales', sale.id, sale);
+        return this._requestToPromise(store.put(sale));
     },
 
-    async getAllSales() {
-        try {
-            const snaps = await window.fb.getDocs(window.fb.collection(window.fb.db, this.getSalesPath()));
-            const sales = [];
-            snaps.forEach(doc => {
-                const data = doc.data();
-                if (data.imageBase64) data.image = this._base64ToBlob(data.imageBase64);
-                sales.push(data);
-            });
-            return sales;
-        } catch(e) { console.error(e); return []; }
+    getAllSales() {
+        const store = this._getStore('sales', 'readonly');
+        return this._requestToPromise(store.getAll());
     },
 
-    async getSalesByProductId(productId) {
-        try {
-            const q = window.fb.query(window.fb.collection(window.fb.db, this.getSalesPath()), window.fb.where('productId', '==', productId));
-            const snaps = await window.fb.getDocs(q);
-            const sales = [];
-            snaps.forEach(doc => {
-                const data = doc.data();
-                if (data.imageBase64) data.image = this._base64ToBlob(data.imageBase64);
-                sales.push(data);
-            });
-            return sales;
-        } catch(e) { console.error(e); return []; }
+    getSalesByProductId(productId) {
+        const store = this._getStore('sales', 'readonly');
+        const index = store.index('productId');
+        return this._requestToPromise(index.getAll(productId));
     },
 
-    async getSalesToday() {
-        try {
-            const allSales = await this.getAllSales();
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
+    getSalesToday() {
+        return new Promise((resolve, reject) => {
+            const store = this._getStore('sales', 'readonly');
+            const allSalesRequest = store.getAll();
 
-            return allSales.filter(sale => {
-                const saleDate = this._normalizeTimestamp(sale.timestamp);
-                return saleDate >= today;
-            });
-        } catch(e) { console.error(e); return []; }
+            allSalesRequest.onsuccess = () => {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+
+                const todaysSales = allSalesRequest.result.filter(sale => {
+                    const saleDate = this._normalizeTimestamp(sale.timestamp);
+                    return saleDate >= today;
+                });
+                resolve(todaysSales);
+            };
+            allSalesRequest.onerror = (event) => {
+                reject(event.target.error);
+            };
+        });
     },
 
     // --- SCAN COUNTS ---
     async getScanCountForToday() {
         const today = new Date().toISOString().split('T')[0];
-        const count = localStorage.getItem(`scan_count_${today}`);
-        return count ? parseInt(count, 10) : 0;
+        const store = this._getStore('scan_counts', 'readonly');
+        const data = await this._requestToPromise(store.get(today));
+        return data ? data.count : 0;
     },
 
     async incrementScanCount() {
         const today = new Date().toISOString().split('T')[0];
-        let count = await this.getScanCountForToday();
-        count++;
-        localStorage.setItem(`scan_count_${today}`, count.toString());
-        return count;
-    }
+        const store = this._getStore('scan_counts', 'readwrite');
+        const data = await this._requestToPromise(store.get(today));
+        const currentCount = data ? data.count : 0;
+        return this._requestToPromise(store.put({ date: today, count: currentCount + 1 }));
+    },
 };

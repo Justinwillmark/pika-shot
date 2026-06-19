@@ -13,7 +13,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-app.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-auth.js";
-        import { getFirestore, collection, doc, getDoc, setDoc, getDocs, serverTimestamp, updateDoc, onSnapshot, query, addDoc, deleteDoc, writeBatch, where, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore.js";
+        import { getFirestore, collection, doc, getDoc, setDoc, getDocs, serverTimestamp, updateDoc, onSnapshot, query, addDoc, deleteDoc, writeBatch, where } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyBKu623PDECcc1gYVe4xof6AVUxDlW7B_A",
@@ -25,19 +25,9 @@
         };
 
         const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-        
-        enableIndexedDbPersistence(db).catch((err) => {
-            if (err.code == 'failed-precondition') {
-                console.warn('Multiple tabs open, persistence can only be enabled in one tab at a a time.');
-            } else if (err.code == 'unimplemented') {
-                console.warn('The current browser does not support all of the features required to enable persistence');
-            }
-        });
-
         window.fb = {
             auth: getAuth(app),
-            db: db,
+            db: getFirestore(app),
             signInAnonymously,
             collection,
             doc,
@@ -106,50 +96,38 @@
             <div class="onboarding-content">
                 <h1>Create Account</h1>
                 <p>Tell us a bit about your business.</p>
+                <div class="form-group">
+                    <label for="user-name">Your Full Name</label>
+                    <input type="text" id="user-name" placeholder="e.g., Chiamaka Uko" required>
+                </div>
+                <div class="form-group">
+                    <label for="business-name">Business Name</label>
+                    <input type="text" id="business-name" placeholder="e.g., Amaka's Provisions" required>
+                </div>
                 <div class="form-row">
-                    <div class="form-group">
-                        <label for="first-name">First Name</label>
-                        <input type="text" id="first-name" placeholder="e.g., Chiamaka" required>
+                     <div class="form-group">
+                        <label for="business-type">Business Type</label>
+                        <select id="business-type" required>
+                            <option value="" disabled selected>Select type</option>
+                            <option value="Retailer">Retailer</option>
+                            <option value="Wholesaler">Wholesaler</option>
+                            <option value="Salesperson">Role: Salesperson</option>
+                        </select>
                     </div>
-                    <div class="form-group">
-                        <label for="last-name">Last Name</label>
-                        <input type="text" id="last-name" placeholder="e.g., Uko" required>
+                     <div class="form-group">
+                        <label for="business-location">Location</label>
+                        <select id="business-location" required>
+                            <option value="" disabled selected>Select area</option>
+                            <option value="Lagos Island">Lagos Island</option>
+                            <option value="Ikeja">Ikeja</option>
+                            <option value="Yaba">Yaba</option>
+                            <option value="Surulere">Surulere</option>
+                            <option value="Lekki">Lekki</option>
+                            <option value="Apapa">Apapa</option>
+                            <option value="Ikot Ekpene">Ikot Ekpene</option>
+                            <option value="Uyo">Uyo</option>
+                        </select>
                     </div>
-                </div>
-                <div id="business-details-group">
-                    <div class="form-group">
-                        <label for="business-name">Business Name</label>
-                        <input type="text" id="business-name" placeholder="e.g., Amaka's Provisions" required>
-                    </div>
-                    <div class="form-row">
-                         <div class="form-group">
-                            <label for="business-type">Business Type</label>
-                            <select id="business-type" required>
-                                <option value="" disabled selected>Select type</option>
-                                <option value="Retailer">Retailer</option>
-                                <option value="Wholesaler">Wholesaler</option>
-                            </select>
-                        </div>
-                         <div class="form-group">
-                            <label for="business-location">Location</label>
-                            <select id="business-location" required>
-                                <option value="" disabled selected>Select area</option>
-                                <option value="Lagos Island">Lagos Island</option>
-                                <option value="Ikeja">Ikeja</option>
-                                <option value="Yaba">Yaba</option>
-                                <option value="Surulere">Surulere</option>
-                                <option value="Lekki">Lekki</option>
-                                <option value="Apapa">Apapa</option>
-                                <option value="Ikot Ekpene">Ikot Ekpene</option>
-                                <option value="Uyo">Uyo</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="form-group" id="unique-code-group" style="display: none;">
-                    <label for="unique-code">Unique Code from Wholesaler</label>
-                    <input type="text" id="unique-code" placeholder="Enter your 6-character code" maxlength="6">
                 </div>
                 
                 <div class="form-group">
@@ -205,7 +183,15 @@
             <button id="back-arrow-btn" class="back-btn" style="display: none;">
                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
             </button>
-            <h1 id="header-title">Home</h1>
+            <div style="display: flex; justify-content: center; align-items: center; margin: 0 45px; overflow: hidden; position: relative;">
+                <h1 id="header-title" style="margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Home</h1>
+                <select id="all-sales-time-filter" style="display: none; width: 24px; height: 24px; margin-left: 6px; padding: 0; background-color: transparent; border: none; color: transparent; outline: none; cursor: pointer; appearance: none; -webkit-appearance: none; background-image: url('data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'24\' height=\'24\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%23000\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'><polyline points=\'6 9 12 15 18 9\'></polyline></svg>'); background-repeat: no-repeat; background-position: center; background-size: 20px; flex-shrink: 0;">
+                    <option value="all" style="color: var(--text-color);">All Time</option>
+                    <option value="weekly" style="color: var(--text-color);">Weekly</option>
+                    <option value="monthly" style="color: var(--text-color);">Monthly</option>
+                    <option value="yearly" style="color: var(--text-color);">Yearly</option>
+                </select>
+            </div>
             <button id="add-to-homescreen-btn" class="add-to-homescreen-btn" style="display: none;">Install app</button>
        </header>
 
@@ -305,9 +291,6 @@
                 </div>
                 <div id="retailer-stock-view" class="all-sales-container"></div>
                 <div id="salespeople-view" class="all-sales-container" style="display: none;"></div>
-                <button id="add-salesperson-fab" class="fab" style="display: none;">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                </button>
             </div>
 
         </main>
@@ -500,30 +483,14 @@
             </form>
         </div>
 
-        <div id="add-salesperson-modal" class="modal-content" style="display: none;">
-            <h2>Add Salesperson</h2>
-            <p>Enter the salesperson's phone number.</p>
-            <div class="form-group">
-                <label for="add-salesperson-phone">Phone Number</label>
-                <input type="tel" id="add-salesperson-phone" placeholder="e.g., 08012345678" maxlength="11">
-            </div>
-            <div class="modal-actions modal-actions-inline">
-                <button id="cancel-add-salesperson-btn" class="btn btn-secondary">Cancel</button>
-                <button id="confirm-add-salesperson-btn" class="btn btn-primary">Add</button>
-            </div>
-        </div>
-
-        <div id="transfer-modal" class="modal-content" style="display:none;">
-            <h2>Transfer Products</h2>
-            <p>Enter the phone number of the user you want to transfer to.</p>
-            <div class="form-group">
-                <label for="transfer-phone">Phone Number</label>
-                <input type="tel" id="transfer-phone" placeholder="e.g., 08012345678" maxlength="11">
-            </div>
-            <div class="modal-actions modal-actions-inline">
-                <button id="cancel-transfer-btn" class="btn btn-secondary">Cancel</button>
-                <button id="confirm-transfer-btn" class="btn btn-primary">Transfer</button>
-            </div>
+        <div id="qr-code-modal" class="modal-content" style="display:none;">
+            <h2>Transfer Products via QR</h2>
+            <canvas id="qr-canvas"></canvas>
+            <p class="qr-help-text">Have the purchasing retailer scan this QR code in their Pikashot app to auto-restock. Applies to salespeople.</p>
+                 <div class="modal-actions modal-actions-inline">
+                    <button id="cancel-qr-btn" class="btn btn-secondary">Cancel</button>
+                    <button id="close-qr-btn" class="btn btn-primary">Done</button>
+                </div>
         </div>
 
         <div id="confirm-log-modal" class="modal-content" style="display:none;">
