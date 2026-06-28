@@ -754,7 +754,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (this.state.productSelectionMode && viewId === 'products-view') {
                 title = 'Select a Product';
             } else {
-                const titles = { 'home-view': 'Home', 'products-view': 'My Products', 'all-sales-view': 'All Sales', 'stock-levels-view': 'Customers & Salespeople' };
+                const titles = { 'home-view': 'My Shop', 'products-view': 'My Products', 'all-sales-view': 'All Sales', 'stock-levels-view': 'Customers & Salespeople' };
                 if (this.state.user && this.state.user.type === 'Salesperson' && viewId === 'stock-levels-view') {
                     title = 'Customers';
                 } else {
