@@ -1466,7 +1466,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.productStockInput.disabled = true;
                 this.elements.productUnitInput.disabled = true;
                 if (!isSalesperson) {
-                    this.elements.productSourceInfo.textContent = 'No manual stock update for transferred products until out of stock.';
+                    this.elements.productSourceInfo.textContent = 'Limited edits for transferred products until out of stock.';
                     this.elements.productSourceInfo.style.display = 'block';
                 }
             }
