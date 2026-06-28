@@ -654,9 +654,19 @@ document.addEventListener('DOMContentLoaded', () => {
                     this.updateHeader(viewId);
                 }
             }
+            if (this.toggleOnboardingTooltip) this.toggleOnboardingTooltip();
         },
         showModal(modalId) { this.elements.modalContainer.style.display = 'flex'; this.elements.modalContainer.querySelectorAll('.modal-content').forEach(m => m.style.display = 'none'); const modalToShow = document.getElementById(modalId); if (modalToShow) { modalToShow.style.display = 'flex'; } },
         hideModal() { this.elements.modalContainer.style.display = 'none'; this.elements.modalContainer.querySelectorAll('.modal-content').forEach(m => m.style.display = 'none'); },
+        toggleOnboardingTooltip() {
+            const tooltip = document.getElementById('onboarding-tooltip');
+            if (!tooltip) return;
+            if (this.state.currentView === 'home-view' && this.state.productCount === 0) {
+                tooltip.style.display = 'block';
+            } else {
+                tooltip.style.display = 'none';
+            }
+        },
         showToast(message) {
             this.elements.toast.textContent = message;
             this.elements.toast.classList.add('show');
@@ -962,6 +972,9 @@ document.addEventListener('DOMContentLoaded', () => {
         async renderProducts(searchText = '') {
             const filterType = this.state.productFilter;
             const allProducts = await DB.getAllProducts();
+            this.state.productCount = allProducts.length;
+            if (this.toggleOnboardingTooltip) this.toggleOnboardingTooltip();
+            
             allProducts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)); // Sort by newest first
 
             this.elements.productGrid.innerHTML = '';
@@ -1250,8 +1263,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             this.elements.scanFeedback.textContent = 'Product not found.';
             setTimeout(() => {
-                this.elements.entryChoiceTitle.textContent = 'Item Not Found';
-                this.elements.entryChoiceParagraph.textContent = 'This product is not in your inventory.';
+                this.elements.entryChoiceTitle.textContent = 'Not Found';
+                this.elements.entryChoiceParagraph.textContent = 'This item is not in your products.';
                 this.elements.manualEntryBtn.style.display = 'none';
                 this.elements.retrySellScanBtn.style.display = 'block';
                 this.showModal('entry-choice-modal');
@@ -1525,7 +1538,7 @@ document.addEventListener('DOMContentLoaded', () => {
             Camera.startScan(
                 this.handleBarcodeAssignmentResult.bind(this),
                 () => {
-                    this.elements.scanFeedback.textContent = 'Scan failed.';
+                    this.elements.scanFeedback.textContent = 'Product not found.';
                     setTimeout(() => {
                         history.back();
                         this.showModal('product-form-modal');
