@@ -117,10 +117,16 @@ document.addEventListener('DOMContentLoaded', () => {
             printReceiptBtn: document.getElementById('print-receipt-btn'),
             closeReceiptBtn: document.getElementById('close-receipt-btn'),
             shareLogBtn: document.getElementById('share-log-btn'),
-            qrCodeModal: document.getElementById('qr-code-modal'),
-            qrCanvas: document.getElementById('qr-canvas'),
-            closeQrBtn: document.getElementById('close-qr-btn'),
-            cancelQrBtn: document.getElementById('cancel-qr-btn'),
+            phoneTransferModal: document.getElementById('phone-transfer-modal'),
+            transferPhoneInput: document.getElementById('transfer-phone-input'),
+            cancelPhoneTransferBtn: document.getElementById('cancel-phone-transfer-btn'),
+            transferUserDetails: document.getElementById('transfer-user-details'),
+            transferUserName: document.getElementById('transfer-user-name'),
+            transferUserBusiness: document.getElementById('transfer-user-business'),
+            confirmPhoneTransferBtn: document.getElementById('confirm-phone-transfer-btn'),
+            inviteCustomerModal: document.getElementById('invite-customer-modal'),
+            cancelInviteBtn: document.getElementById('cancel-invite-btn'),
+            sendInviteBtn: document.getElementById('send-invite-btn'),
             entryChoiceModal: document.getElementById('entry-choice-modal'),
             entryChoiceTitle: document.getElementById('entry-choice-title'),
             entryChoiceParagraph: document.getElementById('entry-choice-p'),
@@ -328,9 +334,26 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.closeReceiptBtn.addEventListener('click', () => this.hideModal());
             this.elements.shareReceiptBtn.addEventListener('click', this.shareReceipt.bind(this));
             this.elements.printReceiptBtn.addEventListener('click', () => window.print());
-            this.elements.shareLogBtn.addEventListener('click', this.generateQrLog.bind(this));
-            this.elements.closeQrBtn.addEventListener('click', this.handleLogShared.bind(this));
-            this.elements.cancelQrBtn.addEventListener('click', () => this.hideModal());
+            this.elements.shareLogBtn.addEventListener('click', this.initiatePhoneTransfer.bind(this));
+            this.elements.confirmPhoneTransferBtn.addEventListener('click', this.processPhoneTransfer.bind(this));
+            this.elements.cancelPhoneTransferBtn.addEventListener('click', () => this.hideModal());
+            this.elements.transferPhoneInput.addEventListener('input', (e) => {
+                const val = e.target.value.trim();
+                this.elements.transferUserDetails.style.display = 'none';
+                this.elements.confirmPhoneTransferBtn.style.display = 'none';
+                
+                if (val.length === 11) {
+                    this.findUserForTransfer();
+                }
+            });
+            this.elements.cancelInviteBtn.addEventListener('click', () => {
+                this.hideModal();
+                this.showModal('phone-transfer-modal');
+            });
+            this.elements.sendInviteBtn.addEventListener('click', () => {
+                this.hideModal();
+                this.showToast("Download link sent!");
+            });
             this.elements.productSearchInput.addEventListener('input', (e) => this.renderProducts(e.target.value));
             this.elements.cancelEntryChoiceBtn.addEventListener('click', () => this.hideModal());
             this.elements.manualEntryBtn.addEventListener('click', () => { this.hideModal(); this.elements.manualSaleForm.reset(); this.showModal('manual-sale-modal'); });
@@ -554,6 +577,28 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     }
                 );
+
+                if (this.state.firebaseReady) {
+                    try {
+                        const logsQuery = window.fb.query(
+                            window.fb.collection(window.fb.db, 'shared_logs'),
+                            window.fb.where('targetPhone', '==', this.state.user.phone),
+                            window.fb.where('claimed', '==', false)
+                        );
+                        if (this._transfersListener) this._transfersListener();
+                        this._transfersListener = window.fb.onSnapshot(logsQuery, (snapshot) => {
+                            snapshot.docChanges().forEach((change) => {
+                                if (change.type === 'added') {
+                                    const logData = change.doc.data();
+                                    logData.id = change.doc.id;
+                                    this.handlePikaLogScanned(logData);
+                                }
+                            });
+                        });
+                    } catch (error) {
+                        console.error("Error setting up transfer listener:", error);
+                    }
+                }
 
                 // Re-fetch sales when user returns to the app tab
                 // This catches any sales missed while the listener was disconnected
@@ -1782,7 +1827,7 @@ document.addEventListener('DOMContentLoaded', () => {
         },
         async shareReceipt() { const receiptElement = this.elements.receiptContent; try { const canvas = await html2canvas(receiptElement, { scale: 2 }); canvas.toBlob(async (blob) => { if (navigator.share && blob) { try { await navigator.share({ files: [new File([blob], 'pika-shot-receipt.png', { type: 'image/png' })], title: 'Your Receipt', text: 'Here is your receipt from ' + this.state.user.business, }); } catch (error) { console.error('Error sharing:', error); } } else { alert('Sharing is not supported on this browser, or there was an error creating the image.'); } }, 'image/png'); } catch (error) { console.error('Error generating receipt image:', error); alert('Could not generate receipt image.'); } },
 
-        async generateQrLog() {
+        async initiatePhoneTransfer() {
             if (!navigator.onLine) {
                 this.showToast("Please connect to the internet to transfer products.");
                 const shareLogBtn = this.elements.shareLogBtn;
@@ -1791,7 +1836,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             if (!this.state.firebaseReady || !this.state.user.phone) {
-                this.showToast("Cannot generate transfer QR: not connected to online services.");
+                this.showToast("Cannot transfer products: not connected to online services.");
                 return;
             }
 
@@ -1806,83 +1851,132 @@ document.addEventListener('DOMContentLoaded', () => {
             // --- NEW VALIDATION: Check for already transferred items ---
             const alreadyTransferred = selectedSaleObjects.filter(s => s.sharedAsLog);
             if (alreadyTransferred.length > 0) {
-                // Trigger feedback for each invalid item
                 alreadyTransferred.forEach(sale => {
                     const el = document.querySelector(`.sale-item[data-sale-id="${sale.id}"]`);
                     if (el) this.triggerRestrictedFeedback(el);
                 });
                 this.showToast("Some selected items have already been transferred.");
-                return; // Stop execution
+                return; 
             }
             // -----------------------------------------------------------
 
-            const groupedSales = selectedSaleObjects.reduce((acc, sale) => {
-                const key = sale.productId;
-                if (!acc[key]) {
-                    acc[key] = { ...sale, quantity: 0 };
-                }
-                acc[key].quantity += sale.quantity;
-                return acc;
-            }, {});
+            this.elements.transferPhoneInput.value = '';
+            this.elements.transferUserDetails.style.display = 'none';
+            this.elements.confirmPhoneTransferBtn.style.display = 'none';
+            this.hideModal();
+            this.showModal('phone-transfer-modal');
+        },
 
-            const aggregatedSaleObjects = Object.values(groupedSales);
-            const allProducts = await DB.getAllProducts();
+        async findUserForTransfer() {
+            const targetPhone = this.elements.transferPhoneInput.value.trim();
+            if (targetPhone.length !== 11) return;
+            
+            if (targetPhone === this.state.user.phone) {
+                alert("You cannot transfer products to yourself.");
+                return;
+            }
 
-            const logData = {
-                pikaLogVersion: 2,
-                senderStore: this.state.user.business,
-                senderId: this.state.user.phone,
-                senderRole: this.state.user.type,
-                items: aggregatedSaleObjects.map(sale => {
-                    const product = allProducts.find(p => p.id === sale.productId);
-                    const isSalespersonSharingCarton = this.state.user.type === 'Salesperson' && product && product.unit === 'cartons';
-
-                    if (isSalespersonSharingCarton) {
-                        return {
-                            name: product.originalName || product.name,
-                            price: product.wholesalerPrice,
-                            quantity: sale.quantity,
-                            unit: 'cartons',
-                            barcode: product.barcode,
-                            subUnitType: product.subUnitType,
-                            subUnitQuantity: product.subUnitQuantity
-                        };
-                    } else {
-                        const item = {
-                            name: sale.productName,
-                            price: sale.price,
-                            quantity: sale.quantity,
-                            unit: product ? product.unit : 'pieces',
-                            barcode: product ? product.barcode : null
-                        };
-                        if (product && product.unit === 'cartons') {
-                            item.subUnitType = product.subUnitType;
-                            item.subUnitQuantity = product.subUnitQuantity;
-                        }
-                        return item;
-                    }
-                })
-            };
-
+            this.showLoader();
             try {
-                const logCollectionRef = window.fb.collection(window.fb.db, 'shared_logs');
-                const logDocRef = window.fb.doc(logCollectionRef);
-                await window.fb.setDoc(logDocRef, logData);
-                const logId = logDocRef.id;
-
-                QRCode.toCanvas(this.elements.qrCanvas, `pika-log-id:${logId}`, { width: 300 }, (error) => {
-                    if (error) {
-                        console.error(error);
-                        alert("Could not generate QR code.");
-                        return;
-                    }
+                const userRef = window.fb.doc(window.fb.db, 'users', targetPhone);
+                const userSnap = await window.fb.getDoc(userRef);
+                
+                if (!userSnap.exists()) {
+                    this.hideLoader();
                     this.hideModal();
-                    this.showModal('qr-code-modal');
-                });
+                    this.showModal('invite-customer-modal');
+                    return;
+                }
+
+                const userData = userSnap.data();
+                const userName = userData.name || userData.phone || "Unknown";
+                const userBusiness = userData.business || "N/A";
+                
+                this.elements.transferUserName.textContent = userName;
+                this.elements.transferUserBusiness.textContent = userBusiness;
+                
+                this.elements.transferUserDetails.style.display = 'block';
+                this.elements.confirmPhoneTransferBtn.style.display = 'block';
 
             } catch (error) {
-                console.error("Error creating shared log:", error);
-                alert("Could not create the transfer QR code. Please check your internet connection.");
+                console.error("Error finding user:", error);
+                alert("Could not find the user. Please check your internet connection.");
+            } finally {
+                this.hideLoader();
+            }
+        },
+
+        async processPhoneTransfer() {
+            const targetPhone = this.elements.transferPhoneInput.value.trim();
+            this.showLoader();
+            try {
+                const allSales = await DB.getAllSales();
+                const selectedSaleObjects = allSales.filter(s => this.state.selectedSales.has(s.id));
+                const groupedSales = selectedSaleObjects.reduce((acc, sale) => {
+                    const key = sale.productId;
+                    if (!acc[key]) {
+                        acc[key] = { ...sale, quantity: 0 };
+                    }
+                    acc[key].quantity += sale.quantity;
+                    return acc;
+                }, {});
+
+                const aggregatedSaleObjects = Object.values(groupedSales);
+                const allProducts = await DB.getAllProducts();
+
+                const logData = {
+                    pikaLogVersion: 2,
+                    senderStore: this.state.user.business,
+                    senderId: this.state.user.phone,
+                    senderRole: this.state.user.type,
+                    targetPhone: targetPhone,
+                    claimed: false,
+                    timestamp: window.fb.serverTimestamp(),
+                    items: aggregatedSaleObjects.map(sale => {
+                        const product = allProducts.find(p => p.id === sale.productId);
+                        const isSalespersonSharingCarton = this.state.user.type === 'Salesperson' && product && product.unit === 'cartons';
+
+                        if (isSalespersonSharingCarton) {
+                            return {
+                                name: product.originalName || product.name,
+                                price: product.wholesalerPrice,
+                                quantity: sale.quantity,
+                                unit: 'cartons',
+                                barcode: product.barcode,
+                                subUnitType: product.subUnitType,
+                                subUnitQuantity: product.subUnitQuantity
+                            };
+                        } else {
+                            const item = {
+                                name: sale.productName,
+                                price: sale.price,
+                                quantity: sale.quantity,
+                                unit: product ? product.unit : 'pieces',
+                                barcode: product ? product.barcode : null
+                            };
+                            if (product && product.unit === 'cartons') {
+                                item.subUnitType = product.subUnitType;
+                                item.subUnitQuantity = product.subUnitQuantity;
+                            }
+                            return item;
+                        }
+                    })
+                };
+
+                const logCollectionRef = window.fb.collection(window.fb.db, 'shared_logs');
+                await window.fb.addDoc(logCollectionRef, logData);
+
+                // Mark local sales as shared
+                await this.handleLogShared();
+                
+                this.hideModal();
+                this.showToast("Transfer sent successfully!");
+
+            } catch (error) {
+                console.error("Error processing phone transfer:", error);
+                alert("Could not complete the transfer. Please check your internet connection.");
+            } finally {
+                this.hideLoader();
             }
         },
 

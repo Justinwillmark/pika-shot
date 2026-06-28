@@ -8,7 +8,6 @@
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="manifest.json">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.4.4/build/qrcode.min.js"></script>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-app.js";
@@ -483,14 +482,32 @@
             </form>
         </div>
 
-        <div id="qr-code-modal" class="modal-content" style="display:none;">
-            <h2>Transfer Products via QR</h2>
-            <canvas id="qr-canvas"></canvas>
-            <p class="qr-help-text">Have the purchasing retailer scan this QR code in their Pikashot app to auto-restock. Applies to salespeople.</p>
-                 <div class="modal-actions modal-actions-inline">
-                    <button id="cancel-qr-btn" class="btn btn-secondary">Cancel</button>
-                    <button id="close-qr-btn" class="btn btn-primary">Done</button>
-                </div>
+        <div id="phone-transfer-modal" class="modal-content" style="display:none;">
+            <h2>Transfer Products</h2>
+            <p class="qr-help-text">Enter the phone number of the retailer or wholesaler you want to transfer items to.</p>
+            <div class="form-group" style="margin-top: 15px; text-align: left;">
+                <label for="transfer-phone-input">Recipient's Phone Number</label>
+                <input type="tel" id="transfer-phone-input" placeholder="e.g., 08012345678" maxlength="11" required>
+            </div>
+            
+            <div id="transfer-user-details" style="display: none; margin-top: 15px; text-align: left; background: var(--bg-color); padding: 10px; border-radius: 8px; border: 1px solid var(--border-color);">
+                <p style="margin:0; font-size: 0.9rem; color: var(--text-color);"><strong>Name:</strong> <span id="transfer-user-name"></span></p>
+                <p style="margin:5px 0 0 0; font-size: 0.9rem; color: var(--text-color);"><strong>Business:</strong> <span id="transfer-user-business"></span></p>
+            </div>
+
+            <div class="modal-actions modal-actions-inline">
+                <button id="cancel-phone-transfer-btn" class="btn btn-secondary">Cancel</button>
+                <button id="confirm-phone-transfer-btn" class="btn btn-primary" style="display: none;">Confirm Transfer</button>
+            </div>
+        </div>
+
+        <div id="invite-customer-modal" class="modal-content" style="display:none;">
+            <h2>Invite Customer</h2>
+            <p>Let's get this customer started. Should we send them a Pika App download link?</p>
+            <div class="modal-actions modal-actions-inline">
+                <button id="cancel-invite-btn" class="btn btn-secondary">Cancel</button>
+                <button id="send-invite-btn" class="btn btn-primary">Yes</button>
+            </div>
         </div>
 
         <div id="confirm-log-modal" class="modal-content" style="display:none;">
