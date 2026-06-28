@@ -2156,7 +2156,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const noticeText = currentUserRole === 'Salesperson'
                 ? "Accept for instant restocking. The wholesaler will see stock levels, and sales in real time."
-                : "Accept for instant restocking. The wholesaler will only see stock levels in real time for offers.";
+                : "Accept, sell and record for free airtime. Sender will see your stock level for these items.";
 
             const contentHtml = `
                 <div class="log-summary">

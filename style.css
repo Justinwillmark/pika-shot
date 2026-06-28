@@ -462,8 +462,8 @@ input:checked + .slider:before {
 .card { background-color: var(--surface-color); border-radius: var(--border-radius); box-shadow: var(--box-shadow); }
 .stat-card { padding: 16px; display: flex; flex-direction: column; }
 .stat-icon { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-bottom: 12px; color: white; }
-.stat-icon.sales { background-color: #3498db; }
-.stat-icon.items { background-color: #9b59b6; }
+.stat-icon.sales { background-color: var(--primary-color); }
+.stat-icon.items { background-color: var(--primary-color); }
 .stat-card p { font-size: clamp(0.8rem, 2.5vw, 0.9rem); color: var(--text-light); }
 .stat-card h3 { font-size: clamp(1.4rem, 5vw, 1.75rem); font-weight: 700; color: var(--text-color); margin-top: 4px; }
 
