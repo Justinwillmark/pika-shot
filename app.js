@@ -30,7 +30,9 @@ document.addEventListener('DOMContentLoaded', () => {
             backToPhoneBtn: document.getElementById('back-to-phone-btn'),
 
             onboardingStepRegister: document.getElementById('onboarding-step-register'),
-            userNameInput: document.getElementById('user-name'),
+            firstNameInput: document.getElementById('first-name'),
+            lastNameInput: document.getElementById('last-name'),
+            genderInput: document.getElementById('gender'),
             businessNameInput: document.getElementById('business-name'),
             businessTypeInput: document.getElementById('business-type'),
             businessLocationInput: document.getElementById('business-location'),
@@ -514,13 +516,16 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         async handleRegistration() {
-            const name = this.elements.userNameInput.value.trim();
+            const firstName = this.elements.firstNameInput.value.trim();
+            const lastName = this.elements.lastNameInput.value.trim();
+            const name = firstName + (lastName ? ' ' + lastName : '');
+            const gender = this.elements.genderInput.value;
             const business = this.elements.businessNameInput.value.trim();
             const type = this.elements.businessTypeInput.value;
             const location = this.elements.businessLocationInput.value;
             const pin = this.elements.createPinInput.value.trim();
 
-            if (!name || !business || !type || !location || pin.length !== 6) {
+            if (!firstName || !lastName || !gender || !business || !type || !location || pin.length !== 6) {
                 alert('Please fill in all fields and ensure PIN is 6 digits.'); return;
             }
 
@@ -531,7 +536,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 id: 1, // Local ID
                 phone: this.state.tempPhone,
                 pin: pin,
-                name, business, type, location, uid,
+                name, gender, business, type, location, uid,
                 createdAt: window.fb.serverTimestamp()
             };
 
