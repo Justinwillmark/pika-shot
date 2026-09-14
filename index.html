@@ -447,29 +447,30 @@
                 <div class="sale-item-details"><img id="sale-product-image" src="" alt="Product image"><div><h3 id="sale-product-name">Product Name</h3><p id="sale-product-stock">Stock: 50 sachets</p></div></div>
                 <div class="sale-total"><p>Total</p><h2 id="sale-total-price">₦0</h2></div>
                 
-                <div class="sale-modifier-section discount-section">
-                    <div class="triple-toggle-container">
-                        <span class="toggle-label toggle-left" id="toggle-label-discount">Discount</span>
+                <div class="sale-type-section">
+                    <div class="sale-type-header" style="display: flex; justify-content: center; align-items: center; gap: 10px; margin-bottom: 15px;">
+                        <span class="sale-type-label" id="label-discount">Discount<span style="color: teal;">**</span></span>
                         <div class="triple-toggle">
-                            <input type="range" id="sale-modifier-toggle" min="0" max="2" value="1">
+                            <input type="radio" name="sale-type" id="sale-type-discount" value="discount">
+                            <input type="radio" name="sale-type" id="sale-type-neutral" value="neutral" checked>
+                            <input type="radio" name="sale-type" id="sale-type-credit" value="credit">
+                            <div class="triple-slider"></div>
                         </div>
-                        <span class="toggle-label toggle-right" id="toggle-label-credit">Credit</span>
+                        <span class="sale-type-label" id="label-credit">Credit<span style="color: red;">**</span></span>
                     </div>
                     
-                    <div class="modifier-input-container" id="modifier-input-container" style="display:none;">
-                        <label id="modifier-amount-label" for="modifier-amount">Discount</label>
-                        <div class="modifier-input-row">
-                            <div class="input-with-prefix">
+                    <div class="sale-type-input-container" id="sale-type-input-container" style="display:none; flex-direction: column;">
+                        <label for="sale-type-amount" id="sale-type-amount-label" style="margin-bottom: 5px;">Discount</label>
+                        <div class="input-with-action" style="display: flex; gap: 10px; width: 100%;">
+                            <div class="input-with-prefix" style="flex: 1;">
                                 <span class="currency-prefix">₦</span>
-                                <input type="text" id="modifier-amount" inputmode="numeric" placeholder="0">
+                                <input type="text" id="sale-type-amount" inputmode="numeric" placeholder="0">
                             </div>
-                            <button type="button" id="select-contact-btn" class="btn btn-secondary contact-picker-btn" style="display: none;" aria-label="Select Contact">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                            <button type="button" id="select-contact-btn" class="btn btn-secondary" style="display: none; flex-basis: 30%; padding: 0; justify-content: center; align-items: center;">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
                             </button>
                         </div>
-                        <div id="selected-contact-info" class="selected-contact-info" style="display: none;"></div>
-                        <input type="hidden" id="selected-contact-phone">
-                        <input type="hidden" id="selected-contact-name">
+                        <div id="selected-contact-display" style="display: none; font-size: 12px; color: #666; margin-top: 4px; text-align: right; width: 100%;"></div>
                     </div>
                 </div>
                 <div class="form-group"><label for="sale-quantity" id="sale-quantity-label">Quantity</label><input type="text" id="sale-quantity" inputmode="numeric" value="1" min="1"></div>

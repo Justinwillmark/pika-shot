@@ -103,17 +103,13 @@ document.addEventListener('DOMContentLoaded', () => {
             cancelSaleBtn: document.getElementById('cancel-sale-btn'),
             confirmSaleBtn: document.getElementById('confirm-sale-btn'),
             saleOfflineNotice: document.getElementById('sale-offline-notice'),
-            // NEW DOM ELEMENTS FOR MODIFIERS (DISCOUNT/CREDIT)
-            saleModifierToggle: document.getElementById('sale-modifier-toggle'),
-            modifierInputContainer: document.getElementById('modifier-input-container'),
-            modifierAmountInput: document.getElementById('modifier-amount'),
-            modifierAmountLabel: document.getElementById('modifier-amount-label'),
+            // NEW DOM ELEMENTS FOR SALE TYPE
+            saleTypeRadios: document.querySelectorAll('input[name="sale-type"]'),
+            saleTypeInputContainer: document.getElementById('sale-type-input-container'),
+            saleTypeAmountInput: document.getElementById('sale-type-amount'),
+            saleTypeAmountLabel: document.getElementById('sale-type-amount-label'),
             selectContactBtn: document.getElementById('select-contact-btn'),
-            selectedContactInfo: document.getElementById('selected-contact-info'),
-            selectedContactPhone: document.getElementById('selected-contact-phone'),
-            selectedContactName: document.getElementById('selected-contact-name'),
-            toggleLabelDiscount: document.getElementById('toggle-label-discount'),
-            toggleLabelCredit: document.getElementById('toggle-label-credit'),
+            selectedContactDisplay: document.getElementById('selected-contact-display'),
 
             installBtn: document.getElementById('add-to-homescreen-btn'),
             receiptActions: document.getElementById('receipt-actions'),
@@ -321,10 +317,50 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.scanNewBarcodeBtn.addEventListener('click', this.startBarcodeAssignmentScan.bind(this));
             this.elements.cancelPictureBtn.addEventListener('click', () => this.hideModal());
             this.elements.saleQuantityInput.addEventListener('input', this.updateSaleTotal.bind(this));
-            // NEW LISTENER FOR MODIFIERS (DISCOUNT/CREDIT)
-            this.elements.saleModifierToggle.addEventListener('input', this.handleModifierChange.bind(this));
-            this.elements.modifierAmountInput.addEventListener('input', this.updateSaleTotal.bind(this));
-            this.elements.selectContactBtn.addEventListener('click', this.handleSelectContact.bind(this));
+            // NEW LISTENER FOR SALE TYPE
+            this.elements.saleTypeRadios.forEach(radio => {
+                radio.addEventListener('change', (e) => {
+                    const type = e.target.value;
+                    if (type === 'neutral') {
+                        this.elements.saleTypeInputContainer.style.display = 'none';
+                        this.elements.saleTypeAmountInput.value = '';
+                        this.updateSaleTotal();
+                    } else {
+                        this.elements.saleTypeInputContainer.style.display = 'flex';
+                        if (type === 'discount') {
+                            this.elements.saleTypeAmountLabel.textContent = 'Discount';
+                            this.elements.selectContactBtn.style.display = 'none';
+                            this.elements.selectedContactDisplay.style.display = 'none';
+                        } else if (type === 'credit') {
+                            this.elements.saleTypeAmountLabel.textContent = 'Part payment';
+                            this.elements.selectContactBtn.style.display = 'flex';
+                            this.elements.selectedContactDisplay.style.display = 'block';
+                        }
+                    }
+                });
+            });
+            this.elements.saleTypeAmountInput.addEventListener('input', this.updateSaleTotal.bind(this));
+
+            this.elements.selectContactBtn.addEventListener('click', async () => {
+                if ('contacts' in navigator && 'select' in navigator.contacts) {
+                    try {
+                        const props = ['name', 'tel'];
+                        const opts = { multiple: false };
+                        const contacts = await navigator.contacts.select(props, opts);
+                        if (contacts.length > 0) {
+                            const contact = contacts[0];
+                            this.state.selectedContactName = contact.name && contact.name.length ? contact.name[0] : '';
+                            this.state.selectedContactPhone = contact.tel && contact.tel.length ? contact.tel[0] : '';
+                            this.elements.selectedContactDisplay.textContent = this.state.selectedContactName || this.state.selectedContactPhone || 'Contact selected';
+                        }
+                    } catch (ex) {
+                        console.error('Contact picker failed:', ex);
+                        this.promptManualContact();
+                    }
+                } else {
+                    this.promptManualContact();
+                }
+            });
 
             this.elements.cancelSaleBtn.addEventListener('click', () => this.hideModal());
             this.elements.confirmSaleBtn.addEventListener('click', this.handleConfirmSale.bind(this));
@@ -414,7 +450,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.productPriceInput, this.elements.productStockInput,
                 this.elements.saleQuantityInput, this.elements.manualProductPrice,
                 this.elements.manualSaleQuantity, this.elements.cartonSubunitQuantityInput,
-                this.elements.discountAmountInput // Added discount input
+                this.elements.saleTypeAmountInput // Added discount/credit input
             ];
             fieldsToFormat.forEach(input => {
                 input.addEventListener('input', (e) => {
@@ -862,11 +898,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 const imageBlob = (matchedProduct && matchedProduct.image) || sale.image;
                 const imageUrl = imageBlob ? URL.createObjectURL(imageBlob) : 'icons/icon-192.png';
 
-                // Add discount or debt marker if applicable
+                // Add discount marker if applicable
                 const discountMark = (sale.discount && sale.discount > 0) ? '<sup class="discount-mark">**</sup>' : '';
-                const debtMark = (sale.isCredit && sale.debt > 0) ? '<sup class="debt-mark">**</sup>' : '';
 
-                saleEl.innerHTML = `<div class="sale-item-overlay">Previously Transferred</div><img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${this.formatNumber(sale.quantity)} x &#8358;${this.formatNumber(sale.price)}</span></div><p class="sale-price">&#8358;${this.formatNumber(sale.total)}${discountMark}${debtMark}</p>`;
+                saleEl.innerHTML = `<div class="sale-item-overlay">Previously Transferred</div><img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${this.formatNumber(sale.quantity)} x &#8358;${this.formatNumber(sale.price)}</span></div><p class="sale-price">&#8358;${this.formatNumber(sale.total)}${discountMark}</p>`;
 
                 this.addSaleItemEventListeners(saleEl, sale);
                 targetElement.appendChild(saleEl);
@@ -951,16 +986,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     const imageBlob = (matchedProduct && matchedProduct.image) || sale.image;
                     const imageUrl = imageBlob ? URL.createObjectURL(imageBlob) : 'icons/icon-192.png';
 
-                    // Add discount or debt marker
+                    // Add discount marker
                     const discountMark = (sale.discount && sale.discount > 0) ? '<sup class="discount-mark">**</sup>' : '';
-                    const debtMark = (sale.isCredit && sale.debt > 0) ? '<sup class="debt-mark">**</sup>' : '';
 
                     let numberingHtml = '';
                     if (filterValue === 'best-selling') {
                         numberingHtml = `<span style="font-weight: bold; margin-right: 12px; color: var(--text-color); font-size: 1.1em; display: flex; align-items: center;">${index + 1}.</span>`;
                     }
 
-                    saleEl.innerHTML = `<div class="sale-item-overlay">Previously Transferred</div>${numberingHtml}<img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${this.formatNumber(sale.quantity)} x &#8358;${this.formatNumber(sale.price)}</span></div><p class="sale-price">&#8358;${this.formatNumber(sale.total)}${discountMark}${debtMark}</p>`;
+                    saleEl.innerHTML = `<div class="sale-item-overlay">Previously Transferred</div>${numberingHtml}<img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${this.formatNumber(sale.quantity)} x &#8358;${this.formatNumber(sale.price)}</span></div><p class="sale-price">&#8358;${this.formatNumber(sale.total)}${discountMark}</p>`;
                     this.addSaleItemEventListeners(saleEl, sale);
                     groupContainer.appendChild(saleEl);
                 });
@@ -1689,122 +1723,68 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.saleQuantityLabel.textContent = `How many ${product.unit} are you selling?`;
             this.elements.saleQuantityInput.value = '1';
 
-            // Reset modifier fields
-            this.elements.saleModifierToggle.value = "1";
-            this.handleModifierChange();
-            this.elements.modifierAmountInput.value = '';
-            this.elements.selectedContactPhone.value = '';
-            this.elements.selectedContactName.value = '';
-            this.elements.selectedContactInfo.style.display = 'none';
-            this.elements.selectedContactInfo.textContent = '';
-            this.elements.confirmSaleBtn.disabled = false;
+            // Reset sale type fields
+            const neutralRadio = document.getElementById('sale-type-neutral');
+            if (neutralRadio) neutralRadio.checked = true;
+            this.elements.saleTypeInputContainer.style.display = 'none';
+            this.elements.saleTypeAmountInput.value = '';
+            this.state.selectedContactName = '';
+            this.state.selectedContactPhone = '';
+            this.elements.selectedContactDisplay.textContent = '';
 
             this.updateSaleTotal();
             this.elements.saleOfflineNotice.style.display = 'none';
             this.showModal('confirm-sale-modal');
         },
-        
-        handleModifierChange() {
-            const val = this.elements.saleModifierToggle.value;
-            this.elements.toggleLabelDiscount.classList.toggle('active-discount', val === "0");
-            this.elements.toggleLabelCredit.classList.toggle('active-credit', val === "2");
-            
-            if (val === "1") {
-                this.elements.modifierInputContainer.style.display = 'none';
-                this.elements.modifierAmountInput.value = '';
-                this.elements.confirmSaleBtn.disabled = false;
-            } else {
-                this.elements.modifierInputContainer.style.display = 'block';
-                if (val === "0") {
-                    this.elements.modifierAmountLabel.textContent = "Discount";
-                    this.elements.selectContactBtn.style.display = "none";
-                    this.elements.confirmSaleBtn.disabled = false;
-                } else if (val === "2") {
-                    this.elements.modifierAmountLabel.textContent = "Part payment";
-                    this.elements.selectContactBtn.style.display = "flex";
-                    // Disable confirm button if no contact selected
-                    this.elements.confirmSaleBtn.disabled = !this.elements.selectedContactPhone.value;
-                }
-            }
-            this.updateSaleTotal();
-        },
-
-        async handleSelectContact() {
-            if (!('contacts' in navigator && 'ContactsManager' in window)) {
-                // Fallback for unsupported browsers: simple prompt
-                const phone = prompt("Enter customer phone number:");
-                if (phone) {
-                    const name = prompt("Enter customer name:") || "Customer";
-                    this.elements.selectedContactPhone.value = phone.trim();
-                    this.elements.selectedContactName.value = name.trim();
-                    this.elements.selectedContactInfo.textContent = `${name} (${phone})`;
-                    this.elements.selectedContactInfo.style.display = 'block';
-                    this.elements.confirmSaleBtn.disabled = false;
-                }
-                return;
-            }
-            try {
-                const props = ['name', 'tel'];
-                const opts = { multiple: false };
-                const contacts = await navigator.contacts.select(props, opts);
-                if (contacts.length > 0) {
-                    const contact = contacts[0];
-                    const name = contact.name && contact.name.length > 0 ? contact.name[0] : "Customer";
-                    let phone = contact.tel && contact.tel.length > 0 ? contact.tel[0] : "";
-                    if (phone) {
-                        phone = phone.replace(/[^0-9+]/g, '');
-                        this.elements.selectedContactPhone.value = phone;
-                        this.elements.selectedContactName.value = name;
-                        this.elements.selectedContactInfo.textContent = `${name} (${phone})`;
-                        this.elements.selectedContactInfo.style.display = 'block';
-                        this.elements.confirmSaleBtn.disabled = false;
-                    } else {
-                        alert("Selected contact does not have a phone number.");
-                    }
-                }
-            } catch (ex) {
-                console.error("Error selecting contact:", ex);
-            }
-        },
-
         updateSaleTotal() {
-            const quantity = this.unformatNumber(this.elements.saleQuantityInput.value) || 0;
+            const quantity = this.unformatNumber(this.elements.saleQuantityInput.value);
             const price = this.state.sellingProduct?.price || 0;
             const subtotal = quantity * price;
 
-            const modifierValue = this.elements.saleModifierToggle.value;
-            const modifierAmount = this.unformatNumber(this.elements.modifierAmountInput.value) || 0;
+            const activeRadio = document.querySelector('input[name="sale-type"]:checked');
+            const saleType = activeRadio ? activeRadio.value : 'neutral';
+            const amountInputVal = this.unformatNumber(this.elements.saleTypeAmountInput.value) || 0;
             
-            let total = subtotal;
-            if (modifierValue === "0") {
-                total = Math.max(0, subtotal - modifierAmount);
+            let discount = 0;
+            if (saleType === 'discount') {
+                discount = amountInputVal;
             }
+
+            const total = Math.max(0, subtotal - discount);
 
             this.elements.saleTotalPrice.textContent = `₦${this.formatNumber(total)}`;
         },
         async _processSale() {
-            const quantity = this.unformatNumber(this.elements.saleQuantityInput.value) || 0;
+            const quantity = this.unformatNumber(this.elements.saleQuantityInput.value);
             const product = this.state.sellingProduct;
             
-            const modifierValue = this.elements.saleModifierToggle.value;
-            const modifierAmount = this.unformatNumber(this.elements.modifierAmountInput.value) || 0;
-
-            const isDiscount = modifierValue === "0";
-            const isCredit = modifierValue === "2";
-
-            const discount = isDiscount ? modifierAmount : 0;
-            const partPayment = isCredit ? modifierAmount : 0;
-            const contactPhone = isCredit ? this.elements.selectedContactPhone.value : null;
-            const contactName = isCredit ? this.elements.selectedContactName.value : null;
+            const activeRadio = document.querySelector('input[name="sale-type"]:checked');
+            const saleType = activeRadio ? activeRadio.value : 'neutral';
+            const amountInputVal = this.unformatNumber(this.elements.saleTypeAmountInput.value) || 0;
+            
+            let discount = 0;
+            let amountPaid = null;
+            if (saleType === 'discount') {
+                discount = amountInputVal;
+            } else if (saleType === 'credit') {
+                amountPaid = amountInputVal;
+                if (!this.state.selectedContactName && !this.state.selectedContactPhone) {
+                    alert('Please select a contact for this credit sale.');
+                    return false;
+                }
+            }
 
             if (quantity <= 0 || !product || quantity > product.stock) { alert('Invalid quantity or product not available.'); return false; }
-            if (isCredit && !contactPhone) { alert('Please select a contact for credit sales.'); return false; }
 
             product.stock -= quantity;
 
             await DB.saveProduct(product);
             const total = Math.max(0, (quantity * product.price) - discount);
-            const debt = isCredit ? Math.max(0, total - partPayment) : 0;
+            if (saleType === 'credit') {
+                amountPaid = Math.min(amountPaid, total);
+            } else {
+                amountPaid = total;
+            }
 
             const sale = {
                 id: Date.now(),
@@ -1812,12 +1792,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 productName: product.name,
                 quantity: quantity,
                 price: product.price,
-                discount: discount,
-                isCredit: isCredit,
-                partPayment: partPayment,
-                debt: debt,
-                contactName: contactName,
-                contactPhone: contactPhone,
+                type: saleType, // 'discount', 'neutral', or 'credit'
+                amountPaid: amountPaid,
+                customerName: this.state.selectedContactName || null,
+                customerPhone: this.state.selectedContactPhone || null,
+                discount: discount, // Save discount
                 total: total,
                 timestamp: new Date(),
                 image: product.image,
@@ -1825,11 +1804,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 unit: product.unit
             };
             await DB.addSale(sale);
-
-            if (isCredit && contactPhone && window.fb) {
-                // Trigger auto-transfer asynchronously
-                this.autoTransferSale(sale, contactPhone);
-            }
 
             // --- SALES LOGGING: START ---
             const saleDataForAdmin = {
@@ -2033,60 +2007,15 @@ document.addEventListener('DOMContentLoaded', () => {
             let itemsHtml = '';
             selectedSaleObjects.forEach(sale => {
                 totalAmount += sale.total;
-                // Add discount or debt marker if applicable
+                // Add discount marker if applicable
                 const discountMark = (sale.discount && sale.discount > 0) ? '<sup style="font-weight:bold; color:var(--primary-color);">**</sup>' : '';
-                const debtMark = (sale.isCredit && sale.debt > 0) ? '<sup style="font-weight:bold; color:#e74c3c;">**</sup>' : '';
-                itemsHtml += `<tr><td>${sale.productName}</td><td class="col-qty">${this.formatNumber(sale.quantity)}</td><td class="col-price">&#8358;${this.formatNumber(sale.price)}</td><td class="col-total">&#8358;${this.formatNumber(sale.total)}${discountMark}${debtMark}</td></tr>`;
+                itemsHtml += `<tr><td>${sale.productName}</td><td class="col-qty">${this.formatNumber(sale.quantity)}</td><td class="col-price">&#8358;${this.formatNumber(sale.price)}</td><td class="col-total">&#8358;${this.formatNumber(sale.total)}${discountMark}</td></tr>`;
             });
             const receiptHtml = `<div class="receipt-header"><h3>${this.state.user.business}</h3><p>${this.state.user.location} | ${this.state.user.phone}</p><p><strong>Receipt ID:</strong> ${receiptId}</p></div><div class="receipt-items"><table><thead><tr><th>Item</th><th class="col-qty">Qty</th><th class="col-price">Price</th><th class="col-total">Total</th></tr></thead><tbody>${itemsHtml}</tbody></table></div><div class="receipt-total"><div class="total-row"><span>TOTAL</span><span>&#8358;${this.formatNumber(totalAmount)}</span></div></div><div class="receipt-footer"><p>Thank you for your patronage!</p><p>${now.toLocaleDateString('en-NG')} ${now.toLocaleTimeString('en-NG')}</p><p style="font-size: 0.7rem; color: #888; margin-top: 10px;">Powered by Pika-Shot</p></div>`;
             this.elements.receiptContent.innerHTML = receiptHtml;
             this.showModal('receipt-modal');
         },
         async shareReceipt() { const receiptElement = this.elements.receiptContent; try { const canvas = await html2canvas(receiptElement, { scale: 2 }); canvas.toBlob(async (blob) => { if (navigator.share && blob) { try { await navigator.share({ files: [new File([blob], 'pika-shot-receipt.png', { type: 'image/png' })], title: 'Your Receipt', text: 'Here is your receipt from ' + this.state.user.business, }); } catch (error) { console.error('Error sharing:', error); } } else { alert('Sharing is not supported on this browser, or there was an error creating the image.'); } }, 'image/png'); } catch (error) { console.error('Error generating receipt image:', error); alert('Could not generate receipt image.'); } },
-        async autoTransferSale(sale, targetPhone) {
-            if (!this.state.firebaseReady || !window.fb) return;
-            try {
-                // Find user by phone
-                const usersRef = window.fb.db.collection('users');
-                const q = usersRef.where('phone', '==', targetPhone);
-                const querySnapshot = await q.get();
-                if (querySnapshot.empty) return; // Not an existing user, skip transfer
-
-                const targetUserId = querySnapshot.docs[0].id;
-                
-                // Create transfer log
-                const transferLog = {
-                    senderId: this.state.user.phone,
-                    senderName: this.state.user.name,
-                    senderBusiness: this.state.user.business,
-                    receiverId: targetPhone,
-                    products: {
-                        [sale.productId]: {
-                            name: sale.productName,
-                            quantity: sale.quantity,
-                            price: sale.price,
-                            imageUrl: sale.image ? await window.fb.uploadImage(sale.image, `transfers/${Date.now()}_${sale.productId}`) : null
-                        }
-                    },
-                    timestamp: window.fb.firebase.firestore.FieldValue.serverTimestamp(),
-                    status: 'pending',
-                    isRetailer: true
-                };
-
-                await window.fb.db.collection('transferLogs').add(transferLog);
-                console.log("Auto-transferred credit sale to existing user.");
-                
-                // Mark sale as shared
-                sale.sharedAsLog = true;
-                await DB.saveSale(sale);
-                // Also update in state so UI reflects it immediately
-                const stateSale = this.state.sales.find(s => s.id === sale.id);
-                if (stateSale) stateSale.sharedAsLog = true;
-                
-            } catch (ex) {
-                console.error("Error auto-transferring sale:", ex);
-            }
-        },
 
         async initiatePhoneTransfer() {
             if (!navigator.onLine) {
@@ -2628,14 +2557,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 const q = window.fb.query(retailersRef);
 
                 this.state.retailerListener = window.fb.onSnapshot(q, async (querySnapshot) => {
-                    if (querySnapshot.empty) {
-                        const emptyHtmlRetailer = `<p class="empty-state">No data found. Sell and transfer products to the purchasing retailer to see their real-time stock level here.</p>`;
-                        const emptyHtmlSalespeople = `<p class="empty-state">Add your salespeople and see their daily sales summary here.</p>`;
-                        this.elements.retailerStockView.innerHTML = emptyHtmlRetailer;
-                        this.elements.salespeopleView.innerHTML = emptyHtmlSalespeople;
-                        return;
-                    }
-
                     let customersHtml = '';
                     let salespeopleHtml = '';
                     const retailersData = [];
@@ -2653,16 +2574,27 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     }
 
-                    // ADD CREDIT CARDS
-                    const allSales = await DB.getAllSales();
-                    const creditSales = allSales.filter(s => s.isCredit);
-                    creditSales.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-                    
-                    for (const sale of creditSales) {
-                        customersHtml += this.buildCreditCard(sale);
+                    let creditHtml = '';
+                    try {
+                        const allSales = await DB.getSales();
+                        const creditSales = allSales.filter(s => s.type === 'credit');
+                        creditSales.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                        for (const sale of creditSales) {
+                            creditHtml += this.buildCreditSaleCard(sale);
+                        }
+                    } catch(e) {
+                        console.error('Error fetching credit sales', e);
                     }
 
-                    this.elements.retailerStockView.innerHTML = customersHtml || `<p class="empty-state">No customers found.</p>`;
+                    if (querySnapshot.empty && !creditHtml) {
+                        const emptyHtmlRetailer = `<p class="empty-state">No data found. Sell and transfer products to the purchasing retailer to see their real-time stock level here, or record a credit sale.</p>`;
+                        const emptyHtmlSalespeople = `<p class="empty-state">Add your salespeople and see their daily sales summary here.</p>`;
+                        this.elements.retailerStockView.innerHTML = emptyHtmlRetailer;
+                        this.elements.salespeopleView.innerHTML = emptyHtmlSalespeople;
+                        return;
+                    }
+
+                    this.elements.retailerStockView.innerHTML = creditHtml + customersHtml || `<p class="empty-state">No customers found.</p>`;
                     this.elements.salespeopleView.innerHTML = salespeopleHtml || `<p class="empty-state">No salespeople found.</p>`;
 
                     this.addDeleteEventListeners();
@@ -2715,34 +2647,37 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             `;
         },
-
-        buildCreditCard(sale) {
+        buildCreditSaleCard(sale) {
             const phoneIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>`;
-            const callButton = sale.contactPhone ? `<a href="tel:${sale.contactPhone}" class="retailer-call-btn" title="Call ${sale.contactName || 'Customer'}">${phoneIcon}</a>` : '';
-            const statusText = `Sold: ${this.formatTimeAgo(new Date(sale.timestamp)).text}`;
+            const callButton = sale.customerPhone ? `<a href="tel:${sale.customerPhone}" class="retailer-call-btn" title="Call ${sale.customerName}">${phoneIcon}</a>` : '';
+            const status = this.formatTimeAgo(sale.timestamp);
+            const owed = sale.total - sale.amountPaid;
 
             return `
-                <div class="card sale-card credit-card" style="position:relative;">
-                    <span class="credit-badge">Credit</span>
+                <div class="card" style="border: 2px solid red;">
                     <div class="retailer-header">
                         <div style="flex-grow: 1;">
-                            <h4>${sale.contactName || 'Unknown Customer'} (${sale.contactPhone || 'No phone'})</h4>
-                            <p class="retailer-status text-muted">${statusText}</p>
+                            <h4 style="color: red;">Credit Sale: ${sale.customerName}</h4>
+                            <p class="retailer-status ${status.className}">${status.text}</p>
                         </div>
                         ${callButton}
                     </div>
                     <div class="retailer-product-list">
                         <div class="retailer-product-item">
                             <span>${sale.productName}</span>
-                            <strong>${this.formatNumber(sale.quantity)} ${sale.unit || ''} @ ₦${this.formatNumber(sale.price)}</strong>
+                            <strong>${this.formatNumber(sale.quantity)} ${sale.unit}</strong>
                         </div>
-                        <div class="retailer-product-item">
+                        <div class="retailer-product-item" style="border-top: 1px dashed var(--border-color); padding-top: 8px;">
                             <span>Total Price</span>
                             <strong>₦${this.formatNumber(sale.total)}</strong>
                         </div>
-                        <div class="retailer-product-item" style="color: #e74c3c;">
-                            <span>Debt Remaining</span>
-                            <strong>₦${this.formatNumber(sale.debt)}</strong>
+                        <div class="retailer-product-item">
+                            <span>Amount Paid</span>
+                            <strong>₦${this.formatNumber(sale.amountPaid)}</strong>
+                        </div>
+                        <div class="retailer-product-item" style="color: red;">
+                            <span>Balance Owed</span>
+                            <strong>₦${this.formatNumber(owed)}</strong>
                         </div>
                     </div>
                 </div>
@@ -3010,6 +2945,18 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const formattedDate = date.toLocaleDateString('en-NG', { day: 'numeric', month: 'short' });
             return { text: `Last online: ${formattedDate}`, className: 'offline' };
+        },
+
+        promptManualContact() {
+            const name = prompt('Please enter the customer\'s name for this credit sale:');
+            if (name) {
+                const phone = prompt('Please enter the customer\'s phone number (optional):') || '';
+                this.state.selectedContactName = name;
+                this.state.selectedContactPhone = phone;
+                this.elements.selectedContactDisplay.textContent = name + (phone ? ` (${phone})` : '');
+            } else {
+                alert('A customer name is required for credit sales.');
+            }
         },
 
         formatNumber(value) {
