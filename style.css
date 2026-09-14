@@ -433,7 +433,7 @@ input:checked + .slider:before {
 .nav-btn { background: none; border: none; color: var(--text-light); display: flex; flex-direction: column; align-items: center; font-size: 0.75rem; padding: 8px; transition: color 0.2s; }
 .nav-btn svg { margin-bottom: 4px; }
 .nav-btn.active { color: var(--primary-color); }
-.nav-btn-main { background-color: var(--primary-color); border: none; border-radius: 50%; width: 68px; height: 67px; padding-bottom: 17px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; box-shadow: 0 4px 15px rgba(0, 140, 149, 0.4); transform: translateY(-20px); transition: opacity 0.3s, transform 0.3s; position: relative; }
+.nav-btn-main { background-color: var(--primary-color); border: none; border-radius: 50%; width: 74px; height: 74px; padding-bottom: 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; box-shadow: 0 4px 15px rgba(0, 140, 149, 0.4); transform: translateY(-20px); transition: opacity 0.3s, transform 0.3s; position: relative; }
 .nav-btn-main span { font-size: 0.7rem; margin-top: 2px; }
 .nav-btn span { font-size: 0.75rem; margin-top: 4px; font-weight: 500; }
 
@@ -504,7 +504,7 @@ input:checked + .slider:before {
 .recent-sales-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 .recent-sales-header h4 { font-size: clamp(1rem, 3vw, 1.1rem); font-weight: 600; }
 .selection-hint { font-size: 0.8rem; color: var(--text-light); }
-.see-all-container { text-align: center; margin-top: 16px; margin-bottom: 27px; }
+.see-all-container { text-align: center; margin-top: 16px; margin-bottom: 120px; }
 .see-all-btn {
     background: none;
     border: none;

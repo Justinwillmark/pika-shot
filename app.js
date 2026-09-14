@@ -334,7 +334,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if(document.getElementById('add-salesperson-fab')) {
                 document.getElementById('add-salesperson-fab').addEventListener('click', () => alert('Feature coming soon'));
             }
-            this.elements.allSalesTimeFilter.addEventListener('change', () => this.renderAllSales());
+            this.elements.allSalesTimeFilter.addEventListener('change', () => {
+                if (this.elements.allSalesTimeFilter.value === 'expenses') {
+                    alert('Feature coming soon');
+                    this.elements.allSalesTimeFilter.value = 'all';
+                }
+                this.renderAllSales();
+            });
             this.elements.cancelSelectionBtn.addEventListener('click', this.exitSelectionMode.bind(this));
             this.elements.closeReceiptBtn.addEventListener('click', () => this.hideModal());
             this.elements.shareReceiptBtn.addEventListener('click', this.shareReceipt.bind(this));
@@ -780,7 +786,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         async updateDashboard() {
             if (this.state.user) {
-                this.elements.welcomeName.textContent = `Hello, ${this.state.user.name.split(' ')[0]}!`;
+                this.elements.welcomeName.textContent = `Hi, ${this.state.user.name.split(' ')[0]}!`;
                 if (this.state.user.type === 'Wholesaler' || this.state.user.type === 'Salesperson') {
                     this.elements.seeStockLevelsContainer.style.display = 'block';
                     const buttonText = this.state.user.type === 'Salesperson' ? 'Customers' : 'Customers & Salespeople';
@@ -1055,7 +1061,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.productTotalValue = document.getElementById('product-total-value');
             }
             if (this.elements.productTotalValue) {
-                this.elements.productTotalValue.textContent = `₦${this.formatNumber(totalValue)}`;
+                if (allProducts.length === 0) {
+                    this.elements.productTotalValue.textContent = '';
+                } else {
+                    this.elements.productTotalValue.textContent = `₦${this.formatNumber(totalValue)}`;
+                }
             }
 
             let filteredProducts = allProducts;
