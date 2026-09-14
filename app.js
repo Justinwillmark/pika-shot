@@ -103,13 +103,10 @@ document.addEventListener('DOMContentLoaded', () => {
             cancelSaleBtn: document.getElementById('cancel-sale-btn'),
             confirmSaleBtn: document.getElementById('confirm-sale-btn'),
             saleOfflineNotice: document.getElementById('sale-offline-notice'),
-            // NEW DOM ELEMENTS FOR SALE TYPE
-            saleTypeRadios: document.querySelectorAll('input[name="sale-type"]'),
-            saleTypeInputContainer: document.getElementById('sale-type-input-container'),
-            saleTypeAmountInput: document.getElementById('sale-type-amount'),
-            saleTypeAmountLabel: document.getElementById('sale-type-amount-label'),
-            selectContactBtn: document.getElementById('select-contact-btn'),
-            selectedContactDisplay: document.getElementById('selected-contact-display'),
+            // NEW DOM ELEMENTS FOR DISCOUNT
+            discountToggle: document.getElementById('discount-toggle'),
+            discountInputContainer: document.getElementById('discount-input-container'),
+            discountAmountInput: document.getElementById('discount-amount'),
 
             installBtn: document.getElementById('add-to-homescreen-btn'),
             receiptActions: document.getElementById('receipt-actions'),
@@ -317,50 +314,15 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.scanNewBarcodeBtn.addEventListener('click', this.startBarcodeAssignmentScan.bind(this));
             this.elements.cancelPictureBtn.addEventListener('click', () => this.hideModal());
             this.elements.saleQuantityInput.addEventListener('input', this.updateSaleTotal.bind(this));
-            // NEW LISTENER FOR SALE TYPE
-            this.elements.saleTypeRadios.forEach(radio => {
-                radio.addEventListener('change', (e) => {
-                    const type = e.target.value;
-                    if (type === 'neutral') {
-                        this.elements.saleTypeInputContainer.style.display = 'none';
-                        this.elements.saleTypeAmountInput.value = '';
-                        this.updateSaleTotal();
-                    } else {
-                        this.elements.saleTypeInputContainer.style.display = 'flex';
-                        if (type === 'discount') {
-                            this.elements.saleTypeAmountLabel.textContent = 'Discount';
-                            this.elements.selectContactBtn.style.display = 'none';
-                            this.elements.selectedContactDisplay.style.display = 'none';
-                        } else if (type === 'credit') {
-                            this.elements.saleTypeAmountLabel.textContent = 'Part payment';
-                            this.elements.selectContactBtn.style.display = 'flex';
-                            this.elements.selectedContactDisplay.style.display = 'block';
-                        }
-                    }
-                });
-            });
-            this.elements.saleTypeAmountInput.addEventListener('input', this.updateSaleTotal.bind(this));
-
-            this.elements.selectContactBtn.addEventListener('click', async () => {
-                if ('contacts' in navigator && 'select' in navigator.contacts) {
-                    try {
-                        const props = ['name', 'tel'];
-                        const opts = { multiple: false };
-                        const contacts = await navigator.contacts.select(props, opts);
-                        if (contacts.length > 0) {
-                            const contact = contacts[0];
-                            this.state.selectedContactName = contact.name && contact.name.length ? contact.name[0] : '';
-                            this.state.selectedContactPhone = contact.tel && contact.tel.length ? contact.tel[0] : '';
-                            this.elements.selectedContactDisplay.textContent = this.state.selectedContactName || this.state.selectedContactPhone || 'Contact selected';
-                        }
-                    } catch (ex) {
-                        console.error('Contact picker failed:', ex);
-                        this.promptManualContact();
-                    }
-                } else {
-                    this.promptManualContact();
+            // NEW LISTENER FOR DISCOUNT
+            this.elements.discountToggle.addEventListener('change', (e) => {
+                this.elements.discountInputContainer.style.display = e.target.checked ? 'block' : 'none';
+                if (!e.target.checked) {
+                    this.elements.discountAmountInput.value = '';
+                    this.updateSaleTotal();
                 }
             });
+            this.elements.discountAmountInput.addEventListener('input', this.updateSaleTotal.bind(this));
 
             this.elements.cancelSaleBtn.addEventListener('click', () => this.hideModal());
             this.elements.confirmSaleBtn.addEventListener('click', this.handleConfirmSale.bind(this));
@@ -450,7 +412,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.productPriceInput, this.elements.productStockInput,
                 this.elements.saleQuantityInput, this.elements.manualProductPrice,
                 this.elements.manualSaleQuantity, this.elements.cartonSubunitQuantityInput,
-                this.elements.saleTypeAmountInput // Added discount/credit input
+                this.elements.discountAmountInput // Added discount input
             ];
             fieldsToFormat.forEach(input => {
                 input.addEventListener('input', (e) => {
@@ -1723,14 +1685,10 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.saleQuantityLabel.textContent = `How many ${product.unit} are you selling?`;
             this.elements.saleQuantityInput.value = '1';
 
-            // Reset sale type fields
-            const neutralRadio = document.getElementById('sale-type-neutral');
-            if (neutralRadio) neutralRadio.checked = true;
-            this.elements.saleTypeInputContainer.style.display = 'none';
-            this.elements.saleTypeAmountInput.value = '';
-            this.state.selectedContactName = '';
-            this.state.selectedContactPhone = '';
-            this.elements.selectedContactDisplay.textContent = '';
+            // Reset discount fields
+            this.elements.discountToggle.checked = false;
+            this.elements.discountInputContainer.style.display = 'none';
+            this.elements.discountAmountInput.value = '';
 
             this.updateSaleTotal();
             this.elements.saleOfflineNotice.style.display = 'none';
@@ -1741,15 +1699,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const price = this.state.sellingProduct?.price || 0;
             const subtotal = quantity * price;
 
-            const activeRadio = document.querySelector('input[name="sale-type"]:checked');
-            const saleType = activeRadio ? activeRadio.value : 'neutral';
-            const amountInputVal = this.unformatNumber(this.elements.saleTypeAmountInput.value) || 0;
-            
-            let discount = 0;
-            if (saleType === 'discount') {
-                discount = amountInputVal;
-            }
-
+            const discount = this.elements.discountToggle.checked ? (this.unformatNumber(this.elements.discountAmountInput.value) || 0) : 0;
             const total = Math.max(0, subtotal - discount);
 
             this.elements.saleTotalPrice.textContent = `₦${this.formatNumber(total)}`;
@@ -1757,22 +1707,7 @@ document.addEventListener('DOMContentLoaded', () => {
         async _processSale() {
             const quantity = this.unformatNumber(this.elements.saleQuantityInput.value);
             const product = this.state.sellingProduct;
-            
-            const activeRadio = document.querySelector('input[name="sale-type"]:checked');
-            const saleType = activeRadio ? activeRadio.value : 'neutral';
-            const amountInputVal = this.unformatNumber(this.elements.saleTypeAmountInput.value) || 0;
-            
-            let discount = 0;
-            let amountPaid = null;
-            if (saleType === 'discount') {
-                discount = amountInputVal;
-            } else if (saleType === 'credit') {
-                amountPaid = amountInputVal;
-                if (!this.state.selectedContactName && !this.state.selectedContactPhone) {
-                    alert('Please select a contact for this credit sale.');
-                    return false;
-                }
-            }
+            const discount = this.elements.discountToggle.checked ? (this.unformatNumber(this.elements.discountAmountInput.value) || 0) : 0;
 
             if (quantity <= 0 || !product || quantity > product.stock) { alert('Invalid quantity or product not available.'); return false; }
 
@@ -1780,22 +1715,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
             await DB.saveProduct(product);
             const total = Math.max(0, (quantity * product.price) - discount);
-            if (saleType === 'credit') {
-                amountPaid = Math.min(amountPaid, total);
-            } else {
-                amountPaid = total;
-            }
-
             const sale = {
                 id: Date.now(),
                 productId: product.id,
                 productName: product.name,
                 quantity: quantity,
                 price: product.price,
-                type: saleType, // 'discount', 'neutral', or 'credit'
-                amountPaid: amountPaid,
-                customerName: this.state.selectedContactName || null,
-                customerPhone: this.state.selectedContactPhone || null,
                 discount: discount, // Save discount
                 total: total,
                 timestamp: new Date(),
@@ -2557,6 +2482,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 const q = window.fb.query(retailersRef);
 
                 this.state.retailerListener = window.fb.onSnapshot(q, async (querySnapshot) => {
+                    if (querySnapshot.empty) {
+                        const emptyHtmlRetailer = `<p class="empty-state">No data found. Sell and transfer products to the purchasing retailer to see their real-time stock level here.</p>`;
+                        const emptyHtmlSalespeople = `<p class="empty-state">Add your salespeople and see their daily sales summary here.</p>`;
+                        this.elements.retailerStockView.innerHTML = emptyHtmlRetailer;
+                        this.elements.salespeopleView.innerHTML = emptyHtmlSalespeople;
+                        return;
+                    }
+
                     let customersHtml = '';
                     let salespeopleHtml = '';
                     const retailersData = [];
@@ -2574,27 +2507,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     }
 
-                    let creditHtml = '';
-                    try {
-                        const allSales = await DB.getSales();
-                        const creditSales = allSales.filter(s => s.type === 'credit');
-                        creditSales.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-                        for (const sale of creditSales) {
-                            creditHtml += this.buildCreditSaleCard(sale);
-                        }
-                    } catch(e) {
-                        console.error('Error fetching credit sales', e);
-                    }
-
-                    if (querySnapshot.empty && !creditHtml) {
-                        const emptyHtmlRetailer = `<p class="empty-state">No data found. Sell and transfer products to the purchasing retailer to see their real-time stock level here, or record a credit sale.</p>`;
-                        const emptyHtmlSalespeople = `<p class="empty-state">Add your salespeople and see their daily sales summary here.</p>`;
-                        this.elements.retailerStockView.innerHTML = emptyHtmlRetailer;
-                        this.elements.salespeopleView.innerHTML = emptyHtmlSalespeople;
-                        return;
-                    }
-
-                    this.elements.retailerStockView.innerHTML = creditHtml + customersHtml || `<p class="empty-state">No customers found.</p>`;
+                    this.elements.retailerStockView.innerHTML = customersHtml || `<p class="empty-state">No customers found.</p>`;
                     this.elements.salespeopleView.innerHTML = salespeopleHtml || `<p class="empty-state">No salespeople found.</p>`;
 
                     this.addDeleteEventListeners();
@@ -2643,42 +2556,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="retailer-product-list">${productsHtml}</div>
                     <div class="card-footer">
                         <button class="delete-retailer-btn">${deleteIcon}</button>
-                    </div>
-                </div>
-            `;
-        },
-        buildCreditSaleCard(sale) {
-            const phoneIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>`;
-            const callButton = sale.customerPhone ? `<a href="tel:${sale.customerPhone}" class="retailer-call-btn" title="Call ${sale.customerName}">${phoneIcon}</a>` : '';
-            const status = this.formatTimeAgo(sale.timestamp);
-            const owed = sale.total - sale.amountPaid;
-
-            return `
-                <div class="card" style="border: 2px solid red;">
-                    <div class="retailer-header">
-                        <div style="flex-grow: 1;">
-                            <h4 style="color: red;">Credit Sale: ${sale.customerName}</h4>
-                            <p class="retailer-status ${status.className}">${status.text}</p>
-                        </div>
-                        ${callButton}
-                    </div>
-                    <div class="retailer-product-list">
-                        <div class="retailer-product-item">
-                            <span>${sale.productName}</span>
-                            <strong>${this.formatNumber(sale.quantity)} ${sale.unit}</strong>
-                        </div>
-                        <div class="retailer-product-item" style="border-top: 1px dashed var(--border-color); padding-top: 8px;">
-                            <span>Total Price</span>
-                            <strong>₦${this.formatNumber(sale.total)}</strong>
-                        </div>
-                        <div class="retailer-product-item">
-                            <span>Amount Paid</span>
-                            <strong>₦${this.formatNumber(sale.amountPaid)}</strong>
-                        </div>
-                        <div class="retailer-product-item" style="color: red;">
-                            <span>Balance Owed</span>
-                            <strong>₦${this.formatNumber(owed)}</strong>
-                        </div>
                     </div>
                 </div>
             `;
@@ -2945,18 +2822,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const formattedDate = date.toLocaleDateString('en-NG', { day: 'numeric', month: 'short' });
             return { text: `Last online: ${formattedDate}`, className: 'offline' };
-        },
-
-        promptManualContact() {
-            const name = prompt('Please enter the customer\'s name for this credit sale:');
-            if (name) {
-                const phone = prompt('Please enter the customer\'s phone number (optional):') || '';
-                this.state.selectedContactName = name;
-                this.state.selectedContactPhone = phone;
-                this.elements.selectedContactDisplay.textContent = name + (phone ? ` (${phone})` : '');
-            } else {
-                alert('A customer name is required for credit sales.');
-            }
         },
 
         formatNumber(value) {

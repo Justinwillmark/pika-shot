@@ -269,88 +269,72 @@ html, body {
     color: var(--primary-color);
 }
 
-/* NEW STYLES FOR SALE TYPE UI */
-.sale-type-section {
+/* NEW STYLES FOR DISCOUNT UI */
+.discount-section {
     margin-bottom: 16px;
     padding-top: 12px;
     border-top: 1px dashed var(--border-color);
 }
-.sale-type-header {
+.discount-header {
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 10px;
-    margin-bottom: 15px;
+    justify-content: flex-start; /* Aligned to left */
+    gap: 12px;
 }
-.sale-type-label {
-    font-weight: 600;
-    font-size: 0.9rem;
-    color: var(--text-color);
+/* UPDATED: Discount label styling */
+.discount-label, .discount-input-container label {
+    margin: 0;
+    font-weight: 600; /* Match other labels */
+    font-size: 0.8rem; /* Small a bit and muted */
+    color: var(--text-light); /* Muted */
 }
-.sale-type-input-container label {
+.discount-input-container label {
     display: block;
-    font-weight: 600;
-    font-size: 0.8rem;
-    color: var(--text-light);
     margin-bottom: 8px;
 }
 
-/* Triple Toggle Switch */
-.triple-toggle {
+/* Toggle Switch */
+.switch {
     position: relative;
-    display: flex;
-    width: 60px;
+    display: inline-block;
+    width: 44px;
     height: 24px;
-    background-color: #ccc;
-    border-radius: 24px;
-    overflow: hidden;
+    flex-shrink: 0;
 }
-.triple-toggle input[type="radio"] {
-    flex: 1;
+.switch input { 
     opacity: 0;
-    cursor: pointer;
-    z-index: 2;
-    margin: 0;
-    height: 100%;
+    width: 0;
+    height: 0;
 }
-.triple-slider {
+.slider {
     position: absolute;
-    top: 3px;
-    left: 21px; /* Neutral position */
-    width: 18px;
-    height: 18px;
-    background-color: white;
-    border-radius: 50%;
-    transition: 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
-    z-index: 1;
-}
-
-/* Toggle States */
-.triple-toggle:has(input[value="discount"]:checked) .triple-slider {
-    left: 3px;
-    background-color: teal;
-}
-.triple-toggle:has(input[value="neutral"]:checked) .triple-slider {
-    left: 21px;
-    background-color: white;
-}
-.triple-toggle:has(input[value="credit"]:checked) .triple-slider {
-    left: 39px;
-    background-color: red;
-}
-
-/* Toggle Container Background Animation */
-.triple-toggle:has(input[value="discount"]:checked) {
-    background-color: rgba(0, 128, 128, 0.3);
-}
-.triple-toggle:has(input[value="neutral"]:checked) {
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
     background-color: #ccc;
+    transition: .4s;
+    border-radius: 24px;
 }
-.triple-toggle:has(input[value="credit"]:checked) {
-    background-color: rgba(255, 0, 0, 0.3);
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
 }
-
-.sale-type-input-container {
+input:checked + .slider {
+    background-color: var(--primary-color);
+}
+input:checked + .slider:before {
+    transform: translateX(20px);
+}
+.discount-input-container {
     margin-top: 12px;
     animation: slideDown 0.3s ease-out;
 }
