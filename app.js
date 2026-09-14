@@ -339,6 +339,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     alert('Feature coming soon');
                     this.elements.allSalesTimeFilter.value = 'all';
                 }
+                this.updateHeader(this.state.currentView);
                 this.renderAllSales();
             });
             this.elements.cancelSelectionBtn.addEventListener('click', this.exitSelectionMode.bind(this));
@@ -771,6 +772,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 const titles = { 'home-view': 'My Shop', 'products-view': 'My Products', 'all-sales-view': 'All Sales', 'stock-levels-view': 'Customers & Salespeople' };
                 if (this.state.user && this.state.user.type === 'Salesperson' && viewId === 'stock-levels-view') {
                     title = 'Customers';
+                } else if (viewId === 'all-sales-view') {
+                    const filterVal = this.elements.allSalesTimeFilter.value;
+                    const selectedOption = this.elements.allSalesTimeFilter.options[this.elements.allSalesTimeFilter.selectedIndex];
+                    if (filterVal === 'best-selling') {
+                        title = 'Best selling';
+                    } else if (selectedOption) {
+                        title = selectedOption.text;
+                    } else {
+                        title = 'All Sales';
+                    }
                 } else {
                     title = titles[viewId] || 'pika shot';
                 }
@@ -925,7 +936,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     groupHeader.insertAdjacentHTML('afterend', acknowledgedHtml);
                 }
 
-                groupedSales[groupTitle].forEach(sale => {
+                groupedSales[groupTitle].forEach((sale, index) => {
                     const saleEl = document.createElement('div');
                     saleEl.className = 'sale-item';
                     if (sale.sharedAsLog) {
@@ -940,7 +951,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Add discount marker
                     const discountMark = (sale.discount && sale.discount > 0) ? '<sup class="discount-mark">**</sup>' : '';
 
-                    saleEl.innerHTML = `<div class="sale-item-overlay">Previously Transferred</div><img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${this.formatNumber(sale.quantity)} x &#8358;${this.formatNumber(sale.price)}</span></div><p class="sale-price">&#8358;${this.formatNumber(sale.total)}${discountMark}</p>`;
+                    let numberingHtml = '';
+                    if (filterValue === 'best-selling') {
+                        numberingHtml = `<span style="font-weight: bold; margin-right: 12px; color: var(--text-color); font-size: 1.1em; display: flex; align-items: center;">${index + 1}.</span>`;
+                    }
+
+                    saleEl.innerHTML = `<div class="sale-item-overlay">Previously Transferred</div>${numberingHtml}<img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${this.formatNumber(sale.quantity)} x &#8358;${this.formatNumber(sale.price)}</span></div><p class="sale-price">&#8358;${this.formatNumber(sale.total)}${discountMark}</p>`;
                     this.addSaleItemEventListeners(saleEl, sale);
                     groupContainer.appendChild(saleEl);
                 });
