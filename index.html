@@ -205,7 +205,7 @@
                     <option value="all" style="color: var(--text-color);">All Time</option>
                     <option value="weekly" style="color: var(--text-color);">Weekly</option>
                     <option value="monthly" style="color: var(--text-color);">Monthly</option>
-                    <option value="yearly" style="color: var(--text-color);">Yearly</option>
+                    <option value="best-selling" style="color: var(--text-color);">Best selling products</option>
                 </select>
             </div>
             <button id="add-to-homescreen-btn" class="add-to-homescreen-btn" style="display: none;">Install app</button>
@@ -263,6 +263,7 @@
             <div id="products-view" class="view page">
                 <div class="product-header">
                     <p id="product-sku-count" class="sku-count"></p>
+                    <p id="product-total-value" class="total-value"></p>
                 </div>
                 <div class="product-controls-sticky-header">
                     <div id="product-search-container" style="display: none;">
@@ -307,6 +308,9 @@
                 </div>
                 <div id="retailer-stock-view" class="all-sales-container"></div>
                 <div id="salespeople-view" class="all-sales-container" style="display: none;"></div>
+                <button id="add-salesperson-fab" class="fab" style="display: none;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                </button>
             </div>
 
         </main>

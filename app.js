@@ -331,6 +331,9 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.generateReceiptBtn.addEventListener('click', this.generateReceipt.bind(this));
             this.elements.seeAllSalesBtn.addEventListener('click', () => this.navigateTo('all-sales-view'));
             this.elements.seeLastSalesBtn.addEventListener('click', () => this.navigateTo('all-sales-view'));
+            if(document.getElementById('add-salesperson-fab')) {
+                document.getElementById('add-salesperson-fab').addEventListener('click', () => alert('Feature coming soon'));
+            }
             this.elements.allSalesTimeFilter.addEventListener('change', () => this.renderAllSales());
             this.elements.cancelSelectionBtn.addEventListener('click', this.exitSelectionMode.bind(this));
             this.elements.closeReceiptBtn.addEventListener('click', () => this.hideModal());
@@ -396,10 +399,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 e.target.classList.add('active');
                 this.state.stockViewFilter = e.target.dataset.filter;
                 this.renderRetailerStocks();
-                const addSalespersonBtn = document.getElementById('add-salesperson-btn');
-                if (addSalespersonBtn) {
-                    addSalespersonBtn.style.display = (this.state.stockViewFilter === 'salespeople') ? 'flex' : 'none';
-                }
             }));
 
             const fieldsToFormat = [
@@ -857,7 +856,7 @@ document.addEventListener('DOMContentLoaded', () => {
         async renderAllSales() {
             let allSales = await DB.getAllSales();
             
-            const filterValue = this.elements.allSalesTimeFilter.value || 'daily';
+            const filterValue = this.elements.allSalesTimeFilter.value;
 
             const sortedSales = allSales.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
             this.elements.allSalesList.innerHTML = '';
@@ -878,58 +877,17 @@ document.addEventListener('DOMContentLoaded', () => {
             const productMap = {};
             allProducts.forEach(p => { productMap[p.id] = p; });
 
-            if (filterValue === 'best_selling') {
-                const now = new Date();
-                const thisMonthSales = allSales.filter(sale => {
-                    const d = new Date(sale.timestamp);
-                    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-                });
-                
-                if (thisMonthSales.length === 0) {
-                    this.elements.allSalesList.innerHTML = `<p class="empty-state">No sales this month to show.</p>`;
-                    return;
-                }
-
-                const productStats = {};
-                thisMonthSales.forEach(sale => {
-                    if (!productStats[sale.productId]) {
-                        productStats[sale.productId] = { id: sale.productId, name: sale.productName, qty: 0, val: 0, image: sale.image };
-                    }
-                    productStats[sale.productId].qty += sale.quantity;
-                    productStats[sale.productId].val += sale.total;
-                });
-                
-                const bestByQty = Object.values(productStats).sort((a, b) => b.qty - a.qty);
-                const bestByVal = Object.values(productStats).sort((a, b) => b.val - a.val);
-
-                this.elements.allSalesList.innerHTML = `
-                    <div class="sales-group">
-                        <div class="sales-group-header">
-                            <h3>Best Selling by Quantity (This Month)</h3>
-                        </div>
-                        ${bestByQty.map(stat => {
-                            const matchedProduct = productMap[stat.id];
-                            const imageBlob = (matchedProduct && matchedProduct.image) || stat.image;
-                            const imageUrl = imageBlob ? URL.createObjectURL(imageBlob) : 'icons/icon-192.png';
-                            return `<div class="sale-item"><img src="${imageUrl}" alt="${stat.name}"><div class="sale-info"><p>${stat.name}</p><span>${this.formatNumber(stat.qty)} sold</span></div><p class="sale-price">&#8358;${this.formatNumber(stat.val)}</p></div>`;
-                        }).join('')}
-                    </div>
-                    <div class="sales-group">
-                        <div class="sales-group-header">
-                            <h3>Best Selling by Value (This Month)</h3>
-                        </div>
-                        ${bestByVal.map(stat => {
-                            const matchedProduct = productMap[stat.id];
-                            const imageBlob = (matchedProduct && matchedProduct.image) || stat.image;
-                            const imageUrl = imageBlob ? URL.createObjectURL(imageBlob) : 'icons/icon-192.png';
-                            return `<div class="sale-item"><img src="${imageUrl}" alt="${stat.name}"><div class="sale-info"><p>${stat.name}</p><span>${this.formatNumber(stat.qty)} sold</span></div><p class="sale-price">&#8358;${this.formatNumber(stat.val)}</p></div>`;
-                        }).join('')}
-                    </div>
-                `;
-                return;
+            let groupedSales;
+            if (filterValue === 'weekly') {
+                groupedSales = this.groupSalesByWeek(sortedSales);
+            } else if (filterValue === 'monthly') {
+                groupedSales = this.groupSalesByMonth(sortedSales);
+            } else if (filterValue === 'best-selling') {
+                groupedSales = this.groupBestSellingByMonth(sortedSales);
+            } else {
+                groupedSales = this.groupSalesByDate(sortedSales);
             }
-
-            const groupedSales = this.groupSalesByDate(sortedSales, filterValue);
+            
             for (const groupTitle in groupedSales) {
                 const groupContainer = document.createElement('div');
                 groupContainer.className = 'sales-group';
@@ -984,7 +942,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         },
 
-        groupSalesByDate(sales, mode = 'daily') {
+        groupSalesByDate(sales) {
             const groups = {};
             const today = new Date();
             today.setHours(0, 0, 0, 0);
@@ -999,22 +957,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 saleDate.setHours(0, 0, 0, 0);
 
                 let groupTitle;
-                if (mode === 'monthly') {
-                    groupTitle = saleDate.toLocaleDateString('en-NG', { month: 'long', year: 'numeric' });
-                } else if (mode === 'weekly') {
-                    const d = new Date(saleDate);
-                    d.setDate(d.getDate() - d.getDay());
-                    groupTitle = `Week of ${d.toLocaleDateString('en-NG', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+                if (saleDate.getTime() === today.getTime()) {
+                    groupTitle = `Today, ${today.toLocaleDateString('en-NG', dateOptions)}`;
+                } else if (saleDate.getTime() === yesterday.getTime()) {
+                    groupTitle = `Yesterday, ${yesterday.toLocaleDateString('en-NG', dateOptions)}`;
+                } else if (saleDate >= startOfWeek) {
+                    groupTitle = saleDate.toLocaleDateString('en-NG', { weekday: 'long', month: 'short', day: 'numeric' });
                 } else {
-                    if (saleDate.getTime() === today.getTime()) {
-                        groupTitle = `Today, ${today.toLocaleDateString('en-NG', dateOptions)}`;
-                    } else if (saleDate.getTime() === yesterday.getTime()) {
-                        groupTitle = `Yesterday, ${yesterday.toLocaleDateString('en-NG', dateOptions)}`;
-                    } else if (saleDate >= startOfWeek) {
-                        groupTitle = saleDate.toLocaleDateString('en-NG', { weekday: 'long', month: 'short', day: 'numeric' });
-                    } else {
-                        groupTitle = saleDate.toLocaleDateString('en-NG', { month: 'long', day: 'numeric', year: 'numeric' });
-                    }
+                    groupTitle = saleDate.toLocaleDateString('en-NG', { month: 'long', day: 'numeric', year: 'numeric' });
                 }
 
                 if (!groups[groupTitle]) {
@@ -1023,6 +973,71 @@ document.addEventListener('DOMContentLoaded', () => {
                 groups[groupTitle].push(sale);
             });
             return groups;
+        },
+
+        groupSalesByWeek(sales) {
+            const groups = {};
+            sales.forEach(sale => {
+                const saleDate = new Date(sale.timestamp);
+                const startOfWeek = new Date(saleDate);
+                startOfWeek.setDate(saleDate.getDate() - saleDate.getDay());
+                const endOfWeek = new Date(startOfWeek);
+                endOfWeek.setDate(startOfWeek.getDate() + 6);
+                
+                const groupTitle = `${startOfWeek.toLocaleDateString('en-NG', { month: 'short', day: 'numeric' })} - ${endOfWeek.toLocaleDateString('en-NG', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+                
+                if (!groups[groupTitle]) {
+                    groups[groupTitle] = [];
+                }
+                groups[groupTitle].push(sale);
+            });
+            return groups;
+        },
+
+        groupSalesByMonth(sales) {
+            const groups = {};
+            sales.forEach(sale => {
+                const saleDate = new Date(sale.timestamp);
+                const groupTitle = saleDate.toLocaleDateString('en-NG', { month: 'long', year: 'numeric' });
+                
+                if (!groups[groupTitle]) {
+                    groups[groupTitle] = [];
+                }
+                groups[groupTitle].push(sale);
+            });
+            return groups;
+        },
+
+        groupBestSellingByMonth(sales) {
+            const groups = {};
+            sales.forEach(sale => {
+                const saleDate = new Date(sale.timestamp);
+                const monthTitle = saleDate.toLocaleDateString('en-NG', { month: 'long', year: 'numeric' });
+                
+                if (!groups[monthTitle]) {
+                    groups[monthTitle] = {};
+                }
+                if (!groups[monthTitle][sale.productId]) {
+                    groups[monthTitle][sale.productId] = {
+                        ...sale,
+                        id: `best-${sale.productId}-${monthTitle}`,
+                        quantity: 0,
+                        total: 0,
+                        timestamp: new Date(saleDate.getFullYear(), saleDate.getMonth(), 1).getTime()
+                    };
+                }
+                groups[monthTitle][sale.productId].quantity += sale.quantity;
+                groups[monthTitle][sale.productId].total += sale.total;
+            });
+            
+            const sortedGroups = {};
+            const monthKeys = Object.keys(groups).sort((a, b) => new Date(b) - new Date(a));
+            
+            monthKeys.forEach(month => {
+                sortedGroups[month] = Object.values(groups[month]).sort((a, b) => b.quantity - a.quantity);
+            });
+            
+            return sortedGroups;
         },
 
         async renderProducts(searchText = '') {
@@ -1034,8 +1049,14 @@ document.addEventListener('DOMContentLoaded', () => {
             allProducts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)); // Sort by newest first
 
             this.elements.productGrid.innerHTML = '';
-            const totalValue = allProducts.reduce((sum, p) => sum + (p.price * p.stock), 0);
-            this.elements.productSkuCount.innerHTML = `<span>${allProducts.length} products</span><span>&#8358;${this.formatNumber(totalValue)}</span>`;
+            this.elements.productSkuCount.textContent = `${allProducts.length} products`;
+            let totalValue = allProducts.reduce((sum, p) => sum + ((Number(p.price) || 0) * (Number(p.stock) || 0)), 0);
+            if (!this.elements.productTotalValue) {
+                this.elements.productTotalValue = document.getElementById('product-total-value');
+            }
+            if (this.elements.productTotalValue) {
+                this.elements.productTotalValue.textContent = `₦${this.formatNumber(totalValue)}`;
+            }
 
             let filteredProducts = allProducts;
 
@@ -2402,14 +2423,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.stockViewFilterTabs.style.display = 'none';
                 this.elements.retailerStockView.style.display = 'block';
                 this.elements.salespeopleView.style.display = 'none';
+                if(document.getElementById('add-salesperson-fab')) document.getElementById('add-salesperson-fab').style.display = 'none';
             } else {
                 this.elements.stockViewFilterTabs.style.display = 'flex';
                 if (this.state.stockViewFilter === 'customers') {
                     this.elements.retailerStockView.style.display = 'block';
                     this.elements.salespeopleView.style.display = 'none';
+                    if(document.getElementById('add-salesperson-fab')) document.getElementById('add-salesperson-fab').style.display = 'none';
                 } else {
                     this.elements.retailerStockView.style.display = 'none';
                     this.elements.salespeopleView.style.display = 'block';
+                    if(document.getElementById('add-salesperson-fab')) document.getElementById('add-salesperson-fab').style.display = 'block';
                 }
             }
 
