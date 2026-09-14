@@ -447,20 +447,29 @@
                 <div class="sale-item-details"><img id="sale-product-image" src="" alt="Product image"><div><h3 id="sale-product-name">Product Name</h3><p id="sale-product-stock">Stock: 50 sachets</p></div></div>
                 <div class="sale-total"><p>Total</p><h2 id="sale-total-price">₦0</h2></div>
                 
-                <div class="discount-section">
-                    <div class="discount-header">
-                        <label class="switch">
-                            <input type="checkbox" id="discount-toggle">
-                            <span class="slider round"></span>
-                        </label>
-                        <label for="discount-toggle" class="discount-label">Apply Discount</label>
-                    </div>
-                    <div class="discount-input-container" id="discount-input-container" style="display:none;">
-                        <label for="discount-amount">Discount</label>
-                        <div class="input-with-prefix">
-                            <span class="currency-prefix">₦</span>
-                            <input type="text" id="discount-amount" inputmode="numeric" placeholder="0">
+                <div class="sale-modifier-section discount-section">
+                    <div class="triple-toggle-container">
+                        <span class="toggle-label toggle-left" id="toggle-label-discount">Discount</span>
+                        <div class="triple-toggle">
+                            <input type="range" id="sale-modifier-toggle" min="0" max="2" value="1">
                         </div>
+                        <span class="toggle-label toggle-right" id="toggle-label-credit">Credit</span>
+                    </div>
+                    
+                    <div class="modifier-input-container" id="modifier-input-container" style="display:none;">
+                        <label id="modifier-amount-label" for="modifier-amount">Discount</label>
+                        <div class="modifier-input-row">
+                            <div class="input-with-prefix">
+                                <span class="currency-prefix">₦</span>
+                                <input type="text" id="modifier-amount" inputmode="numeric" placeholder="0">
+                            </div>
+                            <button type="button" id="select-contact-btn" class="btn btn-secondary contact-picker-btn" style="display: none;" aria-label="Select Contact">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                            </button>
+                        </div>
+                        <div id="selected-contact-info" class="selected-contact-info" style="display: none;"></div>
+                        <input type="hidden" id="selected-contact-phone">
+                        <input type="hidden" id="selected-contact-name">
                     </div>
                 </div>
                 <div class="form-group"><label for="sale-quantity" id="sale-quantity-label">Quantity</label><input type="text" id="sale-quantity" inputmode="numeric" value="1" min="1"></div>

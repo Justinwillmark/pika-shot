@@ -293,47 +293,109 @@ html, body {
     margin-bottom: 8px;
 }
 
-/* Toggle Switch */
-.switch {
+/* Triple Toggle Container */
+.triple-toggle-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    width: 100%;
+    margin-bottom: 8px;
+}
+
+.toggle-label {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--text-light);
+    transition: color 0.3s;
+}
+
+.triple-toggle {
     position: relative;
-    display: inline-block;
-    width: 44px;
+    width: 60px;
     height: 24px;
-    flex-shrink: 0;
 }
-.switch input { 
-    opacity: 0;
-    width: 0;
-    height: 0;
-}
-.slider {
-    position: absolute;
-    cursor: pointer;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: #ccc;
-    transition: .4s;
+
+.triple-toggle input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 100%;
+    background: #e0e0e0;
     border-radius: 24px;
+    outline: none;
+    margin: 0;
+    padding: 0;
+    cursor: pointer;
+    transition: background 0.3s;
 }
-.slider:before {
-    position: absolute;
-    content: "";
-    height: 18px;
+
+.triple-toggle input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
     width: 18px;
-    left: 3px;
-    bottom: 3px;
-    background-color: white;
-    transition: .4s;
+    height: 18px;
     border-radius: 50%;
+    background: white;
+    cursor: pointer;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    margin-top: 0px; /* Aligns thumb with track height if needed */
 }
-input:checked + .slider {
-    background-color: var(--primary-color);
+
+.triple-toggle input[type="range"]::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: white;
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
 }
-input:checked + .slider:before {
-    transform: translateX(20px);
+
+/* Modifiers for toggle states */
+.triple-toggle input[type="range"][value="0"] {
+    background: var(--primary-color); /* Discount (Teal) */
 }
+.triple-toggle input[type="range"][value="2"] {
+    background: #e74c3c; /* Credit (Red) */
+}
+.toggle-label.active-discount {
+    color: var(--primary-color);
+}
+.toggle-label.active-credit {
+    color: #e74c3c;
+}
+
+.modifier-input-row {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+}
+.contact-picker-btn {
+    padding: 0 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.debt-mark {
+    color: #e74c3c;
+    font-weight: bold;
+}
+.sale-card.credit-card {
+    border: 2px solid #e74c3c;
+}
+.credit-badge {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: #e74c3c;
+    color: white;
+    font-size: 0.7rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: bold;
+}
+
 .discount-input-container {
     margin-top: 12px;
     animation: slideDown 0.3s ease-out;
