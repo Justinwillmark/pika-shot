@@ -344,11 +344,22 @@
         <div id="camera-view" class="view camera-container">
             <video id="camera-feed" playsinline></video>
             <div id="camera-overlay" class="camera-overlay">
-                <div class="scan-box"></div>
-                <p id="scan-feedback">Scanning...</p>
+                <div class="scan-area-wrapper" style="position: relative; margin-top: -15vh;">
+                    <div class="scan-box"></div>
+                    <button id="torch-btn" class="btn-icon" style="position: absolute; right: -60px; top: 50%; transform: translateY(-50%); color: white; background: rgba(0,0,0,0.5); border-radius: 50%; padding: 12px; z-index: 10;" title="Toggle Torch">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 2v22"></path>
+                            <path d="M17 12L7 12"></path>
+                        </svg>
+                    </button>
+                </div>
+                <p id="scan-feedback" style="margin-top: 15vh;">Scanning...</p>
                 <div id="scan-timer-display" class="scan-timer-display">3</div>
             </div>
-            <button id="cancel-scan-btn" class="btn btn-secondary cancel-scan-btn">Cancel</button>
+            <div class="camera-actions" style="position: absolute; bottom: 30px; left: 0; right: 0; display: flex; justify-content: center; gap: 10px; padding: 0 20px; z-index: 10;">
+                <button id="cancel-scan-btn" class="btn btn-secondary" style="flex: 1;">Cancel</button>
+                <button id="manual-select-product-btn" class="btn btn-primary" style="flex: 2;">Select from products</button>
+            </div>
         </div>
 
     </div>
@@ -472,7 +483,7 @@
                                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M19 8v6"></path><path d="M22 11h-6"></path></svg>
                             </button>
                         </div>
-                        <div id="selected-contact-name" class="contact-name-display text-muted" style="display:none; font-size: 0.75rem; margin-top: 4px; padding-left: 8px;"></div>
+                        <div id="selected-contact-name" class="contact-name-display text-muted" style="display:none; font-size: 0.75rem; margin-top: 4px; text-align: right; padding-right: 8px;"></div>
                     </div>
                 </div>
                 <div class="form-group"><label for="sale-quantity" id="sale-quantity-label">Quantity</label><input type="text" id="sale-quantity" inputmode="numeric" value="1" min="1"></div>

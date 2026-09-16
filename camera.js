@@ -51,6 +51,24 @@ const Camera = {
             return false;
         }
     },
+    
+    toggleTorch() {
+        if (!this.stream) return false;
+        try {
+            const track = this.stream.getVideoTracks()[0];
+            const capabilities = track.getCapabilities && track.getCapabilities();
+            if (capabilities && capabilities.torch) {
+                const current = track.getSettings().torch;
+                track.applyConstraints({
+                    advanced: [{ torch: !current }]
+                });
+                return true;
+            }
+        } catch (e) {
+            console.error("Torch error: ", e);
+        }
+        return false;
+    },
 
     async startScan(onResult, onTimeout, countdownElement) {
         if (!this.barcodeDetector) {

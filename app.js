@@ -68,6 +68,8 @@ document.addEventListener('DOMContentLoaded', () => {
             addNewProductBtn: document.getElementById('add-new-product-btn'),
             cameraView: document.getElementById('camera-view'),
             cancelScanBtn: document.getElementById('cancel-scan-btn'),
+            torchBtn: document.getElementById('torch-btn'),
+            manualSelectProductBtn: document.getElementById('manual-select-product-btn'),
             scanFeedback: document.getElementById('scan-feedback'),
             scanTimerDisplay: document.getElementById('scan-timer-display'),
             sellItemBtnMain: document.getElementById('sell-item-btn-main'),
@@ -320,6 +322,8 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.addChangePictureBtn.addEventListener('click', this.handleAddOrChangePicture.bind(this));
             this.elements.scanNewBarcodeBtn.addEventListener('click', this.startBarcodeAssignmentScan.bind(this));
             this.elements.cancelPictureBtn.addEventListener('click', () => this.hideModal());
+            if(this.elements.torchBtn) this.elements.torchBtn.addEventListener('click', () => { Camera.toggleTorch(); });
+            if(this.elements.manualSelectProductBtn) this.elements.manualSelectProductBtn.addEventListener('click', () => { Camera.stop(); this.navigateTo('products-view'); });
             this.elements.saleQuantityInput.addEventListener('input', this.updateSaleTotal.bind(this));
             // TRIPLE TOGGLE LISTENERS
             this.elements.saleTypeRadios.forEach(radio => {
@@ -359,6 +363,11 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Contacts API interaction
             this.elements.selectContactBtn.addEventListener('click', async () => {
+                const showContactSuccess = () => {
+                    this.elements.selectContactBtn.classList.add('success');
+                    setTimeout(() => this.elements.selectContactBtn.classList.remove('success'), 2000);
+                };
+                
                 try {
                     const props = ['name', 'tel'];
                     const opts = { multiple: false };
@@ -369,6 +378,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             this.state.selectedContact = { name: contactName, phone: contacts[0].tel ? contacts[0].tel[0] : '' };
                             this.elements.selectedContactName.textContent = contactName;
                             this.elements.selectedContactName.style.display = 'block';
+                            showContactSuccess();
                         }
                     } else {
                         const name = prompt("Enter customer name:");
@@ -376,6 +386,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             this.state.selectedContact = { name };
                             this.elements.selectedContactName.textContent = name;
                             this.elements.selectedContactName.style.display = 'block';
+                            showContactSuccess();
                         }
                     }
                 } catch (ex) {
@@ -385,6 +396,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         this.state.selectedContact = { name };
                         this.elements.selectedContactName.textContent = name;
                         this.elements.selectedContactName.style.display = 'block';
+                        showContactSuccess();
                     }
                 }
             });
@@ -1312,6 +1324,18 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         async _handleSuccessfulScan() {
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                oscillator.type = 'square';
+                oscillator.frequency.value = 800; // Hz
+                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime); // 10% volume
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.1); // 100ms beep
+            } catch(e) {}
             await DB.incrementScanCount();
             this.updateScanTracker();
         },
@@ -1779,22 +1803,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const subtotal = quantity * price;
 
             let discount = 0;
-            let partPayment = null;
             const activeRadio = Array.from(this.elements.saleTypeRadios).find(r => r.checked);
             
             if (activeRadio && activeRadio.value === 'discount') {
                 discount = this.unformatNumber(this.elements.discountAmountInput.value) || 0;
-            } else if (activeRadio && activeRadio.value === 'credit') {
-                partPayment = this.unformatNumber(this.elements.discountAmountInput.value) || 0;
             }
 
             const total = Math.max(0, subtotal - discount);
-
-            if (activeRadio && activeRadio.value === 'credit') {
-                this.elements.saleTotalPrice.textContent = `₦${this.formatNumber(partPayment || 0)}`;
-            } else {
-                this.elements.saleTotalPrice.textContent = `₦${this.formatNumber(total)}`;
-            }
+            this.elements.saleTotalPrice.textContent = `₦${this.formatNumber(total)}`;
         },
         async _processSale() {
             const quantity = this.unformatNumber(this.elements.saleQuantityInput.value);
@@ -2803,7 +2819,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     ${stockHtml}
 
                     <div class="card-footer" style="display: flex; justify-content: center; padding-top: 8px;">
-                        <button class="delete-credit-btn btn btn-secondary" style="width: 100%; border-radius: 8px; font-weight: 500; font-size: 0.85rem;" data-id="${sale.id}" title="Mark as Fully Repaid">Fully repaid</button>
+                        <button class="delete-credit-btn btn btn-secondary" style="width: 100%; border-radius: 8px; font-weight: 500; font-size: 0.85rem;" data-id="${sale.id}" title="Mark as Fully Repaid">Fully repaid?</button>
                     </div>
                 </div>
             `;
