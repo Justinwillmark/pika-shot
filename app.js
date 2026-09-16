@@ -66,11 +66,10 @@ document.addEventListener('DOMContentLoaded', () => {
             productSearchInput: document.getElementById('product-search-input'),
             productFilterTabs: document.querySelectorAll('#products-view .product-filter-tabs .filter-tab-btn'),
             addNewProductBtn: document.getElementById('add-new-product-btn'),
-            doneProductSelectionBtn: document.getElementById('done-product-selection-btn'),
             cameraView: document.getElementById('camera-view'),
             cancelScanBtn: document.getElementById('cancel-scan-btn'),
             torchBtn: document.getElementById('torch-btn'),
-            torchBtn: document.getElementById('torch-btn'),
+            manualSelectProductBtn: document.getElementById('manual-select-product-btn'),
             scanFeedback: document.getElementById('scan-feedback'),
             scanTimerDisplay: document.getElementById('scan-timer-display'),
             sellItemBtnMain: document.getElementById('sell-item-btn-main'),
@@ -145,7 +144,7 @@ document.addEventListener('DOMContentLoaded', () => {
             cancelEntryChoiceBtn: document.getElementById('cancel-entry-choice-btn'),
             manualEntryBtn: document.getElementById('manual-entry-btn'),
             retrySellScanBtn: document.getElementById('retry-sell-scan-btn'),
-            retrySellScanBtn: document.getElementById('retry-sell-scan-btn'),
+            selectFromProductsBtn: document.getElementById('select-from-products-btn'),
             manualSaleModal: document.getElementById('manual-sale-modal'),
             manualSaleForm: document.getElementById('manual-sale-form'),
             cancelManualSaleBtn: document.getElementById('cancel-manual-sale-btn'),
@@ -314,18 +313,6 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.navButtons.forEach(btn => btn.addEventListener('click', () => this.navigateTo(btn.dataset.view)));
             this.elements.sellItemBtnMain.addEventListener('click', this.startSellScan.bind(this));
             this.elements.addNewProductBtn.addEventListener('click', this.startAddProduct.bind(this));
-            
-            if (this.elements.doneProductSelectionBtn) {
-                this.elements.doneProductSelectionBtn.addEventListener('click', async () => {
-                    const allProducts = await DB.getAllProducts();
-                    const selectedProducts = allProducts.filter(p => this.state.selectedProductsForSale && this.state.selectedProductsForSale.has(p.id));
-                    this.exitProductSelectionMode();
-                    if (selectedProducts.length > 0) {
-                        this.handleMultipleProductsFound(selectedProducts);
-                    }
-                });
-            }
-
             this.elements.productForm.addEventListener('submit', this.handleSaveProduct.bind(this));
             this.elements.deleteProductBtn.addEventListener('click', this.handleDeleteProduct.bind(this));
             this.elements.cancelProductFormBtn.addEventListener('click', () => this.hideModal());
@@ -336,6 +323,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.scanNewBarcodeBtn.addEventListener('click', this.startBarcodeAssignmentScan.bind(this));
             this.elements.cancelPictureBtn.addEventListener('click', () => this.hideModal());
             if(this.elements.torchBtn) this.elements.torchBtn.addEventListener('click', () => { Camera.toggleTorch(); });
+            if(this.elements.manualSelectProductBtn) this.elements.manualSelectProductBtn.addEventListener('click', () => { Camera.stop(); this.navigateTo('products-view'); });
             this.elements.saleQuantityInput.addEventListener('input', this.updateSaleTotal.bind(this));
             // TRIPLE TOGGLE LISTENERS
             this.elements.saleTypeRadios.forEach(radio => {
@@ -463,6 +451,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.retrySellScanBtn.addEventListener('click', () => { this.hideModal(); this.startSellScan(); });
             this.elements.cancelManualSaleBtn.addEventListener('click', () => this.hideModal());
             this.elements.manualSaleForm.addEventListener('submit', this.handleManualSale.bind(this));
+            this.elements.selectFromProductsBtn.addEventListener('click', this.showProductSelection.bind(this));
             this.elements.rejectLogBtn.addEventListener('click', () => { this.hideModal(); this.state.scannedLogData = null; });
             this.elements.acceptLogBtn.addEventListener('click', this.acceptPikaLog.bind(this));
             this.elements.retryAddScanBtn.addEventListener('click', () => { this.hideModal(); this.startAddProduct(); });
@@ -1272,44 +1261,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     this.handleEditProduct(product)
                 });
 
-                let pressTimer;
-                const startPress = () => {
-                    if (this.state.productSelectionMode) return;
-                    pressTimer = setTimeout(() => {
-                        this.state.productSelectionMode = true;
-                        if (!this.state.selectedProductsForSale) this.state.selectedProductsForSale = new Set();
-                        this.state.selectedProductsForSale.add(product.id);
-                        card.classList.add('selected');
-                        this.elements.productsView.classList.add('selection-mode');
-                        document.getElementById('done-product-selection-btn').style.display = 'flex';
-                        this.elements.addNewProductBtn.style.display = 'none';
-                        if ('vibrate' in navigator) navigator.vibrate(50);
-                    }, 500); // 500ms long press
-                };
-
-                const cancelPress = () => {
-                    clearTimeout(pressTimer);
-                };
-
-                card.addEventListener('mousedown', startPress);
-                card.addEventListener('touchstart', startPress, { passive: true });
-                card.addEventListener('mouseup', cancelPress);
-                card.addEventListener('mouseleave', cancelPress);
-                card.addEventListener('touchend', cancelPress);
-
-                card.addEventListener('click', (e) => {
+                card.addEventListener('click', () => {
                     if (this.state.productSelectionMode) {
-                        e.preventDefault();
-                        if (this.state.selectedProductsForSale.has(product.id)) {
-                            this.state.selectedProductsForSale.delete(product.id);
-                            card.classList.remove('selected');
-                            if (this.state.selectedProductsForSale.size === 0) {
-                                this.exitProductSelectionMode();
-                            }
-                        } else {
-                            this.state.selectedProductsForSale.add(product.id);
-                            card.classList.add('selected');
-                        }
+                        this.state.productSelectionMode = false;
+                        this.handleProductFound(product);
+                        this.elements.productsView.classList.remove('selection-mode');
+                        this.elements.addNewProductBtn.style.display = (this.state.user && this.state.user.type === 'Salesperson') ? 'none' : 'flex';
                     } else {
                         this.handleEditProduct(product);
                     }
@@ -1465,20 +1422,19 @@ document.addEventListener('DOMContentLoaded', () => {
                         timestamp: window.fb.serverTimestamp()
                     });
 
+                    this._handleSuccessfulScan();
+
                     history.back();
                     if (result.type === 'barcode') {
                         const product = await DB.getProductByBarcode(result.data);
                         if (product) {
-                            this._handleSuccessfulScan();
                             this.handleProductFound(product);
                         } else {
                             this.handleSellScanNotFound(false);
                         }
                     } else if (result.type === 'qrlog') {
-                        this._handleSuccessfulScan();
                         this.handlePikaLogScanned(result.data);
                     } else if (result.type === 'qrlog_id') {
-                        this._handleSuccessfulScan();
                         this.handlePikaLogIdScanned(result.data);
                     }
                 },
@@ -1822,18 +1778,14 @@ document.addEventListener('DOMContentLoaded', () => {
             this.showModal('product-form-modal');
         },
 
-        exitProductSelectionMode() {
-            this.state.productSelectionMode = false;
-            this.state.selectedProductsForSale = new Set();
-            this.elements.productsView.classList.remove('selection-mode');
-            document.getElementById('done-product-selection-btn').style.display = 'none';
-            this.elements.addNewProductBtn.style.display = (this.state.user && this.state.user.type === 'Salesperson') ? 'none' : 'flex';
-            this.renderProducts(this.elements.productSearchInput.value);
-        },
-        handleMultipleProductsFound(products) {
-            this.state.sellingProducts = products.map(p => ({ product: p, quantity: 1 }));
-            this._renderConfirmSaleModal();
-            
+        handleProductFound(product) {
+            this.state.sellingProduct = product;
+            this.elements.saleProductImage.src = product.image ? URL.createObjectURL(product.image) : 'icons/icon-192.png';
+            this.elements.saleProductName.textContent = product.name;
+            this.elements.saleProductStock.textContent = `Stock: ${this.formatNumber(product.stock)} ${product.unit} left`;
+            this.elements.saleQuantityLabel.textContent = `How many ${product.unit} are you selling?`;
+            this.elements.saleQuantityInput.value = '1';
+
             // Reset triple toggle fields
             const defaultRadio = Array.from(this.elements.saleTypeRadios).find(r => r.value === 'default');
             if (defaultRadio) {
@@ -1841,72 +1793,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 defaultRadio.dispatchEvent(new Event('change'));
             }
 
+            this.updateSaleTotal();
             this.elements.saleOfflineNotice.style.display = 'none';
             this.showModal('confirm-sale-modal');
         },
-        handleProductFound(product) {
-            this.handleMultipleProductsFound([product]);
-        },
-        _renderConfirmSaleModal() {
-            const container = document.getElementById('sale-items-container');
-            container.innerHTML = '';
-            
-            this.state.sellingProducts.forEach((item, index) => {
-                const product = item.product;
-                const imageUrl = product.image ? URL.createObjectURL(product.image) : 'icons/icon-192.png';
-                
-                const itemEl = document.createElement('div');
-                itemEl.className = 'sale-item-details';
-                itemEl.style.marginBottom = '10px';
-                itemEl.style.padding = '8px 0';
-                itemEl.style.borderBottom = '1px solid var(--border-color)';
-                itemEl.innerHTML = `
-                    <img src="${imageUrl}" alt="Product image">
-                    <div style="flex-grow: 1;">
-                        <h3 style="font-size:1rem;margin:0 0 4px 0;">${product.name}</h3>
-                        <p style="font-size:0.8rem;color:var(--text-light);margin:0;">Stock: ${this.formatNumber(product.stock)} ${product.unit}</p>
-                    </div>
-                    <div class="quantity-controls" style="display: flex; align-items: center; gap: 8px;">
-                        <button type="button" class="btn-icon qty-minus" data-index="${index}" style="width:30px;height:30px;font-size:18px;border:1px solid var(--border-color);border-radius:4px;">-</button>
-                        <span style="font-weight: 500; min-width: 20px; text-align: center;">${item.quantity}</span>
-                        <button type="button" class="btn-icon qty-plus" data-index="${index}" style="width:30px;height:30px;font-size:18px;border:1px solid var(--border-color);border-radius:4px;">+</button>
-                        <button type="button" class="btn-icon text-danger remove-item" data-index="${index}" style="width:30px;height:30px;font-size:18px;margin-left:10px;">&times;</button>
-                    </div>
-                `;
-                container.appendChild(itemEl);
-            });
-
-            container.querySelectorAll('.qty-minus').forEach(btn => btn.addEventListener('click', (e) => {
-                const idx = e.target.dataset.index;
-                if (this.state.sellingProducts[idx].quantity > 1) {
-                    this.state.sellingProducts[idx].quantity--;
-                    this._renderConfirmSaleModal();
-                }
-            }));
-            container.querySelectorAll('.qty-plus').forEach(btn => btn.addEventListener('click', (e) => {
-                const idx = e.target.dataset.index;
-                this.state.sellingProducts[idx].quantity++;
-                this._renderConfirmSaleModal();
-            }));
-            container.querySelectorAll('.remove-item').forEach(btn => btn.addEventListener('click', (e) => {
-                const idx = e.target.dataset.index;
-                this.state.sellingProducts.splice(idx, 1);
-                if (this.state.sellingProducts.length === 0) {
-                    this.hideModal();
-                } else {
-                    this._renderConfirmSaleModal();
-                }
-            }));
-
-            this.updateSaleTotal();
-        },
         updateSaleTotal() {
-            let subtotal = 0;
-            if (this.state.sellingProducts) {
-                this.state.sellingProducts.forEach(item => {
-                    subtotal += item.quantity * (item.product.price || 0);
-                });
-            }
+            const quantity = this.unformatNumber(this.elements.saleQuantityInput.value);
+            const price = this.state.sellingProduct?.price || 0;
+            const subtotal = quantity * price;
 
             let discount = 0;
             const activeRadio = Array.from(this.elements.saleTypeRadios).find(r => r.checked);
@@ -1919,10 +1813,13 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.saleTotalPrice.textContent = `₦${this.formatNumber(total)}`;
         },
         async _processSale() {
-            let customerName = 'Walk-in Customer';
-            const activeRadio = Array.from(this.elements.saleTypeRadios).find(r => r.checked);
+            const quantity = this.unformatNumber(this.elements.saleQuantityInput.value);
+            const product = this.state.sellingProduct;
+            
             let discount = 0;
             let partPayment = null;
+            let customerName = 'Walk-in Customer';
+            const activeRadio = Array.from(this.elements.saleTypeRadios).find(r => r.checked);
             
             if (activeRadio && activeRadio.value === 'discount') {
                 discount = this.unformatNumber(this.elements.discountAmountInput.value) || 0;
@@ -1939,70 +1836,36 @@ document.addEventListener('DOMContentLoaded', () => {
                 customerName = this.state.selectedContact.name;
             }
 
-            let subtotalAll = 0;
-            for (const item of this.state.sellingProducts) {
-                if (item.quantity <= 0 || !item.product || item.quantity > item.product.stock) {
-                    alert(`Invalid quantity or product not available: ${item.product.name}`);
-                    return false;
-                }
-                subtotalAll += item.quantity * item.product.price;
+            if (quantity <= 0 || !product || quantity > product.stock) { alert('Invalid quantity or product not available.'); return false; }
+
+            product.stock -= quantity;
+
+            await DB.saveProduct(product);
+            
+            let total = Math.max(0, (quantity * product.price) - discount);
+            if (activeRadio && activeRadio.value === 'credit') {
+                total = partPayment; // User requested: part payment becomes recorded total
             }
-
-            const processedSales = [];
-            const timestamp = new Date();
-            const logItems = [];
-
-            for (let i = 0; i < this.state.sellingProducts.length; i++) {
-                const item = this.state.sellingProducts[i];
-                const product = item.product;
-                const quantity = item.quantity;
-                product.stock -= quantity;
-                await DB.saveProduct(product);
-
-                let itemSubtotal = quantity * product.price;
-                let itemDiscount = 0;
-                let itemTotal = itemSubtotal;
-
-                if (subtotalAll > 0) {
-                    if (activeRadio && activeRadio.value === 'discount') {
-                        itemDiscount = (itemSubtotal / subtotalAll) * discount;
-                        itemTotal = itemSubtotal - itemDiscount;
-                    } else if (activeRadio && activeRadio.value === 'credit') {
-                        let itemPartPayment = (itemSubtotal / subtotalAll) * partPayment;
-                        itemTotal = itemPartPayment;
-                    }
-                }
-
-                const sale = {
-                    id: Date.now() + i, // ensure unique ID
-                    productId: product.id,
-                    productName: product.name,
-                    quantity: quantity,
-                    price: product.price,
-                    discount: itemDiscount,
-                    saleType: activeRadio ? activeRadio.value : 'default',
-                    customerName: customerName,
-                    customerPhone: (this.state.selectedContact && this.state.selectedContact.phone) ? this.state.selectedContact.phone.trim().replace(/\s+/g, '') : null,
-                    total: itemTotal,
-                    timestamp: timestamp,
-                    image: product.image,
-                    sharedAsLog: false,
-                    unit: product.unit
-                };
-                
-                logItems.push({
-                    name: product.name,
-                    price: product.price,
-                    quantity: quantity,
-                    unit: product.unit,
-                    barcode: product.barcode || null
-                });
-
-                processedSales.push(sale);
-            }
+            
+            const sale = {
+                id: Date.now(),
+                productId: product.id,
+                productName: product.name,
+                quantity: quantity,
+                price: product.price,
+                discount: discount, // Save discount
+                saleType: activeRadio ? activeRadio.value : 'default',
+                customerName: customerName,
+                customerPhone: (this.state.selectedContact && this.state.selectedContact.phone) ? this.state.selectedContact.phone.trim().replace(/\s+/g, '') : null,
+                total: total,
+                timestamp: new Date(),
+                image: product.image,
+                sharedAsLog: false,
+                unit: product.unit
+            };
 
             // Auto-transfer for credit sales
-            if (activeRadio && activeRadio.value === 'credit' && this.state.selectedContact && this.state.selectedContact.phone) {
+            if (sale.saleType === 'credit' && this.state.selectedContact && this.state.selectedContact.phone) {
                 try {
                     if (this.state.firebaseReady && window.fb) {
                         const targetPhone = this.state.selectedContact.phone.trim().replace(/\s+/g, '');
@@ -2015,11 +1878,17 @@ document.addEventListener('DOMContentLoaded', () => {
                                 targetPhone: targetPhone,
                                 claimed: false,
                                 timestamp: window.fb.serverTimestamp(),
-                                items: logItems
+                                items: [{
+                                    name: product.name,
+                                    price: product.price,
+                                    quantity: sale.quantity,
+                                    unit: product.unit,
+                                    barcode: product.barcode || null
+                                }]
                             };
                             const logCollectionRef = window.fb.collection(window.fb.db, 'shared_logs');
                             await window.fb.addDoc(logCollectionRef, logData);
-                            processedSales.forEach(s => s.sharedAsLog = true);
+                            sale.sharedAsLog = true;
                         }
                     }
                 } catch (error) {
@@ -2027,40 +1896,40 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-            for (const sale of processedSales) {
-                await DB.addSale(sale);
-                
-                const saleDataForAdmin = {
-                    userId: this.state.user.phone,
-                    total: sale.total,
-                    timestamp: window.fb.serverTimestamp()
-                };
-                this._logToFirestore('sales_logs', null, saleDataForAdmin);
+            await DB.addSale(sale);
 
-                if (this.state.firebaseReady && this.state.sellingProducts.find(item => item.product.id === sale.productId)?.product.supplierId && this.state.user.phone) {
-                    try {
-                        const p = this.state.sellingProducts.find(item => item.product.id === sale.productId).product;
-                        const retailerDocRef = window.fb.doc(window.fb.db, `retailer_stocks/${p.supplierId}/supplied_retailers/${this.state.user.phone}`);
-                        const updateData = {};
-                        const firebaseProductName = p.originalName || p.name;
-                        updateData[`products.${firebaseProductName}.stock`] = p.stock;
-                        updateData[`products.${firebaseProductName}.lastSaleTimestamp`] = window.fb.serverTimestamp();
-                        updateData.lastUpdate = window.fb.serverTimestamp();
+            // --- SALES LOGGING: START ---
+            const saleDataForAdmin = {
+                userId: this.state.user.phone,
+                total: sale.total,
+                timestamp: window.fb.serverTimestamp() // Use server timestamp for accuracy
+            };
+            this._logToFirestore('sales_logs', null, saleDataForAdmin);
+            // --- SALES LOGGING: END ---
 
-                        await window.fb.updateDoc(retailerDocRef, updateData);
+            if (this.state.firebaseReady && product.supplierId && this.state.user.phone) {
+                try {
+                    const retailerDocRef = window.fb.doc(window.fb.db, `retailer_stocks/${product.supplierId}/supplied_retailers/${this.state.user.phone}`);
+                    const updateData = {};
+                    const firebaseProductName = product.originalName || product.name;
+                    updateData[`products.${firebaseProductName}.stock`] = product.stock;
+                    updateData[`products.${firebaseProductName}.lastSaleTimestamp`] = window.fb.serverTimestamp();
+                    updateData.lastUpdate = window.fb.serverTimestamp();
 
-                        if (p.isSalesperson) {
-                            const saleDataForWholesaler = {
-                                ...sale,
-                                timestamp: window.fb.serverTimestamp()
-                            };
-                            delete saleDataForWholesaler.image;
-                            const salesSubcollectionRef = window.fb.collection(window.fb.db, `retailer_stocks/${p.supplierId}/supplied_retailers/${this.state.user.phone}/sales`);
-                            await window.fb.addDoc(salesSubcollectionRef, saleDataForWholesaler);
-                        }
-                    } catch (error) {
-                        console.error("Failed to sync sale to Firebase:", error);
+                    await window.fb.updateDoc(retailerDocRef, updateData);
+
+                    if (product.isSalesperson) {
+                        const saleDataForWholesaler = {
+                            ...sale,
+                            timestamp: window.fb.serverTimestamp()
+                        };
+                        delete saleDataForWholesaler.image; // Don't upload blob to Firestore
+                        const salesSubcollectionRef = window.fb.collection(window.fb.db, `retailer_stocks/${product.supplierId}/supplied_retailers/${this.state.user.phone}/sales`);
+                        await window.fb.addDoc(salesSubcollectionRef, saleDataForWholesaler);
                     }
+
+                } catch (error) {
+                    console.error("Failed to sync sale to Firebase:", error);
                 }
             }
 

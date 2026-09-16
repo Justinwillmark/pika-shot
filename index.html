@@ -282,9 +282,6 @@
                 <button id="add-new-product-btn" class="fab disabled">
                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                 </button>
-                <button id="done-product-selection-btn" class="fab" style="display: none; background-color: var(--primary-color);">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                </button>
             </div>
 
             <div id="all-sales-view" class="view page">
@@ -349,9 +346,10 @@
             <div id="camera-overlay" class="camera-overlay">
                 <div class="scan-area-wrapper" style="position: relative; margin-top: -15vh;">
                     <div class="scan-box"></div>
-                    <button id="torch-btn" class="btn-icon" style="position: fixed; right: 20px; top: 50%; transform: translateY(-50%); color: white; background: rgba(0,0,0,0.5); border-radius: 50%; padding: 12px; z-index: 10;" title="Toggle Torch">
+                    <button id="torch-btn" class="btn-icon" style="position: absolute; right: -60px; top: 50%; transform: translateY(-50%); color: white; background: rgba(0,0,0,0.5); border-radius: 50%; padding: 12px; z-index: 10;" title="Toggle Torch">
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M18 6c0 2-2 2-2 4v10a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2V10c0-2-2-2-2-4V2h12z"></path><line x1="6" y1="6" x2="18" y2="6"></line><line x1="12" y1="12" x2="12" y2="12"></line>
+                            <path d="M12 2v22"></path>
+                            <path d="M17 12L7 12"></path>
                         </svg>
                     </button>
                 </div>
@@ -360,6 +358,7 @@
             </div>
             <div class="camera-actions" style="position: absolute; bottom: 30px; left: 0; right: 0; display: flex; justify-content: center; gap: 10px; padding: 0 20px; z-index: 10;">
                 <button id="cancel-scan-btn" class="btn btn-secondary" style="flex: 1;">Cancel</button>
+                <button id="manual-select-product-btn" class="btn btn-primary" style="flex: 2;">Select from products</button>
             </div>
         </div>
 
@@ -456,9 +455,7 @@
         <div id="confirm-sale-modal" class="modal-content" style="display:none;">
              <div class="modal-scroll-content">
                 <h2>Confirm Sale</h2>
-                <div id="sale-items-container" class="sale-items-container">
-                    <!-- Multiple items will be injected here -->
-                </div>
+                <div class="sale-item-details"><img id="sale-product-image" src="" alt="Product image"><div><h3 id="sale-product-name">Product Name</h3><p id="sale-product-stock">Stock: 50 sachets</p></div></div>
                 <div class="sale-total"><p>Total</p><h2 id="sale-total-price">₦0</h2></div>
                 
                 <div class="sale-type-section">
@@ -489,7 +486,7 @@
                         <div id="selected-contact-name" class="contact-name-display text-muted" style="display:none; font-size: 0.75rem; margin-top: 4px; text-align: right; padding-right: 8px;"></div>
                     </div>
                 </div>
-                <!-- Quantity will be handled inside each item in the container now -->
+                <div class="form-group"><label for="sale-quantity" id="sale-quantity-label">Quantity</label><input type="text" id="sale-quantity" inputmode="numeric" value="1" min="1"></div>
             </div>
             <p id="sale-offline-notice" class="offline-notice" style="display: none;">Please connect to the internet to confirm this sale.</p>
             <div class="modal-actions modal-actions-inline">
@@ -514,6 +511,7 @@
             <div class="modal-actions">
                 <button id="retry-sell-scan-btn" class="btn btn-secondary" style="display: none;">Try Again</button>
                 <button id="manual-entry-btn" class="btn btn-secondary">Manual Entry</button>
+                <button id="select-from-products-btn" class="btn btn-primary">Select from Products</button>
             </div>
              <button type="button" id="cancel-entry-choice-btn" class="btn btn-secondary" style="margin-top: 12px;">Cancel</button>
         </div>

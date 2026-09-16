@@ -779,8 +779,7 @@ html, body {
 .edit-btn-icon svg { width: 100%; height: 100%; stroke: var(--text-color); }
 .out-of-stock-badge + .edit-btn-icon, .restock-badge + .edit-btn-icon, .setup-badge + .edit-btn-icon { left: 6px; top: 42px; }
 
-.selection-mode .product-card { cursor: pointer; transition: transform 0.2s; }
-.selection-mode .product-card.selected { border: 2px solid var(--primary-color); background-color: rgba(0, 140, 149, 0.05); }
+.selection-mode .product-card { cursor: pointer; border: 2px solid var(--primary-color); }
 .selection-mode .product-card:hover { transform: scale(1.03); box-shadow: 0 6px 15px rgba(0,0,0,0.12); }
 
 /* === Wholesaler View Styles === */
