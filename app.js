@@ -103,10 +103,17 @@ document.addEventListener('DOMContentLoaded', () => {
             cancelSaleBtn: document.getElementById('cancel-sale-btn'),
             confirmSaleBtn: document.getElementById('confirm-sale-btn'),
             saleOfflineNotice: document.getElementById('sale-offline-notice'),
-            // NEW DOM ELEMENTS FOR DISCOUNT
-            discountToggle: document.getElementById('discount-toggle'),
+            // NEW DOM ELEMENTS FOR TRIPLE TOGGLE
+            saleTypeRadios: document.querySelectorAll('input[name="sale_type"]'),
             discountInputContainer: document.getElementById('discount-input-container'),
             discountAmountInput: document.getElementById('discount-amount'),
+            discountInputLabel: document.getElementById('discount-input-label'),
+            discountInputWrapper: document.getElementById('discount-input-wrapper'),
+            inputContactWrapper: document.getElementById('input-contact-wrapper'),
+            selectContactBtn: document.getElementById('select-contact-btn'),
+            selectedContactName: document.getElementById('selected-contact-name'),
+            labelDiscount: document.getElementById('label-discount'),
+            labelCredit: document.getElementById('label-credit'),
 
             installBtn: document.getElementById('add-to-homescreen-btn'),
             receiptActions: document.getElementById('receipt-actions'),
@@ -314,14 +321,71 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.scanNewBarcodeBtn.addEventListener('click', this.startBarcodeAssignmentScan.bind(this));
             this.elements.cancelPictureBtn.addEventListener('click', () => this.hideModal());
             this.elements.saleQuantityInput.addEventListener('input', this.updateSaleTotal.bind(this));
-            // NEW LISTENER FOR DISCOUNT
-            this.elements.discountToggle.addEventListener('change', (e) => {
-                this.elements.discountInputContainer.style.display = e.target.checked ? 'block' : 'none';
-                if (!e.target.checked) {
-                    this.elements.discountAmountInput.value = '';
-                    this.updateSaleTotal();
+            // TRIPLE TOGGLE LISTENERS
+            this.elements.saleTypeRadios.forEach(radio => {
+                radio.addEventListener('change', (e) => {
+                    const saleType = e.target.value;
+                    
+                    this.elements.labelDiscount.classList.toggle('active', saleType === 'discount');
+                    this.elements.labelCredit.classList.toggle('active', saleType === 'credit');
+
+                    if (saleType === 'default') {
+                        this.elements.discountInputContainer.style.display = 'none';
+                        this.elements.discountAmountInput.value = '';
+                        this.elements.selectedContactName.style.display = 'none';
+                        this.elements.selectedContactName.textContent = '';
+                        this.state.selectedContact = null;
+                        this.updateSaleTotal();
+                    } else {
+                        this.elements.discountInputContainer.style.display = 'block';
+                        if (saleType === 'discount') {
+                            this.elements.discountInputLabel.textContent = 'Discount';
+                            this.elements.inputContactWrapper.classList.remove('credit-mode');
+                            this.elements.selectedContactName.style.display = 'none';
+                            this.elements.selectedContactName.textContent = '';
+                            this.state.selectedContact = null;
+                        } else if (saleType === 'credit') {
+                            this.elements.discountInputLabel.textContent = 'Part payment';
+                            this.elements.inputContactWrapper.classList.add('credit-mode');
+                        }
+                        this.elements.discountAmountInput.value = '';
+                        this.updateSaleTotal();
+                    }
+                });
+            });
+            
+            // Contacts API interaction
+            this.elements.selectContactBtn.addEventListener('click', async () => {
+                try {
+                    const props = ['name', 'tel'];
+                    const opts = { multiple: false };
+                    if ('contacts' in navigator && 'ContactsManager' in window) {
+                        const contacts = await navigator.contacts.select(props, opts);
+                        if (contacts.length > 0) {
+                            const contactName = contacts[0].name[0];
+                            this.state.selectedContact = { name: contactName, phone: contacts[0].tel ? contacts[0].tel[0] : '' };
+                            this.elements.selectedContactName.textContent = contactName;
+                            this.elements.selectedContactName.style.display = 'block';
+                        }
+                    } else {
+                        const name = prompt("Enter customer name:");
+                        if (name) {
+                            this.state.selectedContact = { name };
+                            this.elements.selectedContactName.textContent = name;
+                            this.elements.selectedContactName.style.display = 'block';
+                        }
+                    }
+                } catch (ex) {
+                    console.error("Contacts selection failed", ex);
+                    const name = prompt("Enter customer name:");
+                    if (name) {
+                        this.state.selectedContact = { name };
+                        this.elements.selectedContactName.textContent = name;
+                        this.elements.selectedContactName.style.display = 'block';
+                    }
                 }
             });
+
             this.elements.discountAmountInput.addEventListener('input', this.updateSaleTotal.bind(this));
 
             this.elements.cancelSaleBtn.addEventListener('click', () => this.hideModal());
@@ -1685,10 +1749,12 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.saleQuantityLabel.textContent = `How many ${product.unit} are you selling?`;
             this.elements.saleQuantityInput.value = '1';
 
-            // Reset discount fields
-            this.elements.discountToggle.checked = false;
-            this.elements.discountInputContainer.style.display = 'none';
-            this.elements.discountAmountInput.value = '';
+            // Reset triple toggle fields
+            const defaultRadio = Array.from(this.elements.saleTypeRadios).find(r => r.value === 'default');
+            if (defaultRadio) {
+                defaultRadio.checked = true;
+                defaultRadio.dispatchEvent(new Event('change'));
+            }
 
             this.updateSaleTotal();
             this.elements.saleOfflineNotice.style.display = 'none';
@@ -1699,22 +1765,59 @@ document.addEventListener('DOMContentLoaded', () => {
             const price = this.state.sellingProduct?.price || 0;
             const subtotal = quantity * price;
 
-            const discount = this.elements.discountToggle.checked ? (this.unformatNumber(this.elements.discountAmountInput.value) || 0) : 0;
+            let discount = 0;
+            let partPayment = null;
+            const activeRadio = Array.from(this.elements.saleTypeRadios).find(r => r.checked);
+            
+            if (activeRadio && activeRadio.value === 'discount') {
+                discount = this.unformatNumber(this.elements.discountAmountInput.value) || 0;
+            } else if (activeRadio && activeRadio.value === 'credit') {
+                partPayment = this.unformatNumber(this.elements.discountAmountInput.value) || 0;
+            }
+
             const total = Math.max(0, subtotal - discount);
 
-            this.elements.saleTotalPrice.textContent = `₦${this.formatNumber(total)}`;
+            if (activeRadio && activeRadio.value === 'credit') {
+                this.elements.saleTotalPrice.textContent = `₦${this.formatNumber(partPayment || 0)}`;
+            } else {
+                this.elements.saleTotalPrice.textContent = `₦${this.formatNumber(total)}`;
+            }
         },
         async _processSale() {
             const quantity = this.unformatNumber(this.elements.saleQuantityInput.value);
             const product = this.state.sellingProduct;
-            const discount = this.elements.discountToggle.checked ? (this.unformatNumber(this.elements.discountAmountInput.value) || 0) : 0;
+            
+            let discount = 0;
+            let partPayment = null;
+            let customerName = 'Walk-in Customer';
+            const activeRadio = Array.from(this.elements.saleTypeRadios).find(r => r.checked);
+            
+            if (activeRadio && activeRadio.value === 'discount') {
+                discount = this.unformatNumber(this.elements.discountAmountInput.value) || 0;
+            } else if (activeRadio && activeRadio.value === 'credit') {
+                partPayment = this.unformatNumber(this.elements.discountAmountInput.value) || 0;
+                if (!this.state.selectedContact) {
+                    alert('Please select a contact for the credit sale.');
+                    return false;
+                }
+                if (this.elements.discountAmountInput.value.trim() === '') {
+                    alert('Please enter a part payment amount (enter 0 if none).');
+                    return false;
+                }
+                customerName = this.state.selectedContact.name;
+            }
 
             if (quantity <= 0 || !product || quantity > product.stock) { alert('Invalid quantity or product not available.'); return false; }
 
             product.stock -= quantity;
 
             await DB.saveProduct(product);
-            const total = Math.max(0, (quantity * product.price) - discount);
+            
+            let total = Math.max(0, (quantity * product.price) - discount);
+            if (activeRadio && activeRadio.value === 'credit') {
+                total = partPayment; // User requested: part payment becomes recorded total
+            }
+            
             const sale = {
                 id: Date.now(),
                 productId: product.id,
@@ -1722,6 +1825,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 quantity: quantity,
                 price: product.price,
                 discount: discount, // Save discount
+                saleType: activeRadio ? activeRadio.value : 'default',
+                customerName: customerName,
                 total: total,
                 timestamp: new Date(),
                 image: product.image,

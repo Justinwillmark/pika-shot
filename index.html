@@ -272,7 +272,7 @@
                     </div>
                     <div id="product-filter-tabs" class="product-filter-tabs">
                         <button class="filter-tab-btn active" data-filter="all">All</button>
-                        <button class="filter-tab-btn" data-filter="restock">Low Stock</button>
+                        <button class="filter-tab-btn" data-filter="restock">Low stock</button>
                         <button class="filter-tab-btn" data-filter="outofstock">Out of stock</button>
                     </div>
                 </div>
@@ -447,20 +447,32 @@
                 <div class="sale-item-details"><img id="sale-product-image" src="" alt="Product image"><div><h3 id="sale-product-name">Product Name</h3><p id="sale-product-stock">Stock: 50 sachets</p></div></div>
                 <div class="sale-total"><p>Total</p><h2 id="sale-total-price">₦0</h2></div>
                 
-                <div class="discount-section">
-                    <div class="discount-header">
-                        <label class="switch">
-                            <input type="checkbox" id="discount-toggle">
-                            <span class="slider round"></span>
-                        </label>
-                        <label for="discount-toggle" class="discount-label">Apply Discount</label>
-                    </div>
-                    <div class="discount-input-container" id="discount-input-container" style="display:none;">
-                        <label for="discount-amount">Discount</label>
-                        <div class="input-with-prefix">
-                            <span class="currency-prefix">₦</span>
-                            <input type="text" id="discount-amount" inputmode="numeric" placeholder="0">
+                <div class="sale-type-section">
+                    <div class="triple-toggle-container">
+                        <span id="label-discount" class="toggle-label text-muted">Discount<span style="color: var(--primary-color);">**</span></span>
+                        
+                        <div class="triple-toggle">
+                            <input type="radio" name="sale_type" id="sale-type-discount" value="discount">
+                            <input type="radio" name="sale_type" id="sale-type-default" value="default" checked>
+                            <input type="radio" name="sale_type" id="sale-type-credit" value="credit">
+                            <div class="triple-slider"></div>
                         </div>
+
+                        <span id="label-credit" class="toggle-label text-muted">Credit<span style="color: red;">**</span></span>
+                    </div>
+
+                    <div class="discount-input-container" id="discount-input-container" style="display:none;">
+                        <label for="discount-amount" id="discount-input-label">Discount</label>
+                        <div class="input-with-contact-wrapper" id="input-contact-wrapper">
+                            <div class="input-with-prefix" id="discount-input-wrapper">
+                                <span class="currency-prefix">₦</span>
+                                <input type="text" id="discount-amount" inputmode="numeric" placeholder="0">
+                            </div>
+                            <button type="button" id="select-contact-btn" class="btn btn-icon" style="display:none;" aria-label="Select Contact">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M19 8v6"></path><path d="M22 11h-6"></path></svg>
+                            </button>
+                        </div>
+                        <div id="selected-contact-name" class="contact-name-display text-muted" style="display:none; font-size: 0.75rem; margin-top: 4px; padding-left: 8px;"></div>
                     </div>
                 </div>
                 <div class="form-group"><label for="sale-quantity" id="sale-quantity-label">Quantity</label><input type="text" id="sale-quantity" inputmode="numeric" value="1" min="1"></div>

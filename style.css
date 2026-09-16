@@ -269,75 +269,110 @@ html, body {
     color: var(--primary-color);
 }
 
-/* NEW STYLES FOR DISCOUNT UI */
-.discount-section {
+/* NEW TRIPLE TOGGLE STYLES */
+.sale-type-section {
     margin-bottom: 16px;
     padding-top: 12px;
     border-top: 1px dashed var(--border-color);
 }
-.discount-header {
+.triple-toggle-container {
     display: flex;
     align-items: center;
-    justify-content: flex-start; /* Aligned to left */
+    justify-content: center;
     gap: 12px;
+    margin-bottom: 12px;
 }
-/* UPDATED: Discount label styling */
-.discount-label, .discount-input-container label {
+.toggle-label {
+    font-weight: 600;
+    font-size: 0.85rem;
+    transition: color 0.3s;
+}
+.toggle-label.active {
+    color: var(--text-color); /* Not text-muted */
+}
+.triple-toggle {
+    position: relative;
+    display: flex;
+    width: 90px;
+    height: 30px;
+    background-color: rgba(0,0,0,0.05); /* very light background to show demarcation */
+    border-radius: 15px;
+    border: 1px solid var(--border-color); /* demarcation */
+}
+.triple-toggle input[type="radio"] {
+    flex: 1;
+    opacity: 0;
+    cursor: pointer;
+    z-index: 2;
     margin: 0;
-    font-weight: 600; /* Match other labels */
-    font-size: 0.8rem; /* Small a bit and muted */
-    color: var(--text-light); /* Muted */
+    height: 100%;
 }
-.discount-input-container label {
-    display: block;
-    margin-bottom: 8px;
+.triple-slider {
+    position: absolute;
+    top: 2px;
+    bottom: 2px;
+    width: 26px; /* slightly smaller than 1/3 of 90 to allow padding */
+    background-color: #ccc; /* Default middle */
+    border-radius: 13px;
+    transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.5, 1), background-color 0.3s;
+    z-index: 1;
 }
 
-/* Toggle Switch */
-.switch {
-    position: relative;
-    display: inline-block;
-    width: 44px;
-    height: 24px;
-    flex-shrink: 0;
-}
-.switch input { 
-    opacity: 0;
-    width: 0;
-    height: 0;
-}
-.slider {
-    position: absolute;
-    cursor: pointer;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: #ccc;
-    transition: .4s;
-    border-radius: 24px;
-}
-.slider:before {
-    position: absolute;
-    content: "";
-    height: 18px;
-    width: 18px;
-    left: 3px;
-    bottom: 3px;
-    background-color: white;
-    transition: .4s;
-    border-radius: 50%;
-}
-input:checked + .slider {
+/* Positions based on which radio is checked */
+.triple-toggle input[value="discount"]:checked ~ .triple-slider {
+    transform: translateX(2px);
     background-color: var(--primary-color);
 }
-input:checked + .slider:before {
-    transform: translateX(20px);
+.triple-toggle input[value="default"]:checked ~ .triple-slider {
+    transform: translateX(31px); /* middle */
+    background-color: #999;
 }
+.triple-toggle input[value="credit"]:checked ~ .triple-slider {
+    transform: translateX(60px); /* right */
+    background-color: red;
+}
+
 .discount-input-container {
     margin-top: 12px;
     animation: slideDown 0.3s ease-out;
 }
+.discount-input-container label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 600;
+    font-size: 0.8rem;
+    color: var(--text-light);
+}
+
+/* Input layout changes */
+.input-with-contact-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.input-with-contact-wrapper .input-with-prefix {
+    flex: 1; /* By default takes all space */
+    transition: width 0.3s;
+}
+.input-with-contact-wrapper.credit-mode .input-with-prefix {
+    width: 70%;
+    flex: none;
+}
+.input-with-contact-wrapper.credit-mode #select-contact-btn {
+    display: flex !important;
+    width: 30%;
+    height: 44px; /* match input height */
+    justify-content: center;
+    align-items: center;
+    background-color: rgba(0,0,0,0.02);
+    border-radius: var(--border-radius);
+    border: 1px dashed var(--border-color);
+    transition: background-color 0.2s;
+}
+.input-with-contact-wrapper.credit-mode #select-contact-btn:hover {
+    background-color: rgba(0,0,0,0.06);
+}
+
 @keyframes slideDown {
     from { opacity: 0; transform: translateY(-10px); }
     to { opacity: 1; transform: translateY(0); }
