@@ -925,7 +925,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 const imageUrl = imageBlob ? URL.createObjectURL(imageBlob) : 'icons/icon-192.png';
 
                 // Add discount marker if applicable
-                const discountMark = (sale.discount && sale.discount > 0) ? '<sup class="discount-mark">**</sup>' : '';
+                let discountMark = '';
+                if (sale.saleType === 'credit') {
+                    discountMark = '<sup class="discount-mark" style="color:red;">**</sup>';
+                } else if (sale.discount && sale.discount > 0) {
+                    discountMark = '<sup class="discount-mark">**</sup>';
+                }
 
                 saleEl.innerHTML = `<div class="sale-item-overlay">Previously Transferred</div><img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${this.formatNumber(sale.quantity)} x &#8358;${this.formatNumber(sale.price)}</span></div><p class="sale-price">&#8358;${this.formatNumber(sale.total)}${discountMark}</p>`;
 
@@ -1013,7 +1018,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     const imageUrl = imageBlob ? URL.createObjectURL(imageBlob) : 'icons/icon-192.png';
 
                     // Add discount marker
-                    const discountMark = (sale.discount && sale.discount > 0) ? '<sup class="discount-mark">**</sup>' : '';
+                    let discountMark = '';
+                    if (sale.saleType === 'credit') {
+                        discountMark = '<sup class="discount-mark" style="color:red;">**</sup>';
+                    } else if (sale.discount && sale.discount > 0) {
+                        discountMark = '<sup class="discount-mark">**</sup>';
+                    }
 
                     let numberingHtml = '';
                     if (filterValue === 'best-selling') {
@@ -1827,12 +1837,46 @@ document.addEventListener('DOMContentLoaded', () => {
                 discount: discount, // Save discount
                 saleType: activeRadio ? activeRadio.value : 'default',
                 customerName: customerName,
+                customerPhone: (this.state.selectedContact && this.state.selectedContact.phone) ? this.state.selectedContact.phone.trim().replace(/\s+/g, '') : null,
                 total: total,
                 timestamp: new Date(),
                 image: product.image,
                 sharedAsLog: false,
                 unit: product.unit
             };
+
+            // Auto-transfer for credit sales
+            if (sale.saleType === 'credit' && this.state.selectedContact && this.state.selectedContact.phone) {
+                try {
+                    if (this.state.firebaseReady && window.fb) {
+                        const targetPhone = this.state.selectedContact.phone.trim().replace(/\s+/g, '');
+                        if (targetPhone.length >= 10) {
+                            const logData = {
+                                pikaLogVersion: 2,
+                                senderStore: this.state.user.business,
+                                senderId: this.state.user.phone,
+                                senderRole: this.state.user.type,
+                                targetPhone: targetPhone,
+                                claimed: false,
+                                timestamp: window.fb.serverTimestamp(),
+                                items: [{
+                                    name: product.name,
+                                    price: product.price,
+                                    quantity: sale.quantity,
+                                    unit: product.unit,
+                                    barcode: product.barcode || null
+                                }]
+                            };
+                            const logCollectionRef = window.fb.collection(window.fb.db, 'shared_logs');
+                            await window.fb.addDoc(logCollectionRef, logData);
+                            sale.sharedAsLog = true;
+                        }
+                    }
+                } catch (error) {
+                    console.error("Error auto-transferring credit sale:", error);
+                }
+            }
+
             await DB.addSale(sale);
 
             // --- SALES LOGGING: START ---
@@ -2038,7 +2082,12 @@ document.addEventListener('DOMContentLoaded', () => {
             selectedSaleObjects.forEach(sale => {
                 totalAmount += sale.total;
                 // Add discount marker if applicable
-                const discountMark = (sale.discount && sale.discount > 0) ? '<sup style="font-weight:bold; color:var(--primary-color);">**</sup>' : '';
+                let discountMark = '';
+                if (sale.saleType === 'credit') {
+                    discountMark = '<sup style="font-weight:bold; color:red;">**</sup>';
+                } else if (sale.discount && sale.discount > 0) {
+                    discountMark = '<sup style="font-weight:bold; color:var(--primary-color);">**</sup>';
+                }
                 itemsHtml += `<tr><td>${sale.productName}</td><td class="col-qty">${this.formatNumber(sale.quantity)}</td><td class="col-price">&#8358;${this.formatNumber(sale.price)}</td><td class="col-total">&#8358;${this.formatNumber(sale.total)}${discountMark}</td></tr>`;
             });
             const receiptHtml = `<div class="receipt-header"><h3>${this.state.user.business}</h3><p>${this.state.user.location} | ${this.state.user.phone}</p><p><strong>Receipt ID:</strong> ${receiptId}</p></div><div class="receipt-items"><table><thead><tr><th>Item</th><th class="col-qty">Qty</th><th class="col-price">Price</th><th class="col-total">Total</th></tr></thead><tbody>${itemsHtml}</tbody></table></div><div class="receipt-total"><div class="total-row"><span>TOTAL</span><span>&#8358;${this.formatNumber(totalAmount)}</span></div></div><div class="receipt-footer"><p>Thank you for your patronage!</p><p>${now.toLocaleDateString('en-NG')} ${now.toLocaleTimeString('en-NG')}</p><p style="font-size: 0.7rem; color: #888; margin-top: 10px;">Powered by Pika-Shot</p></div>`;
@@ -2587,20 +2636,34 @@ document.addEventListener('DOMContentLoaded', () => {
                 const q = window.fb.query(retailersRef);
 
                 this.state.retailerListener = window.fb.onSnapshot(q, async (querySnapshot) => {
-                    if (querySnapshot.empty) {
-                        const emptyHtmlRetailer = `<p class="empty-state">No data found. Sell and transfer products to the purchasing retailer to see their real-time stock level here.</p>`;
-                        const emptyHtmlSalespeople = `<p class="empty-state">Add your salespeople and see their daily sales summary here.</p>`;
-                        this.elements.retailerStockView.innerHTML = emptyHtmlRetailer;
-                        this.elements.salespeopleView.innerHTML = emptyHtmlSalespeople;
-                        return;
-                    }
+                    const allSales = await DB.getAllSales();
+                    const creditSales = allSales.filter(s => s.saleType === 'credit');
 
                     let customersHtml = '';
                     let salespeopleHtml = '';
                     const retailersData = [];
                     querySnapshot.forEach(doc => retailersData.push({ id: doc.id, ...doc.data() }));
 
+                    if (retailersData.length === 0 && creditSales.length === 0) {
+                        const emptyHtmlRetailer = `<p class="empty-state">No data found. Sell and transfer products to the purchasing retailer or make credit sales to see customers here.</p>`;
+                        const emptyHtmlSalespeople = `<p class="empty-state">Add your salespeople and see their daily sales summary here.</p>`;
+                        this.elements.retailerStockView.innerHTML = emptyHtmlRetailer;
+                        this.elements.salespeopleView.innerHTML = emptyHtmlSalespeople;
+                        return;
+                    }
+
                     retailersData.sort((a, b) => (b.lastUpdate?.toDate() || 0) - (a.lastUpdate?.toDate() || 0));
+                    creditSales.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+                    const renderedCreditCustomers = new Set();
+
+                    for (const sale of creditSales) {
+                        const matchedRetailer = sale.customerPhone ? retailersData.find(r => r.id === sale.customerPhone) : null;
+                        customersHtml += this.buildCreditCard(sale, matchedRetailer);
+                        if (matchedRetailer) {
+                            renderedCreditCustomers.add(matchedRetailer.id);
+                        }
+                    }
 
                     for (const retailer of retailersData) {
                         const isSalesperson = Object.values(retailer.products || {}).some(p => p.isSalesperson);
@@ -2608,7 +2671,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (isSalesperson) {
                             salespeopleHtml += await this.buildSalespersonCard(retailer);
                         } else {
-                            customersHtml += this.buildCustomerCard(retailer);
+                            if (!renderedCreditCustomers.has(retailer.id)) {
+                                customersHtml += this.buildCustomerCard(retailer);
+                            }
                         }
                     }
 
@@ -2661,6 +2726,81 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="retailer-product-list">${productsHtml}</div>
                     <div class="card-footer">
                         <button class="delete-retailer-btn">${deleteIcon}</button>
+                    </div>
+                </div>
+            `;
+        },
+
+        buildCreditCard(sale, retailer) {
+            let stockHtml = '';
+            let callButton = '';
+            let statusHtml = '';
+
+            const phoneIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>`;
+            
+            if (retailer) {
+                let productsHtml = '';
+                if (retailer.products && Object.keys(retailer.products).length > 0) {
+                    for (const productName in retailer.products) {
+                        const product = retailer.products[productName];
+                        const stockClass = product.stock <= 0 ? 'out-of-stock' : (product.stock < 7 ? 'restock-now' : '');
+                        productsHtml += `<div class="retailer-product-item ${stockClass}"><span>${productName}</span><strong>${this.formatNumber(product.stock)} ${product.unit} left</strong></div>`;
+                    }
+                } else {
+                    productsHtml = `<div class="retailer-product-item"><span>No tracked stock.</span></div>`;
+                }
+                
+                callButton = retailer.retailerPhone ? `<a href="tel:${retailer.retailerPhone}" class="retailer-call-btn" title="Call ${retailer.retailerName}">${phoneIcon}</a>` : '';
+                const status = this.formatTimeAgo(retailer.lastUpdate?.toDate());
+                statusHtml = `<p class="retailer-status ${status.className}">Stock: ${status.text}</p>`;
+                
+                stockHtml = `<div class="retailer-product-list" style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border-color);"><h5 style="margin: 0 0 8px 0; font-size: 0.8rem; color: var(--text-light);">Tracked Stock</h5>${productsHtml}</div>`;
+            } else {
+                callButton = sale.customerPhone ? `<a href="tel:${sale.customerPhone}" class="retailer-call-btn" title="Call ${sale.customerName}">${phoneIcon}</a>` : '';
+                statusHtml = `<p class="retailer-status offline">Stock: Not tracked (No app)</p>`;
+            }
+
+            const saleDate = new Date(sale.timestamp).toLocaleDateString('en-NG');
+            const totalWorth = sale.quantity * sale.price;
+            const remaining = totalWorth - (sale.total || 0); // part payment is saved as 'total'
+            const partPayment = sale.total || 0;
+
+            const deleteIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
+            
+            return `
+                <div class="card" style="border-left: 4px solid red;" data-credit-id="${sale.id}">
+                    <div class="retailer-header">
+                        <div style="flex-grow: 1;">
+                            <h4 style="color: red;">${sale.customerName} <span style="font-size:0.75rem; color: var(--text-light); font-weight: normal;">(Credit)</span></h4>
+                            ${statusHtml}
+                            <p style="font-size: 0.75rem; color: var(--text-light); margin-top: 4px;">Sale Date: ${saleDate}</p>
+                        </div>
+                        ${callButton}
+                    </div>
+                    
+                    <div style="padding: 12px; background: rgba(255,0,0,0.03); border-radius: 8px; margin: 12px 16px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                            <span style="font-size: 0.85rem; font-weight: 600;">${sale.productName}</span>
+                            <span style="font-size: 0.85rem;">${this.formatNumber(sale.quantity)} ${sale.unit}</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 0.8rem;">
+                            <span class="text-muted">Total Worth:</span>
+                            <span>₦${this.formatNumber(totalWorth)}</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 0.8rem;">
+                            <span class="text-muted">Part Payment:</span>
+                            <span>₦${this.formatNumber(partPayment)}</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-top: 6px; padding-top: 6px; border-top: 1px dashed rgba(255,0,0,0.2); font-weight: bold; color: red;">
+                            <span>Remaining:</span>
+                            <span>₦${this.formatNumber(remaining)}</span>
+                        </div>
+                    </div>
+                    
+                    ${stockHtml}
+
+                    <div class="card-footer">
+                        <button class="delete-credit-btn" data-id="${sale.id}" title="Delete Credit Record">${deleteIcon}</button>
                     </div>
                 </div>
             `;
@@ -2895,6 +3035,24 @@ document.addEventListener('DOMContentLoaded', () => {
                         } catch (error) {
                             console.error("Error removing retailer: ", error);
                             this.showToast(`Failed to remove ${retailerName}.`);
+                        }
+                    }
+                });
+            });
+
+            document.querySelectorAll('.delete-credit-btn').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    const card = e.target.closest('.card');
+                    const creditId = parseInt(card.dataset.creditId, 10);
+
+                    if (confirm(`Are you sure you want to delete this credit sale record?`)) {
+                        try {
+                            await DB.deleteSale(creditId);
+                            this.showToast(`Credit record deleted.`);
+                            this.renderRetailerStocks(); // Re-render the view
+                        } catch (error) {
+                            console.error("Error deleting credit record: ", error);
+                            this.showToast(`Failed to delete credit record.`);
                         }
                     }
                 });

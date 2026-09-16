@@ -303,9 +303,25 @@ html, body {
     flex: 1;
     opacity: 0;
     cursor: pointer;
-    z-index: 2;
+    z-index: 3;
     margin: 0;
     height: 100%;
+}
+.triple-toggle::before, .triple-toggle::after {
+    content: '';
+    position: absolute;
+    top: 5px;
+    bottom: 5px;
+    width: 1px;
+    background-color: rgba(0,0,0,0.15); /* Demarcation color */
+    z-index: 1;
+    pointer-events: none;
+}
+.triple-toggle::before {
+    left: 30px;
+}
+.triple-toggle::after {
+    left: 60px;
 }
 .triple-slider {
     position: absolute;
@@ -315,7 +331,7 @@ html, body {
     background-color: #ccc; /* Default middle */
     border-radius: 13px;
     transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.5, 1), background-color 0.3s;
-    z-index: 1;
+    z-index: 2;
 }
 
 /* Positions based on which radio is checked */
