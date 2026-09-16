@@ -285,19 +285,25 @@ html, body {
 .toggle-label {
     font-weight: 600;
     font-size: 0.85rem;
+    color: var(--text-light);
     transition: color 0.3s;
 }
 .toggle-label.active {
     color: var(--text-color); /* Not text-muted */
 }
+.text-muted {
+    color: var(--text-light);
+}
+
 .triple-toggle {
     position: relative;
     display: flex;
-    width: 90px;
-    height: 30px;
-    background-color: rgba(0,0,0,0.05); /* very light background to show demarcation */
-    border-radius: 15px;
-    border: 1px solid var(--border-color); /* demarcation */
+    width: 108px;
+    height: 32px;
+    background-color: rgba(0, 0, 0, 0.08); /* slightly darker background to show track */
+    border-radius: 16px;
+    border: none;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
 }
 .triple-toggle input[type="radio"] {
     flex: 1;
@@ -310,28 +316,30 @@ html, body {
 .triple-toggle::before, .triple-toggle::after {
     content: '';
     position: absolute;
-    top: 5px;
-    bottom: 5px;
-    width: 1px;
-    background-color: rgba(0,0,0,0.15); /* Demarcation color */
+    top: 25%;
+    bottom: 25%;
+    width: 2px;
+    background-color: rgba(0, 0, 0, 0.15); /* Obvious demarcations */
+    border-radius: 1px;
     z-index: 1;
     pointer-events: none;
 }
 .triple-toggle::before {
-    left: 30px;
+    left: 35px;
 }
 .triple-toggle::after {
-    left: 60px;
+    right: 35px;
 }
 .triple-slider {
     position: absolute;
     top: 2px;
     bottom: 2px;
-    width: 26px; /* slightly smaller than 1/3 of 90 to allow padding */
-    background-color: #ccc; /* Default middle */
-    border-radius: 13px;
+    width: 32px;
+    background-color: #adb5bd; /* Default middle */
+    border-radius: 14px;
     transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.5, 1), background-color 0.3s;
     z-index: 2;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
 }
 
 /* Positions based on which radio is checked */
@@ -340,12 +348,12 @@ html, body {
     background-color: var(--primary-color);
 }
 .triple-toggle input[value="default"]:checked ~ .triple-slider {
-    transform: translateX(31px); /* middle */
-    background-color: #999;
+    transform: translateX(38px); /* middle */
+    background-color: #adb5bd;
 }
 .triple-toggle input[value="credit"]:checked ~ .triple-slider {
-    transform: translateX(60px); /* right */
-    background-color: red;
+    transform: translateX(74px); /* right */
+    background-color: #ef4444;
 }
 
 .discount-input-container {

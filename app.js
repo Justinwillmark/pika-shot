@@ -327,7 +327,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     const saleType = e.target.value;
                     
                     this.elements.labelDiscount.classList.toggle('active', saleType === 'discount');
+                    this.elements.labelDiscount.classList.toggle('text-muted', saleType !== 'discount');
+                    
                     this.elements.labelCredit.classList.toggle('active', saleType === 'credit');
+                    this.elements.labelCredit.classList.toggle('text-muted', saleType !== 'credit');
 
                     if (saleType === 'default') {
                         this.elements.discountInputContainer.style.display = 'none';
@@ -2799,8 +2802,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     
                     ${stockHtml}
 
-                    <div class="card-footer">
-                        <button class="delete-credit-btn" data-id="${sale.id}" title="Delete Credit Record">${deleteIcon}</button>
+                    <div class="card-footer" style="display: flex; justify-content: center; padding-top: 8px;">
+                        <button class="delete-credit-btn btn btn-secondary" style="width: 100%; border-radius: 8px; font-weight: 500; font-size: 0.85rem;" data-id="${sale.id}" title="Mark as Fully Repaid">Fully repaid</button>
                     </div>
                 </div>
             `;
@@ -3045,14 +3048,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     const card = e.target.closest('.card');
                     const creditId = parseInt(card.dataset.creditId, 10);
 
-                    if (confirm(`Are you sure you want to delete this credit sale record?`)) {
+                    if (confirm(`Are you sure you want to mark this credit sale as fully repaid? This will remove the record.`)) {
                         try {
                             await DB.deleteSale(creditId);
-                            this.showToast(`Credit record deleted.`);
+                            this.showToast(`Credit marked as fully repaid.`);
                             this.renderRetailerStocks(); // Re-render the view
                         } catch (error) {
-                            console.error("Error deleting credit record: ", error);
-                            this.showToast(`Failed to delete credit record.`);
+                            console.error("Error updating credit record: ", error);
+                            this.showToast(`Failed to update credit record.`);
                         }
                     }
                 });
