@@ -1380,8 +1380,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 timestamp: window.fb.serverTimestamp()
             });
 
-            this._handleSuccessfulScan();
-
             switch (result.type) {
                 case 'barcode':
                     history.back();
@@ -1390,6 +1388,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         this.elements.productExistsMessage.textContent = `Product already exists as "${existingProduct.name}" in inventory.`;
                         this.showModal('product-exists-modal');
                     } else {
+                        this._handleSuccessfulScan();
                         this.state.capturedBarcode = result.data;
                         this.state.capturedBlob = null;
                         this.state.editingProduct = null;
@@ -1397,10 +1396,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     break;
                 case 'qrlog':
+                    this._handleSuccessfulScan();
                     history.back();
                     this.handlePikaLogScanned(result.data);
                     break;
                 case 'qrlog_id':
+                    this._handleSuccessfulScan();
                     history.back();
                     this.handlePikaLogIdScanned(result.data);
                     break;
@@ -1422,19 +1423,20 @@ document.addEventListener('DOMContentLoaded', () => {
                         timestamp: window.fb.serverTimestamp()
                     });
 
-                    this._handleSuccessfulScan();
-
                     history.back();
                     if (result.type === 'barcode') {
                         const product = await DB.getProductByBarcode(result.data);
                         if (product) {
+                            this._handleSuccessfulScan();
                             this.handleProductFound(product);
                         } else {
                             this.handleSellScanNotFound(false);
                         }
                     } else if (result.type === 'qrlog') {
+                        this._handleSuccessfulScan();
                         this.handlePikaLogScanned(result.data);
                     } else if (result.type === 'qrlog_id') {
+                        this._handleSuccessfulScan();
                         this.handlePikaLogIdScanned(result.data);
                     }
                 },

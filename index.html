@@ -344,21 +344,18 @@
         <div id="camera-view" class="view camera-container">
             <video id="camera-feed" playsinline></video>
             <div id="camera-overlay" class="camera-overlay">
+                <button id="torch-btn" class="btn-icon" style="position: absolute; right: 20px; top: 50%; transform: translateY(-50%); color: white; background: rgba(0,0,0,0.5); border-radius: 50%; padding: 12px; z-index: 10;" title="Toggle Torch">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-flashlight"><path d="M18 6c0 2-2 2-2 4v10a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2V10c0-2-2-2-2-4V2h12v4Z"></path><line x1="6" y1="6" x2="18" y2="6"></line><line x1="12" y1="12" x2="12" y2="12"></line></svg>
+                </button>
                 <div class="scan-area-wrapper" style="position: relative; margin-top: -15vh;">
                     <div class="scan-box"></div>
-                    <button id="torch-btn" class="btn-icon" style="position: absolute; right: -60px; top: 50%; transform: translateY(-50%); color: white; background: rgba(0,0,0,0.5); border-radius: 50%; padding: 12px; z-index: 10;" title="Toggle Torch">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M12 2v22"></path>
-                            <path d="M17 12L7 12"></path>
-                        </svg>
-                    </button>
                 </div>
                 <p id="scan-feedback" style="margin-top: 15vh;">Scanning...</p>
                 <div id="scan-timer-display" class="scan-timer-display">3</div>
             </div>
             <div class="camera-actions" style="position: absolute; bottom: 30px; left: 0; right: 0; display: flex; justify-content: center; gap: 10px; padding: 0 20px; z-index: 10;">
-                <button id="cancel-scan-btn" class="btn btn-secondary" style="flex: 1;">Cancel</button>
-                <button id="manual-select-product-btn" class="btn btn-primary" style="flex: 2;">Select from products</button>
+                <button id="cancel-scan-btn" class="btn btn-secondary" style="width: 100%;">Cancel</button>
+                <button id="manual-select-product-btn" class="btn btn-primary" style="display: none;">Select from products</button>
             </div>
         </div>
 
@@ -511,7 +508,7 @@
             <div class="modal-actions">
                 <button id="retry-sell-scan-btn" class="btn btn-secondary" style="display: none;">Try Again</button>
                 <button id="manual-entry-btn" class="btn btn-secondary">Manual Entry</button>
-                <button id="select-from-products-btn" class="btn btn-primary">Select from Products</button>
+                <button id="select-from-products-btn" class="btn btn-primary" style="display: none;">Select from Products</button>
             </div>
              <button type="button" id="cancel-entry-choice-btn" class="btn btn-secondary" style="margin-top: 12px;">Cancel</button>
         </div>
