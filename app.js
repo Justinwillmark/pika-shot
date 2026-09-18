@@ -69,7 +69,6 @@ document.addEventListener('DOMContentLoaded', () => {
             cameraView: document.getElementById('camera-view'),
             cancelScanBtn: document.getElementById('cancel-scan-btn'),
             torchBtn: document.getElementById('torch-btn'),
-            manualSelectProductBtn: document.getElementById('manual-select-product-btn'),
             scanFeedback: document.getElementById('scan-feedback'),
             scanTimerDisplay: document.getElementById('scan-timer-display'),
             sellItemBtnMain: document.getElementById('sell-item-btn-main'),
@@ -323,7 +322,6 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.scanNewBarcodeBtn.addEventListener('click', this.startBarcodeAssignmentScan.bind(this));
             this.elements.cancelPictureBtn.addEventListener('click', () => this.hideModal());
             if(this.elements.torchBtn) this.elements.torchBtn.addEventListener('click', () => { Camera.toggleTorch(); });
-            if(this.elements.manualSelectProductBtn) this.elements.manualSelectProductBtn.addEventListener('click', () => { Camera.stop(); this.navigateTo('products-view'); });
             this.elements.saleQuantityInput.addEventListener('input', this.updateSaleTotal.bind(this));
             // TRIPLE TOGGLE LISTENERS
             this.elements.saleTypeRadios.forEach(radio => {
