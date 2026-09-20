@@ -4,7 +4,7 @@
   "description": "Fast sales and inventory tracking for informal retailers.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#F4F6F8",
+  "background_color": "#008C95",
   "theme_color": "#008C95",
   "icons": [
     {

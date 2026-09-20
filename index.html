@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#008C95"/>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <title>pika shot</title>
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="manifest.json">
@@ -460,7 +462,7 @@
                 
                 <div class="sale-type-section">
                     <div class="triple-toggle-container">
-                        <span id="label-discount" class="toggle-label text-muted">Discount<span style="color: var(--primary-color);">**</span></span>
+                        <label for="sale-type-discount" id="label-discount" class="toggle-label text-muted" style="cursor: pointer;">Discount<span style="color: var(--primary-color);">**</span></label>
                         
                         <div class="triple-toggle">
                             <input type="radio" name="sale_type" id="sale-type-discount" value="discount">
@@ -469,7 +471,7 @@
                             <div class="triple-slider"></div>
                         </div>
 
-                        <span id="label-credit" class="toggle-label text-muted">Credit<span style="color: red;">**</span></span>
+                        <label for="sale-type-credit" id="label-credit" class="toggle-label text-muted" style="cursor: pointer;">Credit<span style="color: red;">**</span></label>
                     </div>
 
                     <div class="discount-input-container" id="discount-input-container" style="display:none;">
