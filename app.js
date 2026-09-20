@@ -162,6 +162,7 @@ document.addEventListener('DOMContentLoaded', () => {
             productExistsModal: document.getElementById('product-exists-modal'),
             productExistsMessage: document.getElementById('product-exists-message'),
             productExistsOkBtn: document.getElementById('product-exists-ok-btn'),
+            seeStockLevelsContainer: document.getElementById('see-stock-levels-container'),
             seeStockLevelsBtn: document.getElementById('see-stock-levels-btn'),
             stockLevelsView: document.getElementById('stock-levels-view'),
             stockFilterTabs: document.querySelectorAll('#stock-levels-view .product-filter-tabs .filter-tab-btn'),
@@ -874,14 +875,18 @@ document.addEventListener('DOMContentLoaded', () => {
         async updateDashboard() {
             if (this.state.user) {
                 this.elements.welcomeName.textContent = `Hi, ${this.state.user.name.split(' ')[0]}!`;
-                if (this.state.user.type === 'Wholesaler' || this.state.user.type === 'Salesperson') {
-                    this.elements.shareLogBtn.style.display = 'block';
+                if (this.state.user.type === 'Wholesaler' || this.state.user.type === 'Salesperson' || this.state.user.type === 'Retailer') {
+                    this.elements.seeStockLevelsContainer.style.display = 'block';
+                    const buttonText = this.state.user.type === 'Salesperson' ? 'Customers' : 'Customers & Salespeople';
+                    this.elements.seeStockLevelsBtn.innerHTML = `${buttonText} <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="arrow-icon"><polyline points="9 18 15 12 9 6"></polyline></svg>`;
+                    this.elements.shareLogBtn.style.display = this.state.user.type === 'Retailer' ? 'none' : 'block';
                 } else {
+                    this.elements.seeStockLevelsContainer.style.display = 'none';
                     this.elements.shareLogBtn.style.display = 'none';
                 }
             }
             const date = new Date();
-            this.elements.welcomeDate.textContent = date.toLocaleDateString('en-NG', { weekday: 'long', month: 'long', day: 'numeric' });
+            this.elements.welcomeDate.textContent = date.toLocaleDateString('en-NG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
             const todaysSales = await DB.getSalesToday();
             const totalSales = todaysSales.reduce((sum, sale) => sum + sale.total, 0);
@@ -1192,7 +1197,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (products.length === 0) {
                 if (this.state.user && this.state.user.type === 'Salesperson') {
-                document.getElementById('salespeople-tab').style.display = 'none';
+                const spTab = document.querySelector('[data-filter="salespeople"]');
+                if (spTab) spTab.style.display = 'none';
 
                     this.elements.productGrid.innerHTML = '<p class="empty-state">You have no products yet. Scan a QR code from your wholesaler (admin) to receive products.</p>';
                 } else if (searchText) {
@@ -1335,7 +1341,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         startAddProduct() {
             if (this.state.user && this.state.user.type === 'Salesperson') {
-                document.getElementById('salespeople-tab').style.display = 'none';
+                const spTab = document.querySelector('[data-filter="salespeople"]');
+                if (spTab) spTab.style.display = 'none';
 
                 this.showToast("Salespeople can only receive products via QR code from a wholesaler.");
                 return;
@@ -2611,8 +2618,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             this.elements.internetNotice.style.display = 'none';
 
-            if (this.state.user && this.state.user.type === 'Salesperson') {
-                document.getElementById('salespeople-tab').style.display = 'none';
+            if (this.state.user && (this.state.user.type === 'Salesperson' || this.state.user.type === 'Retailer')) {
+                const spTab = document.querySelector('[data-filter="salespeople"]');
+                if (spTab) spTab.style.display = 'none';
 
                 this.elements.stockViewFilterTabs.style.display = 'none';
                 this.elements.retailerStockView.style.display = 'block';
@@ -2713,14 +2721,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
         buildCustomerCard(retailer) {
             let productsHtml = '';
-            if (retailer.products && Object.keys(retailer.products).length > 0) {
-                for (const productName in retailer.products) {
-                    const product = retailer.products[productName];
-                    const stockClass = product.stock <= 0 ? 'out-of-stock' : (product.stock < 7 ? 'restock-now' : '');
-                    productsHtml += `<div class="retailer-product-item ${stockClass}"><span>${productName}</span><strong>${this.formatNumber(product.stock)} ${product.unit} left</strong></div>`;
+            if (this.state.user.type !== 'Retailer') {
+                if (retailer.products && Object.keys(retailer.products).length > 0) {
+                    for (const productName in retailer.products) {
+                        const product = retailer.products[productName];
+                        const stockClass = product.stock <= 0 ? 'out-of-stock' : (product.stock < 7 ? 'restock-now' : '');
+                        productsHtml += `<div class="retailer-product-item ${stockClass}"><span>${productName}</span><strong>${this.formatNumber(product.stock)} ${product.unit} left</strong></div>`;
+                    }
+                } else {
+                    productsHtml = `<div class="retailer-product-item"><span>No product data available.</span></div>`;
                 }
             } else {
-                productsHtml = `<div class="retailer-product-item"><span>No product data available.</span></div>`;
+                productsHtml = `<div class="retailer-product-item"><span>Not tracking customer stock.</span></div>`;
             }
 
             const phoneIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>`;
@@ -2754,21 +2766,25 @@ document.addEventListener('DOMContentLoaded', () => {
             
             if (retailer) {
                 let productsHtml = '';
-                if (retailer.products && Object.keys(retailer.products).length > 0) {
-                    for (const productName in retailer.products) {
-                        const product = retailer.products[productName];
-                        const stockClass = product.stock <= 0 ? 'out-of-stock' : (product.stock < 7 ? 'restock-now' : '');
-                        productsHtml += `<div class="retailer-product-item ${stockClass}"><span>${productName}</span><strong>${this.formatNumber(product.stock)} ${product.unit} left</strong></div>`;
+                if (this.state.user.type !== 'Retailer') {
+                    if (retailer.products && Object.keys(retailer.products).length > 0) {
+                        for (const productName in retailer.products) {
+                            const product = retailer.products[productName];
+                            const stockClass = product.stock <= 0 ? 'out-of-stock' : (product.stock < 7 ? 'restock-now' : '');
+                            productsHtml += `<div class="retailer-product-item ${stockClass}"><span>${productName}</span><strong>${this.formatNumber(product.stock)} ${product.unit} left</strong></div>`;
+                        }
+                    } else {
+                        productsHtml = `<div class="retailer-product-item"><span>No tracked stock.</span></div>`;
                     }
+                    stockHtml = `<div class="retailer-product-list" style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border-color);"><h5 style="margin: 0 0 8px 0; font-size: 0.8rem; color: var(--text-light);">Tracked Stock</h5>${productsHtml}</div>`;
+                    
+                    const status = this.formatTimeAgo(retailer.lastUpdate?.toDate());
+                    statusHtml = `<p class="retailer-status ${status.className}">Stock: ${status.text}</p>`;
                 } else {
-                    productsHtml = `<div class="retailer-product-item"><span>No tracked stock.</span></div>`;
+                    statusHtml = `<p class="retailer-status offline">Stock: Not tracked</p>`;
                 }
                 
                 callButton = retailer.retailerPhone ? `<a href="tel:${retailer.retailerPhone}" class="retailer-call-btn" title="Call ${retailer.retailerName}">${phoneIcon}</a>` : '';
-                const status = this.formatTimeAgo(retailer.lastUpdate?.toDate());
-                statusHtml = `<p class="retailer-status ${status.className}">Stock: ${status.text}</p>`;
-                
-                stockHtml = `<div class="retailer-product-list" style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border-color);"><h5 style="margin: 0 0 8px 0; font-size: 0.8rem; color: var(--text-light);">Tracked Stock</h5>${productsHtml}</div>`;
             } else {
                 callButton = sale.customerPhone ? `<a href="tel:${sale.customerPhone}" class="retailer-call-btn" title="Call ${sale.customerName}">${phoneIcon}</a>` : '';
                 statusHtml = `<p class="retailer-status offline">Stock: Not tracked (No app)</p>`;
