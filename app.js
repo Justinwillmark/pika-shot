@@ -162,7 +162,6 @@ document.addEventListener('DOMContentLoaded', () => {
             productExistsModal: document.getElementById('product-exists-modal'),
             productExistsMessage: document.getElementById('product-exists-message'),
             productExistsOkBtn: document.getElementById('product-exists-ok-btn'),
-            seeStockLevelsContainer: document.getElementById('see-stock-levels-container'),
             seeStockLevelsBtn: document.getElementById('see-stock-levels-btn'),
             stockLevelsView: document.getElementById('stock-levels-view'),
             stockFilterTabs: document.querySelectorAll('#stock-levels-view .product-filter-tabs .filter-tab-btn'),
@@ -876,17 +875,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (this.state.user) {
                 this.elements.welcomeName.textContent = `Hi, ${this.state.user.name.split(' ')[0]}!`;
                 if (this.state.user.type === 'Wholesaler' || this.state.user.type === 'Salesperson') {
-                    this.elements.seeStockLevelsContainer.style.display = 'block';
-                    const buttonText = this.state.user.type === 'Salesperson' ? 'Customers' : 'Customers & Salespeople';
-                    this.elements.seeStockLevelsBtn.innerHTML = `${buttonText} <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="arrow-icon"><polyline points="9 18 15 12 9 6"></polyline></svg>`;
                     this.elements.shareLogBtn.style.display = 'block';
                 } else {
-                    this.elements.seeStockLevelsContainer.style.display = 'none';
                     this.elements.shareLogBtn.style.display = 'none';
                 }
             }
             const date = new Date();
-            this.elements.welcomeDate.textContent = date.toLocaleDateString('en-NG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+            this.elements.welcomeDate.textContent = date.toLocaleDateString('en-NG', { weekday: 'long', month: 'long', day: 'numeric' });
 
             const todaysSales = await DB.getSalesToday();
             const totalSales = todaysSales.reduce((sum, sale) => sum + sale.total, 0);

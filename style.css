@@ -545,9 +545,13 @@ html, body {
 
 /* Home View / Dashboard Styles */
 #home-view.page { padding-bottom: 80px; background: linear-gradient(180deg, var(--primary-color) 200px, var(--background-color) 200px); }
-.home-header { padding: 24px 20px; color: white; }
-.home-header p { font-size: clamp(0.85rem, 2.5vw, 0.9rem); opacity: 0.8; }
-.home-header h2 { font-size: clamp(1.5rem, 5vw, 1.75rem); font-weight: 700; margin-top: 4px; }
+.home-header { padding: 20px 20px 16px; color: white; display: flex; justify-content: space-between; align-items: center; }
+.home-header p { font-size: clamp(0.7rem, 2vw, 0.75rem); opacity: 0.85; margin-bottom: 2px; }
+.home-header h2 { font-size: clamp(1.15rem, 4vw, 1.35rem); font-weight: 700; margin-top: 0; }
+.header-action-btn { background: rgba(255, 255, 255, 0.15); border: none; border-radius: 50%; width: 56px; height: 56px; display: flex; justify-content: center; align-items: center; cursor: pointer; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); transition: transform 0.2s, background 0.2s; padding: 0; flex-shrink: 0; margin-left: 12px; }
+.header-action-btn:active { transform: scale(0.92); background: rgba(255, 255, 255, 0.25); }
+@keyframes slow-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes counter-spin { from { transform: rotate(0deg); } to { transform: rotate(-360deg); } }
 .home-content { padding: 0 20px; }
 .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .card { background-color: var(--surface-color); border-radius: var(--border-radius); box-shadow: var(--box-shadow); }
