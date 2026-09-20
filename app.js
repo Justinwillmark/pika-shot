@@ -2618,7 +2618,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             this.elements.internetNotice.style.display = 'none';
 
-            if (this.state.user && (this.state.user.type === 'Salesperson' || this.state.user.type === 'Retailer')) {
+            if (this.state.user && this.state.user.type === 'Salesperson') {
                 const spTab = document.querySelector('[data-filter="salespeople"]');
                 if (spTab) spTab.style.display = 'none';
 
@@ -2667,7 +2667,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     querySnapshot.forEach(doc => retailersData.push({ id: doc.id, ...doc.data() }));
 
                     if (retailersData.length === 0 && creditSales.length === 0) {
-                        const emptyHtmlRetailer = `<p class="empty-state">No data found. Sell and transfer products to the purchasing retailer or make credit sales to see customers here.</p>`;
+                        const isRetailer = this.state.user && this.state.user.type === 'Retailer';
+                        const emptyHtmlRetailer = isRetailer
+                            ? `<p class="empty-state">Make credit sales to see customers owing you here.</p>`
+                            : `<p class="empty-state">Sell and transfer products to the purchasing retailer or make credit sales to see customers here.</p>`;
                         const emptyHtmlSalespeople = `<p class="empty-state">Add your salespeople and see their daily sales summary here.</p>`;
                         this.elements.retailerStockView.innerHTML = emptyHtmlRetailer;
                         this.elements.salespeopleView.innerHTML = emptyHtmlSalespeople;
