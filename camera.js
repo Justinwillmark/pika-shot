@@ -85,6 +85,7 @@ const Camera = {
             if (this.videoElement.readyState === this.videoElement.HAVE_ENOUGH_DATA) {
                 try {
                     const barcodes = await this.barcodeDetector.detect(this.videoElement);
+                    if (!this.isScanning) return; // Prevent processing if stopped during detection
                     if (barcodes.length > 0) {
                         this.stop(); // Stop scanning immediately on detection
                         const detectedValue = barcodes[0].rawValue;

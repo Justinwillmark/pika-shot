@@ -404,7 +404,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
             this.elements.discountAmountInput.addEventListener('input', this.updateSaleTotal.bind(this));
 
-            this.elements.cancelSaleBtn.addEventListener('click', () => this.hideModal());
+            this.elements.cancelSaleBtn.addEventListener('click', () => {
+                this.hideModal();
+                this.navigateTo('home-view');
+            });
             this.elements.confirmSaleBtn.addEventListener('click', this.handleConfirmSale.bind(this));
             window.addEventListener('beforeinstallprompt', this.handleBeforeInstallPrompt.bind(this));
             this.elements.installBtn.addEventListener('click', this.promptInstall.bind(this));
@@ -1372,6 +1375,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.showToast("Salespeople can only receive products via QR code from a wholesaler.");
                 return;
             }
+            if (this.elements.scanSelectFromProductsBtn) {
+                this.elements.scanSelectFromProductsBtn.style.display = 'none';
+                this.elements.cancelScanBtn.style.flex = '0 0 100%';
+                this.elements.cancelScanBtn.style.maxWidth = '300px';
+            }
             if (!this.state.cameraReady) { alert("Scanner is not ready yet. Please wait or check your connection."); return; }
             if (!Camera.barcodeDetector) { alert("Barcode scanning is not available on this browser."); return; }
             this.elements.scanFeedback.textContent = 'Scan product barcode';
@@ -1436,6 +1444,11 @@ document.addEventListener('DOMContentLoaded', () => {
         startSellScan() {
             if (!this.state.cameraReady) { alert("Scanner is not ready yet. Please wait or check your connection."); return; }
             if (!Camera.barcodeDetector) { alert("Barcode scanning is not available on this browser."); return; }
+            if (this.elements.scanSelectFromProductsBtn) {
+                this.elements.scanSelectFromProductsBtn.style.display = 'block';
+                this.elements.cancelScanBtn.style.flex = '0 0 30%';
+                this.elements.cancelScanBtn.style.maxWidth = '100px';
+            }
             this.elements.scanFeedback.textContent = 'Scanning for barcode...';
             this.navigateTo('camera-view');
             Camera.startScan(
