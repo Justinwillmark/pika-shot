@@ -360,7 +360,8 @@
                 <div id="scan-timer-display" class="scan-timer-display">3</div>
             </div>
             <div class="camera-actions" style="position: absolute; bottom: 30px; left: 0; right: 0; display: flex; justify-content: center; padding: 0 20px; z-index: 10;">
-                <button id="cancel-scan-btn" class="btn btn-secondary" style="width: 100%; max-width: 300px;">Cancel</button>
+                <button id="cancel-scan-btn" class="btn btn-secondary" style="flex: 0 0 30%;">Cancel</button>
+                <button id="scan-select-from-products-btn" class="btn btn-primary" style="flex: 0 0 70%; margin-left: 10px;">Select from products</button>
             </div>
         </div>
 
@@ -462,7 +463,7 @@
                 
                 <div class="sale-type-section">
                     <div class="triple-toggle-container">
-                        <label for="sale-type-discount" id="label-discount" class="toggle-label text-muted" style="cursor: pointer;">Discount<span style="color: var(--primary-color);">**</span></label>
+                        <label for="sale-type-discount" id="label-discount" class="toggle-label text-muted" style="cursor: pointer;"><span style="color: var(--primary-color);">**</span>Discount</label>
                         
                         <div class="triple-toggle">
                             <input type="radio" name="sale_type" id="sale-type-discount" value="discount">
@@ -471,7 +472,7 @@
                             <div class="triple-slider"></div>
                         </div>
 
-                        <label for="sale-type-credit" id="label-credit" class="toggle-label text-muted" style="cursor: pointer;">Credit<span style="color: red;">**</span></label>
+                        <label for="sale-type-credit" id="label-credit" class="toggle-label text-muted" style="cursor: pointer;"><span style="color: red;">**</span>Credit</label>
                     </div>
 
                     <div class="discount-input-container" id="discount-input-container" style="display:none;">
@@ -488,7 +489,16 @@
                         <div id="selected-contact-name" class="contact-name-display text-muted" style="display:none; font-size: 0.75rem; margin-top: 4px; text-align: right; padding-right: 8px;"></div>
                     </div>
                 </div>
-                <div class="form-group"><label for="sale-quantity" id="sale-quantity-label">Quantity</label><input type="text" id="sale-quantity" inputmode="numeric" value="1" min="1"></div>
+                <div class="form-group">
+                    <label for="sale-quantity" id="sale-quantity-label">Quantity</label>
+                    <div style="display: flex; gap: 10px; width: 100%;">
+                        <input type="text" id="sale-quantity" inputmode="numeric" value="1" min="1" style="width: 75%;">
+                        <div style="width: 25%; display: flex; gap: 5px;">
+                            <button type="button" id="decrease-quantity-btn" class="btn btn-secondary" style="flex: 1; padding: 0; font-size: 1.2rem;">-</button>
+                            <button type="button" id="increase-quantity-btn" class="btn btn-secondary" style="flex: 1; padding: 0; font-size: 1.2rem;">+</button>
+                        </div>
+                    </div>
+                </div>
             </div>
             <p id="sale-offline-notice" class="offline-notice" style="display: none;">Please connect to the internet to confirm this sale.</p>
             <div class="modal-actions modal-actions-inline">

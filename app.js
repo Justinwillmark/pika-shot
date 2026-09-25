@@ -100,6 +100,8 @@ document.addEventListener('DOMContentLoaded', () => {
             saleProductStock: document.getElementById('sale-product-stock'),
             saleQuantityInput: document.getElementById('sale-quantity'),
             saleQuantityLabel: document.getElementById('sale-quantity-label'),
+            decreaseQuantityBtn: document.getElementById('decrease-quantity-btn'),
+            increaseQuantityBtn: document.getElementById('increase-quantity-btn'),
             saleTotalPrice: document.getElementById('sale-total-price'),
             cancelSaleBtn: document.getElementById('cancel-sale-btn'),
             confirmSaleBtn: document.getElementById('confirm-sale-btn'),
@@ -144,6 +146,7 @@ document.addEventListener('DOMContentLoaded', () => {
             manualEntryBtn: document.getElementById('manual-entry-btn'),
             retrySellScanBtn: document.getElementById('retry-sell-scan-btn'),
             selectFromProductsBtn: document.getElementById('select-from-products-btn'),
+            scanSelectFromProductsBtn: document.getElementById('scan-select-from-products-btn'),
             manualSaleModal: document.getElementById('manual-sale-modal'),
             manualSaleForm: document.getElementById('manual-sale-form'),
             cancelManualSaleBtn: document.getElementById('cancel-manual-sale-btn'),
@@ -450,6 +453,28 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.cancelManualSaleBtn.addEventListener('click', () => this.hideModal());
             this.elements.manualSaleForm.addEventListener('submit', this.handleManualSale.bind(this));
             this.elements.selectFromProductsBtn.addEventListener('click', this.showProductSelection.bind(this));
+            if (this.elements.scanSelectFromProductsBtn) {
+                this.elements.scanSelectFromProductsBtn.addEventListener('click', () => {
+                    Camera.stop();
+                    this.showProductSelection();
+                });
+            }
+            if (this.elements.decreaseQuantityBtn) {
+                this.elements.decreaseQuantityBtn.addEventListener('click', () => {
+                    let currentVal = parseInt(this.elements.saleQuantityInput.value) || 1;
+                    if (currentVal > 1) {
+                        this.elements.saleQuantityInput.value = currentVal - 1;
+                        this.elements.saleQuantityInput.dispatchEvent(new Event('input'));
+                    }
+                });
+            }
+            if (this.elements.increaseQuantityBtn) {
+                this.elements.increaseQuantityBtn.addEventListener('click', () => {
+                    let currentVal = parseInt(this.elements.saleQuantityInput.value) || 0;
+                    this.elements.saleQuantityInput.value = currentVal + 1;
+                    this.elements.saleQuantityInput.dispatchEvent(new Event('input'));
+                });
+            }
             this.elements.rejectLogBtn.addEventListener('click', () => { this.hideModal(); this.state.scannedLogData = null; });
             this.elements.acceptLogBtn.addEventListener('click', this.acceptPikaLog.bind(this));
             this.elements.retryAddScanBtn.addEventListener('click', () => { this.hideModal(); this.startAddProduct(); });
@@ -945,7 +970,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     discountMark = '<sup class="discount-mark">**</sup>';
                 }
 
-                saleEl.innerHTML = `<div class="sale-item-overlay">Previously Transferred</div><img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${this.formatNumber(sale.quantity)} x &#8358;${this.formatNumber(sale.price)}</span></div><p class="sale-price">&#8358;${this.formatNumber(sale.total)}${discountMark}</p>`;
+                saleEl.innerHTML = `<div class="sale-item-overlay">Previously Transferred</div><img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${this.formatNumber(sale.quantity)} x &#8358;${this.formatNumber(sale.price)}</span></div><p class="sale-price">${discountMark}&#8358;${this.formatNumber(sale.total)}</p>`;
 
                 this.addSaleItemEventListeners(saleEl, sale);
                 targetElement.appendChild(saleEl);
@@ -1043,7 +1068,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         numberingHtml = `<span style="font-weight: bold; margin-right: 12px; color: var(--text-color); font-size: 1.1em; display: flex; align-items: center;">${index + 1}.</span>`;
                     }
 
-                    saleEl.innerHTML = `<div class="sale-item-overlay">Previously Transferred</div>${numberingHtml}<img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${this.formatNumber(sale.quantity)} x &#8358;${this.formatNumber(sale.price)}</span></div><p class="sale-price">&#8358;${this.formatNumber(sale.total)}${discountMark}</p>`;
+                    saleEl.innerHTML = `<div class="sale-item-overlay">Previously Transferred</div>${numberingHtml}<img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${this.formatNumber(sale.quantity)} x &#8358;${this.formatNumber(sale.price)}</span></div><p class="sale-price">${discountMark}&#8358;${this.formatNumber(sale.total)}</p>`;
                     this.addSaleItemEventListeners(saleEl, sale);
                     groupContainer.appendChild(saleEl);
                 });
@@ -2109,7 +2134,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else if (sale.discount && sale.discount > 0) {
                     discountMark = '<sup style="font-weight:bold; color:var(--primary-color);">**</sup>';
                 }
-                itemsHtml += `<tr><td>${sale.productName}</td><td class="col-qty">${this.formatNumber(sale.quantity)}</td><td class="col-price">&#8358;${this.formatNumber(sale.price)}</td><td class="col-total">&#8358;${this.formatNumber(sale.total)}${discountMark}</td></tr>`;
+                itemsHtml += `<tr><td>${sale.productName}</td><td class="col-qty">${this.formatNumber(sale.quantity)}</td><td class="col-price">&#8358;${this.formatNumber(sale.price)}</td><td class="col-total">${discountMark}&#8358;${this.formatNumber(sale.total)}</td></tr>`;
             });
             const receiptHtml = `<div class="receipt-header"><h3>${this.state.user.business}</h3><p>${this.state.user.location} | ${this.state.user.phone}</p><p><strong>Receipt ID:</strong> ${receiptId}</p></div><div class="receipt-items"><table><thead><tr><th>Item</th><th class="col-qty">Qty</th><th class="col-price">Price</th><th class="col-total">Total</th></tr></thead><tbody>${itemsHtml}</tbody></table></div><div class="receipt-total"><div class="total-row"><span>TOTAL</span><span>&#8358;${this.formatNumber(totalAmount)}</span></div></div><div class="receipt-footer"><p>Thank you for your patronage!</p><p>${now.toLocaleDateString('en-NG')} ${now.toLocaleTimeString('en-NG')}</p><p style="font-size: 0.7rem; color: #888; margin-top: 10px;">Powered by Pika-Shot</p></div>`;
             this.elements.receiptContent.innerHTML = receiptHtml;
