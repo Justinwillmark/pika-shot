@@ -218,21 +218,27 @@
 
             <div id="home-view" class="view page">
                 <div class="home-header">
-                    <p id="welcome-date"></p>
-                    <h2 id="welcome-name">Welcome!</h2>
+                    <div>
+                        <p id="welcome-date"></p>
+                        <h2 id="welcome-name">Welcome!</h2>
+                    </div>
+                    <div id="home-scan-menu-trigger" class="home-scan-menu-trigger">
+                        <span class="breathing-fire">🔥</span>
+                        <span id="home-scan-count">0/100+</span>
+                    </div>
                 </div>
 
                 <div id="home-content" class="home-content">
                     <div id="home-dashboard-content">
                         <div class="dashboard-grid">
-                            <div class="card stat-card">
+                            <div class="card stat-card" id="todays-sales-card" style="cursor: pointer;">
                                 <div class="stat-icon sales">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="12" x="2" y="6" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
                                 </div>
                                 <p>Today's Sales</p>
                                 <h3 id="total-sales">₦0</h3>
                             </div>
-                            <div class="card stat-card">
+                            <div class="card stat-card" id="items-sold-card" style="cursor: pointer;">
                                 <div class="stat-icon items">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><line x1="3" y1="6" x2="21" y2="6"></line><path d="M16 10a4 4 0 0 1-8 0"></path></svg>
                                 </div>
@@ -483,7 +489,8 @@
                                 <input type="text" id="discount-amount" inputmode="numeric" placeholder="0">
                             </div>
                             <button type="button" id="select-contact-btn" class="btn btn-icon" style="display:none;" aria-label="Select Contact">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M19 8v6"></path><path d="M22 11h-6"></path></svg>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M19 8v6"></path><path d="M22 11h-6"></path></svg>
+                                <span>Customer</span>
                             </button>
                         </div>
                         <div id="selected-contact-name" class="contact-name-display text-muted" style="display:none; font-size: 0.75rem; margin-top: 4px; text-align: right; padding-right: 8px;"></div>

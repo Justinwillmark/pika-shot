@@ -6,6 +6,10 @@ document.addEventListener('DOMContentLoaded', () => {
             menuBtn: document.getElementById('menu-btn'),
             backArrowBtn: document.getElementById('back-arrow-btn'),
             welcomeName: document.getElementById('welcome-name'),
+            homeScanMenuTrigger: document.getElementById('home-scan-menu-trigger'),
+            homeScanCount: document.getElementById('home-scan-count'),
+            todaysSalesCard: document.getElementById('todays-sales-card'),
+            itemsSoldCard: document.getElementById('items-sold-card'),
             welcomeDate: document.getElementById('welcome-date'),
             loader: document.getElementById('loader'),
             loaderSpinner: document.querySelector('.spinner'),
@@ -273,6 +277,15 @@ document.addEventListener('DOMContentLoaded', () => {
         // --- EVENT LISTENERS ---
         setupEventListeners() {
             this.elements.menuBtn.addEventListener('click', this.showProfileModal.bind(this));
+            if (this.elements.homeScanMenuTrigger) {
+                this.elements.homeScanMenuTrigger.addEventListener('click', this.showProfileModal.bind(this));
+            }
+            if (this.elements.todaysSalesCard) {
+                this.elements.todaysSalesCard.addEventListener('click', () => this.navigateTo('all-sales-view'));
+            }
+            if (this.elements.itemsSoldCard) {
+                this.elements.itemsSoldCard.addEventListener('click', () => this.navigateTo('all-sales-view'));
+            }
             this.elements.backArrowBtn.addEventListener('click', () => history.back());
             window.addEventListener('popstate', this.handlePopState.bind(this));
 
@@ -415,11 +428,11 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.seeAllSalesBtn.addEventListener('click', () => this.navigateTo('all-sales-view'));
             this.elements.seeLastSalesBtn.addEventListener('click', () => this.navigateTo('all-sales-view'));
             if(document.getElementById('add-salesperson-fab')) {
-                document.getElementById('add-salesperson-fab').addEventListener('click', () => alert('Feature coming soon'));
+                document.getElementById('add-salesperson-fab').addEventListener('click', () => alert('Feature coming soon!'));
             }
             this.elements.allSalesTimeFilter.addEventListener('change', () => {
                 if (this.elements.allSalesTimeFilter.value === 'expenses') {
-                    alert('Feature coming soon');
+                    alert('Feature coming soon!');
                     this.elements.allSalesTimeFilter.value = 'all';
                 }
                 this.updateHeader(this.state.currentView);
@@ -917,6 +930,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const date = new Date();
             this.elements.welcomeDate.textContent = date.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
 
+            const scanCount = await DB.getScanCountForToday();
+            if (this.elements.homeScanCount) {
+                this.elements.homeScanCount.textContent = `${scanCount}/100+`;
+            }
+
             const todaysSales = await DB.getSalesToday();
             const totalSales = todaysSales.reduce((sum, sale) => sum + sale.total, 0);
             const itemsSold = todaysSales.reduce((sum, sale) => sum + sale.quantity, 0);
@@ -945,7 +963,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const salesToRender = limit ? sortedSales.slice(0, limit) : sortedSales;
 
             if (salesToRender.length === 0) {
-                targetElement.innerHTML = `<p class="empty-state">No sales recorded yet.</p>`;
+                targetElement.innerHTML = `<p class="empty-state">Record some sales to see them here.</p>`;
                 return;
             }
 
@@ -996,7 +1014,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             if (sortedSales.length === 0) {
-                this.elements.allSalesList.innerHTML = `<p class="empty-state">No sales recorded yet.</p>`;
+                this.elements.allSalesList.innerHTML = `<p class="empty-state">Record some sales to see them here.</p>`;
                 return;
             }
 
@@ -3227,6 +3245,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 rewardText = 'Great start! Let\'s do more! 🚀';
             } else if (count > 0) {
                 rewardText = '👍 Scan more for free airtime!';
+            } else {
+                rewardText = 'Record sales for free airtime';
             }
             this.elements.scanReward.textContent = rewardText;
         },
