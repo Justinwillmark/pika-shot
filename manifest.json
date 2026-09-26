@@ -1,6 +1,6 @@
 {
-  "name": "pika shot",
-  "short_name": "pika shot",
+  "name": "PikaShot",
+  "short_name": "PikaShot",
   "description": "Fast sales and inventory tracking for informal retailers.",
   "start_url": "/",
   "display": "standalone",

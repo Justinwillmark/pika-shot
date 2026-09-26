@@ -318,7 +318,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.productForm.addEventListener('submit', this.handleSaveProduct.bind(this));
             this.elements.deleteProductBtn.addEventListener('click', this.handleDeleteProduct.bind(this));
             this.elements.cancelProductFormBtn.addEventListener('click', () => this.hideModal());
-            this.elements.cancelScanBtn.addEventListener('click', () => { Camera.stop(); history.back(); });
+            this.elements.cancelScanBtn.addEventListener('click', () => { this.state.isScanCanceled = true; Camera.stop(); history.back(); });
             this.elements.retakePictureBtn.addEventListener('click', this.handleRetakePicture.bind(this));
             this.elements.confirmPictureBtn.addEventListener('click', this.handleConfirmPicture.bind(this));
             this.elements.addChangePictureBtn.addEventListener('click', this.handleAddOrChangePicture.bind(this));
@@ -458,6 +458,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.selectFromProductsBtn.addEventListener('click', this.showProductSelection.bind(this));
             if (this.elements.scanSelectFromProductsBtn) {
                 this.elements.scanSelectFromProductsBtn.addEventListener('click', () => {
+                    this.state.isScanCanceled = true;
                     Camera.stop();
                     this.showProductSelection();
                 });
@@ -870,7 +871,7 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         updateHeader(viewId) {
-            let title = 'pika shot';
+            let title = 'PikaShot';
             if (this.state.productSelectionMode && viewId === 'products-view') {
                 title = 'Select a Product';
             } else {
@@ -888,7 +889,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         title = 'All Sales';
                     }
                 } else {
-                    title = titles[viewId] || 'pika shot';
+                    title = titles[viewId] || 'PikaShot';
                 }
             }
             this.elements.headerTitle.textContent = title;
@@ -1442,6 +1443,7 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         startSellScan() {
+            this.state.isScanCanceled = false;
             if (!this.state.cameraReady) { alert("Scanner is not ready yet. Please wait or check your connection."); return; }
             if (!Camera.barcodeDetector) { alert("Barcode scanning is not available on this browser."); return; }
             if (this.elements.scanSelectFromProductsBtn) {
@@ -1453,6 +1455,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.navigateTo('camera-view');
             Camera.startScan(
                 async (result) => { // onResult
+                    if (this.state.isScanCanceled) return;
                     this._logToFirestore('scan_logs', null, {
                         userId: this.state.user.phone,
                         type: result.type === 'barcode' ? 'sell_item' : 'log_scan',
@@ -1479,6 +1482,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 },
                 () => { // onTimeout
+                    if (this.state.isScanCanceled) return;
                     history.back();
                     this.handleSellScanNotFound(true);
                 },
@@ -1506,6 +1510,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             this.elements.scanFeedback.textContent = 'Product not found.';
             setTimeout(() => {
+                if (this.state.isScanCanceled) return;
                 this.elements.entryChoiceTitle.textContent = 'Not Found';
                 this.elements.entryChoiceParagraph.textContent = 'This item is not in your products.';
                 this.elements.manualEntryBtn.style.display = 'none';
@@ -2149,11 +2154,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 itemsHtml += `<tr><td>${sale.productName}</td><td class="col-qty">${this.formatNumber(sale.quantity)}</td><td class="col-price">&#8358;${this.formatNumber(sale.price)}</td><td class="col-total">${discountMark}&#8358;${this.formatNumber(sale.total)}</td></tr>`;
             });
-            const receiptHtml = `<div class="receipt-header"><h3>${this.state.user.business}</h3><p>${this.state.user.location} | ${this.state.user.phone}</p><p><strong>Receipt ID:</strong> ${receiptId}</p></div><div class="receipt-items"><table><thead><tr><th>Item</th><th class="col-qty">Qty</th><th class="col-price">Price</th><th class="col-total">Total</th></tr></thead><tbody>${itemsHtml}</tbody></table></div><div class="receipt-total"><div class="total-row"><span>TOTAL</span><span>&#8358;${this.formatNumber(totalAmount)}</span></div></div><div class="receipt-footer"><p>Thank you for your patronage!</p><p>${now.toLocaleDateString('en-NG')} ${now.toLocaleTimeString('en-NG')}</p><p style="font-size: 0.7rem; color: #888; margin-top: 10px;">Powered by Pika-Shot</p></div>`;
+            const receiptHtml = `<div class="receipt-header"><h3>${this.state.user.business}</h3><p>${this.state.user.location} | ${this.state.user.phone}</p><p><strong>Receipt ID:</strong> ${receiptId}</p></div><div class="receipt-items"><table><thead><tr><th>Item</th><th class="col-qty">Qty</th><th class="col-price">Price</th><th class="col-total">Total</th></tr></thead><tbody>${itemsHtml}</tbody></table></div><div class="receipt-total"><div class="total-row"><span>TOTAL</span><span>&#8358;${this.formatNumber(totalAmount)}</span></div></div><div class="receipt-footer"><p>Thank you for your patronage!</p><p>${now.toLocaleDateString('en-NG')} ${now.toLocaleTimeString('en-NG')}</p><p style="font-size: 0.7rem; color: #888; margin-top: 10px;">Powered by PikaShot</p></div>`;
             this.elements.receiptContent.innerHTML = receiptHtml;
             this.showModal('receipt-modal');
         },
-        async shareReceipt() { const receiptElement = this.elements.receiptContent; try { const canvas = await html2canvas(receiptElement, { scale: 2 }); canvas.toBlob(async (blob) => { if (navigator.share && blob) { try { await navigator.share({ files: [new File([blob], 'pika-shot-receipt.png', { type: 'image/png' })], title: 'Your Receipt', text: 'Here is your receipt from ' + this.state.user.business, }); } catch (error) { console.error('Error sharing:', error); } } else { alert('Sharing is not supported on this browser, or there was an error creating the image.'); } }, 'image/png'); } catch (error) { console.error('Error generating receipt image:', error); alert('Could not generate receipt image.'); } },
+        async shareReceipt() { const receiptElement = this.elements.receiptContent; try { const canvas = await html2canvas(receiptElement, { scale: 2 }); canvas.toBlob(async (blob) => { if (navigator.share && blob) { try { await navigator.share({ files: [new File([blob], 'pikashot-receipt.png', { type: 'image/png' })], title: 'Your Receipt', text: 'Here is your receipt from ' + this.state.user.business, }); } catch (error) { console.error('Error sharing:', error); } } else { alert('Sharing is not supported on this browser, or there was an error creating the image.'); } }, 'image/png'); } catch (error) { console.error('Error generating receipt image:', error); alert('Could not generate receipt image.'); } },
 
         async initiatePhoneTransfer() {
             if (!navigator.onLine) {

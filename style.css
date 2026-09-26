@@ -781,6 +781,7 @@ html, body {
 
 .selection-mode .product-card { cursor: pointer; border: 2px solid var(--primary-color); }
 .selection-mode .product-card:hover { transform: scale(1.03); box-shadow: 0 6px 15px rgba(0,0,0,0.12); }
+.selection-mode .edit-btn-icon { display: none !important; }
 
 /* === Wholesaler View Styles === */
 #stock-levels-view .page-actions-header {
