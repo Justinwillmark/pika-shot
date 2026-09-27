@@ -954,7 +954,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.seeLastSalesContainer.style.display = 'none';
             }
 
-            await this.renderSalesList(todaysSales, this.elements.recentSalesList, 6);
+            if (todaysSales.length === 0) {
+                this.elements.recentSalesList.innerHTML = `<p class="empty-state">No sales recorded today.</p>`;
+            } else {
+                await this.renderSalesList(todaysSales, this.elements.recentSalesList, 6);
+            }
         },
 
         async renderSalesList(sales, targetElement, limit) {
