@@ -2767,8 +2767,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     }
 
-                    this.elements.retailerStockView.innerHTML = customersHtml || `<p class="empty-state">No customers found.</p>`;
-                    this.elements.salespeopleView.innerHTML = salespeopleHtml || `<p class="empty-state">No salespeople found.</p>`;
+                    this.elements.retailerStockView.innerHTML = customersHtml || `<p class="empty-state">No customers added yet.</p>`;
+                    this.elements.salespeopleView.innerHTML = salespeopleHtml || `<p class="empty-state">No salespeople added yet. Tap the "+" button to add salespeople</p>`;
 
                     this.addDeleteEventListeners();
                     this.addSalespersonEventListeners();
