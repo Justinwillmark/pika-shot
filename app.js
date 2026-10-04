@@ -916,7 +916,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         async updateDashboard() {
             if (this.state.user) {
-                this.elements.welcomeName.textContent = `Hi, ${this.state.user.name.split(' ')[0]}!`;
+                this.elements.welcomeName.textContent = `Hi, ${this.state.user.name.split(' ')[0]}.`;
                 if (this.state.user.type === 'Wholesaler' || this.state.user.type === 'Salesperson' || this.state.user.type === 'Retailer') {
                     this.elements.seeStockLevelsContainer.style.display = 'block';
                     const buttonText = this.state.user.type === 'Salesperson' ? 'Customers' : 'Customers & Salespeople';
