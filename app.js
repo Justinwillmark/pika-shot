@@ -2107,20 +2107,11 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         addSaleItemEventListeners(element, sale) {
-            const pressDuration = 500;
-            const onTouchStart = (e) => {
+            element.addEventListener('click', (e) => {
                 if (e.target.classList.contains('sale-item-overlay')) return;
-                this.state.longPressTimer = setTimeout(() => this.enterSelectionMode(element, sale), pressDuration);
-            };
-            const onTouchEnd = () => clearTimeout(this.state.longPressTimer);
-
-            element.addEventListener('mousedown', onTouchStart);
-            element.addEventListener('mouseup', onTouchEnd);
-            element.addEventListener('mouseleave', onTouchEnd);
-            element.addEventListener('touchstart', onTouchStart);
-            element.addEventListener('touchend', onTouchEnd);
-            element.addEventListener('click', () => {
-                if (this.state.isSelectionMode) {
+                if (!this.state.isSelectionMode) {
+                    this.enterSelectionMode(element, sale);
+                } else {
                     this.toggleSaleSelection(element, sale);
                 }
             });
@@ -2151,7 +2142,7 @@ document.addEventListener('DOMContentLoaded', () => {
             document.querySelectorAll('.sale-item').forEach(el => { el.classList.remove('selectable'); el.classList.remove('selected'); });
             this.elements.receiptActions.classList.remove('visible');
             if (this.elements.recentSalesList.children.length > 0 && this.elements.recentSalesList.children[0].className !== 'empty-state') {
-                this.elements.selectionModeHint.textContent = 'Long-press to select';
+                this.elements.selectionModeHint.textContent = 'Tap to select';
             }
         },
         toggleSaleSelection(element, sale) {
