@@ -1460,7 +1460,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else if (product.needsSetup === 'barcode-and-price') {
                     badgeHtml = '<div class="setup-badge">Add barcode & price</div>';
                 } else if (product.needsSetup === 'price') {
-                    badgeHtml = '<div class="setup-badge">Add price & image</div>';
+                    badgeHtml = '<div class="setup-badge">Add price</div>';
                 } else if (product.stock < 7) {
                     badgeHtml = '<div class="restock-badge">Low stock!</div>';
                 }
