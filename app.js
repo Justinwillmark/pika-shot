@@ -86,6 +86,8 @@ document.addEventListener('DOMContentLoaded', () => {
             confirmPictureBtn: document.getElementById('confirm-picture-btn'),
             productFormModal: document.getElementById('product-form-modal'),
             productSourceInfo: document.getElementById('product-source-info'),
+            stockVisibilityRow: document.getElementById('stock-visibility-row'),
+            stockVisibilityToggle: document.getElementById('stock-visibility-toggle'),
             productBarcodeDisplay: document.getElementById('product-barcode-display'),
             deleteProductBtn: document.getElementById('delete-product-btn'),
             productForm: document.getElementById('product-form'),
@@ -740,6 +742,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             snapshot.docChanges().forEach((change) => {
                                 if (change.type === 'added') {
                                     const logData = change.doc.data();
+                                    if (logData.voided) return;
                                     logData.id = change.doc.id;
                                     this.handlePikaLogScanned(logData);
                                 }
@@ -1004,16 +1007,30 @@ document.addEventListener('DOMContentLoaded', () => {
             this.applyFigureVisibility();
         },
 
-        // Edited sales get an "Edited" tag outside the box, so they sit in a small wrapper row.
+        // Small vertical labels outside the sale box: Edited / Discounted / Credit on the right (Edited wins),
+        // Transferred (once the recipient accepted) on the left.
+        _saleSideLabels(sale) {
+            let right = null;
+            if (sale.edited) right = { text: 'Edited', cls: 'edited' };
+            else if (sale.saleType === 'credit') right = { text: 'Credit', cls: 'credit' };
+            else if (sale.saleType === 'discount' || sale.discount > 0) right = { text: 'Discounted', cls: 'discounted' };
+            const left = sale.sharedAsLog ? { text: 'Transferred', cls: 'transferred' } : null;
+            return { right, left };
+        },
+
         _appendSaleEl(container, saleEl, sale) {
-            if (!sale.edited) { container.appendChild(saleEl); return; }
+            const { right, left } = this._saleSideLabels(sale);
+            if (!right && !left) { container.appendChild(saleEl); return; }
             const row = document.createElement('div');
             row.className = 'sale-row';
-            const tag = document.createElement('span');
-            tag.className = 'sale-edited-tag';
-            tag.textContent = 'Edited';
             row.appendChild(saleEl);
-            row.appendChild(tag);
+            [[right, 'right'], [left, 'left']].forEach(([label, side]) => {
+                if (!label) return;
+                const tag = document.createElement('span');
+                tag.className = `sale-tag ${side} ${label.cls}`;
+                tag.textContent = label.text;
+                row.appendChild(tag);
+            });
             container.appendChild(row);
         },
 
@@ -1470,7 +1487,17 @@ document.addEventListener('DOMContentLoaded', () => {
         _unlockAudio() {
             try {
                 const ctx = this._getAudioCtx();
-                if (ctx && ctx.state === 'suspended') ctx.resume();
+                if (!ctx) return;
+                if (ctx.state === 'suspended') ctx.resume();
+                if (!this._audioPrimed) {
+                    // Some browsers (iOS) only open the audio output after a sound has been started from a tap
+                    const buffer = ctx.createBuffer(1, 1, 22050);
+                    const src = ctx.createBufferSource();
+                    src.buffer = buffer;
+                    src.connect(ctx.destination);
+                    src.start(0);
+                    this._audioPrimed = true;
+                }
             } catch (e) { /* audio unavailable */ }
         },
 
@@ -1478,21 +1505,28 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const ctx = this._getAudioCtx();
                 if (!ctx) return;
-                if (ctx.state === 'suspended') ctx.resume();
-                notes.forEach(({ freq, start, dur, type, vol }) => {
-                    const osc = ctx.createOscillator();
-                    const gain = ctx.createGain();
-                    const t0 = ctx.currentTime + start;
-                    osc.type = type || 'sine';
-                    osc.frequency.value = freq;
-                    gain.gain.setValueAtTime(0.0001, t0);
-                    gain.gain.exponentialRampToValueAtTime(vol || 0.15, t0 + 0.02);
-                    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-                    osc.connect(gain);
-                    gain.connect(ctx.destination);
-                    osc.start(t0);
-                    osc.stop(t0 + dur + 0.05);
-                });
+                const schedule = () => {
+                    const base = ctx.currentTime + 0.05; // small lead-in so the very start of the sound is never clipped
+                    notes.forEach(({ freq, start, dur, type, vol }) => {
+                        const osc = ctx.createOscillator();
+                        const gain = ctx.createGain();
+                        const t0 = base + start;
+                        const peak = vol || 0.15;
+                        osc.type = type || 'sine';
+                        osc.frequency.value = freq;
+                        gain.gain.setValueAtTime(0.0001, t0);
+                        gain.gain.linearRampToValueAtTime(peak, t0 + 0.01);
+                        gain.gain.setValueAtTime(peak, t0 + Math.max(0.011, dur - 0.09)); // hold, then a gentle release
+                        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+                        osc.connect(gain);
+                        gain.connect(ctx.destination);
+                        osc.start(t0);
+                        osc.stop(t0 + dur + 0.05);
+                    });
+                };
+                // Wait for the context to be running before scheduling, otherwise the start of the sound is lost
+                if (ctx.state === 'running') schedule();
+                else ctx.resume().then(schedule).catch(() => {});
             } catch (e) { /* audio unavailable */ }
         },
 
@@ -1507,7 +1541,11 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         async _handleSuccessfulScan() {
-            this._playNotes([{ freq: 800, start: 0, dur: 0.1, type: 'square', vol: 0.08 }]);
+            // clear two-tone "ding" (about a third of a second)
+            this._playNotes([
+                { freq: 1046.5, start: 0, dur: 0.14, vol: 0.28 },
+                { freq: 1568, start: 0.11, dur: 0.26, vol: 0.28 }
+            ]);
             await DB.incrementScanCount();
             this.updateScanTracker();
         },
@@ -1587,8 +1625,31 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         },
 
-        startSellScan() {
+        // New users sometimes tap Record Sale before adding anything to sell: guide them to Products first.
+        redirectToAddProducts() {
+            const isSalesperson = this.state.user && this.state.user.type === 'Salesperson';
+            this.showToast(isSalesperson
+                ? "You have no products yet. Accept products from your wholesaler first."
+                : "Add your products first, then you can record sales.");
+            setTimeout(() => {
+                this.navigateTo('products-view');
+                const btn = this.elements.addNewProductBtn;
+                if (btn && !isSalesperson) {
+                    btn.classList.remove('attention-pulse');
+                    void btn.offsetWidth; // restart the animation if it is already running
+                    btn.classList.add('attention-pulse');
+                    setTimeout(() => btn.classList.remove('attention-pulse'), 3600);
+                }
+            }, 700);
+        },
+
+        async startSellScan() {
             this.state.isScanCanceled = false;
+            if (!this.state.productCount) {
+                // 0, or not counted yet: confirm against the database before sending the user away
+                const existing = await DB.getAllProducts();
+                if (existing.length === 0) { this.redirectToAddProducts(); return; }
+            }
             if (!this.state.cameraReady) { alert("Scanner is not ready yet. Please wait or check your connection."); return; }
             if (!Camera.isSupported()) { alert("Barcode scanning is not available on this device."); return; }
             if (this.elements.scanSelectFromProductsBtn) {
@@ -1692,6 +1753,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.productIdInput.value = '';
             this.elements.productBarcodeDisplay.style.display = 'none';
             this.elements.productSourceInfo.style.display = 'none';
+            this.elements.stockVisibilityRow.style.display = 'none';
             this.state.capturedBlob = null;
 
             const cartonOption = this.elements.productUnitInput.querySelector('.wholesaler-only');
@@ -1732,7 +1794,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 createdAt: isEditing ? this.state.editingProduct.createdAt : new Date(),
                 supplierId: isEditing ? this.state.editingProduct.supplierId : null,
                 originalName: isEditing ? this.state.editingProduct.originalName : null,
-                lockedUntilOOS: isEditing ? this.state.editingProduct.lockedUntilOOS : false,
+                lockedUntilOOS: false,
+                stockVisible: (this.elements.stockVisibilityRow.style.display !== 'none')
+                    ? this.elements.stockVisibilityToggle.checked
+                    : (isEditing ? this.state.editingProduct.stockVisible : undefined),
                 isSalesperson: isEditing ? this.state.editingProduct.isSalesperson : false,
                 wholesalerPrice: isEditing ? this.state.editingProduct.wholesalerPrice : 0,
                 needsSetup: null,
@@ -1740,15 +1805,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (!productData.name || isNaN(productData.price) || isNaN(productData.stock)) {
                 alert('Please fill out all fields correctly.'); return;
-            }
-
-            if (isEditing && this.state.editingProduct.lockedUntilOOS && this.state.editingProduct.stock > 0) {
-                productData.stock = this.state.editingProduct.stock;
-                productData.unit = this.state.editingProduct.unit;
-            }
-
-            if (productData.lockedUntilOOS && productData.stock <= 0) {
-                productData.lockedUntilOOS = false;
             }
 
             if (!productData.image) {
@@ -1802,6 +1858,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         async _commitProductSave(productData) {
             await DB.saveProduct(productData);
+            await this._syncSupplierStock(productData); // no-op unless this product came from a supplier
 
             this.hideModal();
             this.state.capturedBlob = null;
@@ -1832,6 +1889,13 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.productNameInput.value = product.name;
             this.elements.productPriceInput.value = this.formatNumber(product.price);
             this.elements.productStockInput.value = this.formatNumber(product.stock);
+            // Units that came with a transfer may not be in the dropdown; keep them selectable so saving never blanks the unit
+            if (product.unit && !Array.from(this.elements.productUnitInput.options).some(o => o.value === product.unit)) {
+                const extra = document.createElement('option');
+                extra.value = product.unit;
+                extra.textContent = product.unit;
+                this.elements.productUnitInput.appendChild(extra);
+            }
             this.elements.productUnitInput.value = product.unit;
             this.state.capturedBlob = product.image;
 
@@ -1856,14 +1920,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 cartonOption.style.display = 'none';
             }
 
-            if ((product.lockedUntilOOS || product.isSalesperson) && product.stock > 0) {
-                this.elements.productStockInput.disabled = true;
-                this.elements.productUnitInput.disabled = true;
-                if (!isSalesperson) {
-                    this.elements.productSourceInfo.textContent = 'Limited edits for transferred products until out of stock.';
-                    this.elements.productSourceInfo.style.display = 'block';
-                }
-            }
+            // Received products are edited like any other; the owner decides whether the last supplier sees the stock
+            const canShowVisibility = !!product.supplierId && !isSalesperson && !product.isSalesperson;
+            this.elements.stockVisibilityRow.style.display = canShowVisibility ? 'flex' : 'none';
+            this.elements.stockVisibilityToggle.checked = product.stockVisible !== false;
 
             if (product.needsSetup === 'barcode-and-price') {
                 this.elements.scanNewBarcodeBtn.style.display = 'block';
@@ -1875,7 +1935,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (product.barcode) {
                     this.elements.productBarcodeDisplay.textContent = product.barcode;
                     this.elements.productBarcodeDisplay.style.display = 'block';
-                } else if (!product.lockedUntilOOS || product.stock <= 0) {
+                } else {
                     this.elements.productSourceInfo.textContent = 'No barcode assigned.';
                     this.elements.productSourceInfo.style.display = 'block';
                     this.elements.productBarcodeDisplay.style.display = 'none';
@@ -2077,6 +2137,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 senderRole: this.state.user.type,
                                 targetPhone: targetPhone,
                                 claimed: false,
+                                saleIds: [sale.id],
                                 timestamp: window.fb.serverTimestamp(),
                                 items: [{
                                     name: product.name,
@@ -2090,6 +2151,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             const logRef = await window.fb.addDoc(logCollectionRef, logData);
                             // The sale only counts as transferred once the recipient accepts it
                             sale.pendingTransfer = { logId: logRef.id, to: targetPhone };
+                            sale.pendingTransfers = [{ logId: logRef.id, to: targetPhone }];
                         }
                     }
                 } catch (error) {
@@ -2112,7 +2174,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // --- SALES LOGGING: END ---
             }
 
-            if (this.state.firebaseReady && product.supplierId && this.state.user.phone) {
+            if (this.state.firebaseReady && product.supplierId && this.state.user.phone && product.stockVisible !== false) {
                 try {
                     const retailerDocRef = window.fb.doc(window.fb.db, `retailer_stocks/${product.supplierId}/supplied_retailers/${this.state.user.phone}`);
                     const updateData = {};
@@ -2216,7 +2278,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this._logToFirestore('sales_logs', null, saleDataForAdmin);
             // --- SALES LOGGING: END ---
 
-            if (this.state.firebaseReady && productToSell.supplierId && this.state.user.phone) {
+            if (this.state.firebaseReady && productToSell.supplierId && this.state.user.phone && productToSell.stockVisible !== false) {
                 try {
                     const retailerDocRef = window.fb.doc(window.fb.db, `retailer_stocks/${productToSell.supplierId}/supplied_retailers/${this.state.user.phone}`);
                     const updateData = {};
@@ -2435,8 +2497,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     totalDue += paid;
                 }
 
-                itemsHtml += `<div class="rc-item"><div class="rc-item-name">${this._esc(sale.productName)}</div>` +
-                    `<div class="rc-line"><span class="rc-calc">${this.formatNumber(sale.quantity)} x ${money(sale.price)}</span><span class="rc-amt">${money(gross)}</span></div>${extra}</div>`;
+                itemsHtml += `<div class="rc-item"><div class="rc-row"><span class="rc-item-name">${this._esc(sale.productName)}</span><span class="rc-amt">${money(gross)}</span></div>` +
+                    `<div class="rc-calc">${this.formatNumber(sale.quantity)} x ${money(sale.price)}</div>${extra}</div>`;
             });
 
             let summaryHtml = '';
@@ -2451,23 +2513,19 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const user = this.state.user || {};
-            const customerRow = customers.size === 1 ? `<div class="rc-info"><span>Customer</span><strong>${this._esc([...customers][0])}</strong></div>` : '';
             const metaLine = [user.location, user.phone].filter(Boolean).map(v => this._esc(v)).join(' &middot; ');
+            const customerLine = customers.size === 1 ? `<p>Customer: ${this._esc([...customers][0])}</p>` : '';
 
             this.elements.receiptContent.innerHTML =
                 `<div class="receipt-header"><div class="rc-store">${this._esc(user.business)}</div>${metaLine ? `<div class="rc-meta">${metaLine}</div>` : ''}</div>` +
                 `<hr class="rc-rule">` +
-                `<div class="rc-info"><span>Receipt</span><strong>${receiptId}</strong></div>` +
-                `<div class="rc-info"><span>Date</span><strong>${dateStr}</strong></div>` +
-                `<div class="rc-info"><span>Time</span><strong>${timeStr}</strong></div>` +
-                customerRow +
-                `<hr class="rc-rule">` +
-                `<div class="rc-cols"><span>Item</span><span>Amount</span></div>` +
                 `<div class="receipt-items">${itemsHtml}</div>` +
                 `<hr class="rc-rule double">` +
                 summaryHtml +
                 `<hr class="rc-rule">` +
-                `<div class="receipt-footer"><p class="rc-thanks">Thank you for your patronage!</p><p class="rc-brand">Powered by PikaShot</p></div>`;
+                `<div class="receipt-footer"><p class="rc-thanks">Thank you for your patronage!</p>${customerLine}` +
+                `<p class="rc-id">Receipt ${receiptId}</p><p>${dateStr} &middot; ${timeStr}</p>` +
+                `<p class="rc-brand">Powered by PikaShot</p></div>`;
 
             const chip = document.getElementById('receipt-count-chip');
             if (chip) chip.textContent = `${selectedSaleObjects.length} item${selectedSaleObjects.length === 1 ? '' : 's'}`;
@@ -2475,6 +2533,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const scroller = document.getElementById('receipt-scroll');
             if (scroller) scroller.scrollTop = 0;
         },
+
         async shareReceipt() { const receiptElement = this.elements.receiptContent; try { const canvas = await html2canvas(receiptElement, { scale: 2, backgroundColor: '#ffffff' }); canvas.toBlob(async (blob) => { if (navigator.share && blob) { try { await navigator.share({ files: [new File([blob], 'pikashot-receipt.png', { type: 'image/png' })], title: 'Your Receipt', text: 'Here is your receipt from ' + this.state.user.business, }); } catch (error) { console.error('Error sharing:', error); } } else { alert('Sharing is not supported on this browser, or there was an error creating the image.'); } }, 'image/png'); } catch (error) { console.error('Error generating receipt image:', error); alert('Could not generate receipt image.'); } },
 
         async initiatePhoneTransfer() {
@@ -2581,6 +2640,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     senderRole: this.state.user.type,
                     targetPhone: targetPhone,
                     claimed: false,
+                    saleIds: selectedSaleObjects.map(s => s.id),
                     timestamp: window.fb.serverTimestamp(),
                     items: aggregatedSaleObjects.map(sale => {
                         const product = allProducts.find(p => p.id === sale.productId);
@@ -2718,7 +2778,8 @@ document.addEventListener('DOMContentLoaded', () => {
             for (const saleId of this.state.selectedSales) {
                 const saleToUpdate = allSales.find(s => s.id === saleId);
                 if (saleToUpdate) {
-                    saleToUpdate.pendingTransfer = { logId, to: targetPhone };
+                    saleToUpdate.pendingTransfer = { logId, to: targetPhone }; // latest transfer
+                    saleToUpdate.pendingTransfers = [...(saleToUpdate.pendingTransfers || []), { logId, to: targetPhone }];
                     updates.push(DB.updateSale(saleToUpdate));
                 }
             }
@@ -2732,14 +2793,20 @@ document.addEventListener('DOMContentLoaded', () => {
             this.watchPendingTransfers();
         },
 
+        // Every transfer still waiting on a recipient for this sale (a sale can be offered to several people)
+        _pendingLogIds(sale) {
+            const ids = new Set((sale.pendingTransfers || []).map(t => t.logId));
+            if (sale.pendingTransfer && sale.pendingTransfer.logId) ids.add(sale.pendingTransfer.logId);
+            return [...ids];
+        },
+
         // Listens for the recipient accepting any transfer that is still pending.
         async watchPendingTransfers() {
             if (!this.state.firebaseReady || !this.state.user || !this.state.user.phone) return;
             try {
                 const sales = await DB.getAllSales();
-                const pendingIds = new Set(sales
-                    .filter(s => s.pendingTransfer && s.pendingTransfer.logId && !s.sharedAsLog)
-                    .map(s => s.pendingTransfer.logId));
+                const pendingIds = new Set();
+                sales.filter(s => !s.sharedAsLog).forEach(s => this._pendingLogIds(s).forEach(id => pendingIds.add(id)));
                 if (!this._pendingWatchers) this._pendingWatchers = new Map();
 
                 this._pendingWatchers.forEach((unsub, id) => {
@@ -2779,12 +2846,12 @@ document.addEventListener('DOMContentLoaded', () => {
             this._acceptedHandled.add(logId);
 
             const allSales = await DB.getAllSales();
-            const affected = allSales.filter(s => s.pendingTransfer && s.pendingTransfer.logId === logId && !s.sharedAsLog);
+            const affected = allSales.filter(s => !s.sharedAsLog && this._pendingLogIds(s).includes(logId));
             if (affected.length === 0) return;
 
             await Promise.all(affected.map(sale => {
                 sale.sharedAsLog = true;
-                sale.transferredTo = logData.claimedBy || sale.pendingTransfer.to;
+                sale.transferredTo = logData.claimedBy || (sale.pendingTransfer && sale.pendingTransfer.to);
                 return DB.updateSale(sale);
             }));
 
@@ -2807,49 +2874,89 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         celebrateTransferAccepted(name, business) {
-            this._playTransferChime();
-
-            const banner = document.getElementById('transfer-accepted-banner');
-            if (banner) {
-                banner.innerHTML = '';
-                const title = document.createElement('div'); title.className = 'tab-title'; title.textContent = 'Transfer accepted';
-                const who = document.createElement('div'); who.className = 'tab-name'; who.textContent = name;
-                banner.appendChild(title);
-                banner.appendChild(who);
-                if (business) {
-                    const biz = document.createElement('div'); biz.className = 'tab-biz'; biz.textContent = business;
-                    banner.appendChild(biz);
-                }
-                banner.classList.add('show');
-                clearTimeout(this._bannerTimer);
-                this._bannerTimer = setTimeout(() => banner.classList.remove('show'), 6500);
-                banner.onclick = () => banner.classList.remove('show');
-            }
-            this.launchConfetti();
+            this.showCelebration({
+                icon: '🎉',
+                title: 'Transfer accepted',
+                headline: name,
+                sub: business,
+                messages: ['You can now see when they are low on stock inside Customers. T&C apply.']
+            });
         },
 
-        launchConfetti() {
+        // Centered popup with confetti and a chime. It stays until the user taps Okay; several are queued.
+        showCelebration(opts) {
+            if (!this._celebrationQueue) this._celebrationQueue = [];
+            this._celebrationQueue.push(opts);
+            if (!this._celebrationOpen) this._showNextCelebration();
+        },
+
+        _showNextCelebration() {
+            const overlay = document.getElementById('celebration-overlay');
+            const opts = this._celebrationQueue && this._celebrationQueue.shift();
+            if (!overlay || !opts) { this._celebrationOpen = false; return; }
+            this._celebrationOpen = true;
+
+            overlay.innerHTML = '';
+            const card = document.createElement('div');
+            card.className = 'celebration-card';
+            const add = (tag, cls, text) => {
+                if (!text) return;
+                const el = document.createElement(tag);
+                el.className = cls;
+                el.textContent = text;
+                card.appendChild(el);
+            };
+            add('div', 'celebration-icon', opts.icon || '🎉');
+            add('div', 'celebration-title', opts.title);
+            add('div', 'celebration-name', opts.headline);
+            add('div', 'celebration-sub', opts.sub);
+            (opts.messages || []).forEach(m => add('p', 'celebration-msg', m));
+            const okay = document.createElement('button');
+            okay.type = 'button';
+            okay.className = 'btn btn-primary';
+            okay.textContent = 'Okay';
+            okay.addEventListener('click', () => {
+                overlay.classList.remove('show');
+                setTimeout(() => {
+                    overlay.style.display = 'none';
+                    overlay.innerHTML = '';
+                    this._showNextCelebration();
+                }, 220);
+            });
+            card.appendChild(okay);
+            overlay.appendChild(card);
+
+            overlay.style.display = 'flex';
+            requestAnimationFrame(() => overlay.classList.add('show'));
+            this._playTransferChime();
+            this.launchConfetti(overlay);
+            okay.focus({ preventScroll: true });
+        },
+
+        // Confetti bursting out from the middle of the screen
+        launchConfetti(container) {
             if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-            const existing = document.getElementById('confetti-canvas');
-            if (existing) existing.remove();
+            const host = container || document.body;
+            const old = host.querySelector('#confetti-canvas');
+            if (old) old.remove();
             const canvas = document.createElement('canvas');
             canvas.id = 'confetti-canvas';
             const dpr = window.devicePixelRatio || 1;
-            canvas.width = window.innerWidth * dpr;
-            canvas.height = window.innerHeight * dpr;
-            document.body.appendChild(canvas);
+            const W = window.innerWidth, H = window.innerHeight;
+            canvas.width = W * dpr;
+            canvas.height = H * dpr;
+            host.insertBefore(canvas, host.firstChild);
             const ctx = canvas.getContext('2d');
             ctx.scale(dpr, dpr);
 
             const colors = ['#008C95', '#F5A623', '#ffffff', '#28a745', '#D0021B', '#5bc0de'];
-            const W = window.innerWidth, H = window.innerHeight;
-            const pieces = Array.from({ length: 140 }, () => {
-                const fromLeft = Math.random() < 0.5;
+            const pieces = Array.from({ length: 160 }, () => {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 5 + Math.random() * 11;
                 return {
-                    x: fromLeft ? -10 : W + 10,
-                    y: H * (0.25 + Math.random() * 0.25),
-                    vx: (fromLeft ? 1 : -1) * (4 + Math.random() * 9),
-                    vy: -(6 + Math.random() * 9),
+                    x: W / 2, y: H / 2,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed - 5,
                     size: 5 + Math.random() * 6,
                     rot: Math.random() * Math.PI,
                     vr: (Math.random() - 0.5) * 0.4,
@@ -2860,16 +2967,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const started = performance.now();
             const frame = (now) => {
+                if (!canvas.isConnected) return;
                 const elapsed = now - started;
                 ctx.clearRect(0, 0, W, H);
                 pieces.forEach(p => {
-                    p.vy += 0.28;           // gravity
-                    p.vx *= 0.992;          // air drag
+                    p.vy += 0.26;          // gravity
+                    p.vx *= 0.985;         // air drag
+                    p.vy *= 0.995;
                     p.x += p.vx;
                     p.y += p.vy;
                     p.rot += p.vr;
                     ctx.save();
-                    ctx.globalAlpha = Math.max(0, 1 - Math.max(0, elapsed - 2600) / 1000);
+                    ctx.globalAlpha = Math.max(0, 1 - Math.max(0, elapsed - 2800) / 1000);
                     ctx.translate(p.x, p.y);
                     ctx.rotate(p.rot);
                     ctx.fillStyle = p.color;
@@ -2877,10 +2986,107 @@ document.addEventListener('DOMContentLoaded', () => {
                     else { ctx.beginPath(); ctx.arc(0, 0, p.size / 3, 0, Math.PI * 2); ctx.fill(); }
                     ctx.restore();
                 });
-                if (elapsed < 3600) requestAnimationFrame(frame);
+                if (elapsed < 3800) requestAnimationFrame(frame);
                 else canvas.remove();
             };
             requestAnimationFrame(frame);
+        },
+
+        // --- First come, first served -------------------------------------------------------------
+        // Accepting is a single transaction: the log must still be unclaimed and none of its sales may have been
+        // claimed through another transfer. Returns 'ok', 'taken', 'unenforced' (rules/legacy log) or 'error'.
+        async _claimTransfer(log) {
+            if (!log.id || !this.state.firebaseReady) return 'unenforced';
+            const me = this.state.user.phone;
+            const logRef = window.fb.doc(window.fb.db, 'shared_logs', log.id);
+            const saleIds = Array.isArray(log.saleIds) ? log.saleIds : [];
+            const claimRefs = saleIds.map(id => window.fb.doc(window.fb.db, 'shared_logs', `claim_${log.senderId}_${id}`));
+            const taken = () => { const e = new Error('transfer already claimed'); e.taken = true; return e; };
+            try {
+                await window.fb.runTransaction(window.fb.db, async (tx) => {
+                    const logSnap = await tx.get(logRef);
+                    if (!logSnap.exists()) throw taken();
+                    const current = logSnap.data();
+                    if (current.claimed || current.voided) throw taken();
+                    const claimSnaps = [];
+                    for (const ref of claimRefs) claimSnaps.push(await tx.get(ref));
+                    if (claimSnaps.some(snap => snap.exists())) throw taken();
+
+                    claimRefs.forEach(ref => tx.set(ref, { claimedBy: me, logId: log.id, claimedAt: window.fb.serverTimestamp() }));
+                    tx.update(logRef, {
+                        claimed: true,
+                        claimedAt: window.fb.serverTimestamp(),
+                        claimedBy: me,
+                        claimedByName: this.state.user.name || null,
+                        claimedByBusiness: this.state.user.business || null
+                    });
+                });
+                return 'ok';
+            } catch (error) {
+                if (error && error.taken) {
+                    // best effort: stop this log from popping up again
+                    try { await window.fb.updateDoc(logRef, { voided: true }); } catch (e) { /* not allowed: fine */ }
+                    return 'taken';
+                }
+                if (error && error.code === 'permission-denied') {
+                    console.warn('Could not enforce first-come claim (permissions); accepting without it.', error);
+                    return 'unenforced';
+                }
+                console.error('Claiming transfer failed:', error);
+                return 'error';
+            }
+        },
+
+        _barcodesMatch(a, b) {
+            if (!a || !b) return false;
+            a = String(a).trim();
+            b = String(b).trim();
+            if (a === b) return true;
+            // UPC-A (12 digits) is the same code as EAN-13 with a leading zero
+            if (/^\d+$/.test(a) && /^\d+$/.test(b)) {
+                return (a.length === 12 && b === '0' + a) || (b.length === 12 && a === '0' + b);
+            }
+            return false;
+        },
+
+        _supplierDocRef(supplierId) {
+            return window.fb.doc(window.fb.db, `retailer_stocks/${supplierId}/supplied_retailers/${this.state.user.phone}`);
+        },
+
+        // Takes a product's stock level off an earlier supplier's Customers view
+        async _removeFromSupplier(supplierId, productKey) {
+            if (!this.state.firebaseReady || !supplierId || !productKey) return;
+            try {
+                const ref = this._supplierDocRef(supplierId);
+                const snap = await window.fb.getDoc(ref);
+                if (!snap.exists()) return;
+                await window.fb.setDoc(ref, { products: { [productKey]: window.fb.deleteField() }, lastUpdate: window.fb.serverTimestamp() }, { merge: true });
+            } catch (error) {
+                console.error('Could not remove product from earlier supplier:', error);
+            }
+        },
+
+        // Keeps the last supplier's view of a received product in step with the owner's edits and visibility switch
+        async _syncSupplierStock(product) {
+            if (!this.state.firebaseReady || !product || !product.supplierId || !this.state.user.phone) return;
+            if (product.isSalesperson || this.state.user.type === 'Salesperson') return;
+            const key = product.originalName || product.name;
+            try {
+                if (product.stockVisible === false) {
+                    await this._removeFromSupplier(product.supplierId, key);
+                } else {
+                    await window.fb.setDoc(this._supplierDocRef(product.supplierId), {
+                        retailerName: this.state.user.name,
+                        businessName: this.state.user.business,
+                        retailerLocation: this.state.user.location,
+                        retailerPhone: this.state.user.phone,
+                        products: { [key]: { stock: product.stock, unit: product.unit, isSalesperson: false } },
+                        lastUpdate: window.fb.serverTimestamp()
+                    }, { merge: true });
+                }
+            } catch (error) {
+                console.error('Could not sync stock visibility:', error);
+            }
         },
 
         async handlePikaLogIdScanned(logId) {
@@ -2897,6 +3103,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     // NEW: Check if claimed
                     if (logData.claimed) {
                         alert("Items in QR were previously scanned and accepted");
+                        return;
+                    }
+                    if (logData.voided) {
+                        alert("This transfer is no longer available.");
                         return;
                     }
 
@@ -2990,13 +3200,30 @@ document.addEventListener('DOMContentLoaded', () => {
             const isSalesperson = this.state.user.type === 'Salesperson';
             if(isSalesperson) { alert('Salespeople cannot edit products.'); return; }
             const isRetailerReceiving = this.state.user.type === 'Retailer';
+            const log = this.state.scannedLogData;
+            const supplierId = log.senderId;
+
+            // Only the first person to accept gets the products
+            this.showLoader();
+            let claim;
+            try { claim = await this._claimTransfer(log); } finally { this.hideLoader(); }
+            if (claim === 'taken') {
+                this.hideModal();
+                this.state.scannedLogData = null;
+                alert('Sorry, this transfer was already accepted by someone else, so it is no longer available.');
+                return;
+            }
+            if (claim === 'error') {
+                alert('Could not reach the server to accept this transfer. Please check your connection and try again.');
+                return;
+            }
 
             const allProducts = await DB.getAllProducts();
             const productUpdates = [];
+            const staleSupplierEntries = []; // [supplierId, productKey] pairs to take off earlier suppliers
             let updatedProductsForFirebase = {};
-            const supplierId = this.state.scannedLogData.senderId;
 
-            for (const item of this.state.scannedLogData.items) {
+            for (const item of log.items) {
                 let stockToAdd, unitType, costPrice, needsSetup, barcode, originalName, wholesalerPrice, subUnitType, subUnitQuantity;
 
                 const isCarton = item.unit === 'cartons' && item.subUnitType && item.subUnitQuantity > 0;
@@ -3024,10 +3251,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 subUnitType = item.subUnitType;
                 subUnitQuantity = item.subUnitQuantity;
 
-                // Match by barcode first (so same-barcode products aren't duplicated even if named differently)
+                // Same barcode = same product: add to what the user already has (even if it is named differently)
                 let existingProduct = null;
                 if (barcode) {
-                    existingProduct = allProducts.find(p => p.barcode && p.barcode === barcode);
+                    existingProduct = allProducts.find(p => this._barcodesMatch(p.barcode, barcode));
                 }
                 // Fall back to name matching if no barcode match
                 if (!existingProduct) {
@@ -3037,13 +3264,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 let finalProduct;
 
                 if (existingProduct) {
+                    const previousSupplier = existingProduct.supplierId;
+                    const previousKey = existingProduct.originalName || existingProduct.name;
+                    if (previousSupplier && previousSupplier !== supplierId) {
+                        staleSupplierEntries.push([previousSupplier, previousKey]); // only the last supplier sees this stock
+                    }
                     existingProduct.stock += stockToAdd;
                     existingProduct.supplierId = supplierId;
                     if (!existingProduct.barcode && barcode) {
                         existingProduct.barcode = barcode;
                     }
-                    existingProduct.needsSetup = needsSetup;
-                    existingProduct.lockedUntilOOS = true;
+                    // A product the user has already priced keeps its price; only ask for one when it has none
+                    if (!(Number(existingProduct.price) > 0)) {
+                        existingProduct.needsSetup = needsSetup;
+                    }
+                    existingProduct.lockedUntilOOS = false;
                     existingProduct.isSalesperson = isSalesperson;
                     existingProduct.originalName = originalName;
                     existingProduct.wholesalerPrice = wholesalerPrice;
@@ -3064,7 +3299,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         barcode: barcode,
                         createdAt: new Date(),
                         supplierId: supplierId,
-                        lockedUntilOOS: true,
+                        lockedUntilOOS: false,
+                        stockVisible: true,
                         isSalesperson: isSalesperson,
                         wholesalerPrice: wholesalerPrice,
                         needsSetup: needsSetup
@@ -3073,34 +3309,48 @@ document.addEventListener('DOMContentLoaded', () => {
                         finalProduct.subUnitType = subUnitType;
                         finalProduct.subUnitQuantity = subUnitQuantity;
                     }
+                    allProducts.push(finalProduct); // so a repeated barcode/name inside the same transfer is merged too
                 }
                 productUpdates.push(DB.saveProduct(finalProduct));
-                updatedProductsForFirebase[finalProduct.originalName] = { stock: finalProduct.stock, unit: finalProduct.unit, isSalesperson };
+                if (finalProduct.stockVisible !== false) {
+                    updatedProductsForFirebase[finalProduct.originalName] = { stock: finalProduct.stock, unit: finalProduct.unit, isSalesperson };
+                }
             }
 
             await Promise.all(productUpdates);
 
+            for (const [previousSupplier, previousKey] of staleSupplierEntries) {
+                await this._removeFromSupplier(previousSupplier, previousKey);
+            }
+
             if (this.state.firebaseReady && supplierId && this.state.user.phone) {
                 try {
-                    const retailerDocRef = window.fb.doc(window.fb.db, `retailer_stocks/${supplierId}/supplied_retailers/${this.state.user.phone}`);
-                    await window.fb.setDoc(retailerDocRef, {
+                    const retailerDocRef = this._supplierDocRef(supplierId);
+                    let isNewCustomer = true;
+                    try {
+                        const existingDoc = await window.fb.getDoc(retailerDocRef);
+                        isNewCustomer = !(existingDoc.exists() && existingDoc.data().joinedAt);
+                    } catch (e) { /* treat as new */ }
+                    const payload = {
                         retailerName: this.state.user.name,
                         businessName: this.state.user.business,
                         retailerLocation: this.state.user.location,
                         retailerPhone: this.state.user.phone,
                         products: updatedProductsForFirebase,
                         lastUpdate: window.fb.serverTimestamp()
-                    }, { merge: true });
+                    };
+                    if (isNewCustomer) payload.joinedAt = window.fb.serverTimestamp(); // keeps "last in" customers on top
+                    await window.fb.setDoc(retailerDocRef, payload, { merge: true });
                 } catch (error) {
                     console.error("Error updating stock to Firebase:", error);
                     alert("Local inventory updated, but failed to sync online.");
                 }
             }
 
-            // NEW: Mark log as claimed in Firestore
-            if (this.state.scannedLogData.id && this.state.firebaseReady) {
+            // Fallback when the first-come claim could not be made inside a transaction (legacy logs / rules)
+            if (claim === 'unenforced' && log.id && this.state.firebaseReady) {
                 try {
-                    const logRef = window.fb.doc(window.fb.db, 'shared_logs', this.state.scannedLogData.id);
+                    const logRef = window.fb.doc(window.fb.db, 'shared_logs', log.id);
                     await window.fb.updateDoc(logRef, {
                         claimed: true,
                         claimedAt: window.fb.serverTimestamp(),
@@ -3115,12 +3365,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
             this.hideModal();
             this.state.scannedLogData = null;
-            const successMessage = isSalesperson
-                ? 'Inventory updated successfully! Check "My Products" to add product images.'
-                : 'Inventory updated successfully! Check "My Products" to set your prices.';
-            alert(successMessage);
             await this.renderProducts();
             this.navigateTo('products-view');
+            this.showCelebration({
+                icon: '📦',
+                title: 'Products added',
+                headline: log.senderStore ? `From ${log.senderStore}` : 'Transfer accepted',
+                messages: [
+                    'The products are now in your inventory. Open My Products to add your prices.',
+                    'You earn airtime points each time you record a sale for these products. T&C apply.'
+                ]
+            });
         },
 
         async renderRetailerStocks() {
@@ -3178,7 +3433,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     let customersHtml = '';
                     let salespeopleHtml = '';
                     const retailersData = [];
-                    querySnapshot.forEach(doc => retailersData.push({ id: doc.id, ...doc.data() }));
+                    querySnapshot.forEach(doc => retailersData.push({ id: doc.id, ...doc.data({ serverTimestamps: 'estimate' }) }));
 
                     if (retailersData.length === 0 && creditSales.length === 0) {
                         const isRetailer = this.state.user && this.state.user.type === 'Retailer';
@@ -3195,10 +3450,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     creditSales.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
                     const renderedCreditCustomers = new Set();
+                    const customerCards = []; // { time, html } - newest first, whatever kind of card it is
 
                     for (const sale of creditSales) {
                         const matchedRetailer = sale.customerPhone ? retailersData.find(r => r.id === sale.customerPhone) : null;
-                        customersHtml += this.buildCreditCard(sale, matchedRetailer);
+                        customerCards.push({ time: new Date(sale.timestamp).getTime() || 0, html: this.buildCreditCard(sale, matchedRetailer) });
                         if (matchedRetailer) {
                             renderedCreditCustomers.add(matchedRetailer.id);
                         }
@@ -3211,10 +3467,15 @@ document.addEventListener('DOMContentLoaded', () => {
                             salespeopleHtml += await this.buildSalespersonCard(retailer);
                         } else {
                             if (!renderedCreditCustomers.has(retailer.id)) {
-                                customersHtml += this.buildCustomerCard(retailer);
+                                // when they first came on board (older customers fall back to their last activity)
+                                const joined = (retailer.joinedAt && retailer.joinedAt.toDate && retailer.joinedAt.toDate()) ||
+                                    (retailer.lastUpdate && retailer.lastUpdate.toDate && retailer.lastUpdate.toDate());
+                                customerCards.push({ time: joined ? joined.getTime() : 0, html: this.buildCustomerCard(retailer) });
                             }
                         }
                     }
+                    customerCards.sort((a, b) => b.time - a.time);
+                    customersHtml = customerCards.map(card => card.html).join('');
 
                     this.elements.retailerStockView.innerHTML = customersHtml || `<p class="empty-state">No customers added yet.</p>`;
                     this.elements.salespeopleView.innerHTML = salespeopleHtml || `<p class="empty-state">No salespeople added yet. Tap the "+" button to add salespeople</p>`;

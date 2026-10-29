@@ -589,6 +589,9 @@ const Camera = {
             return { blob: null };
         }
         this._tuneTrack();
+        // The light helps photos too; it stays off if the user switches it off.
+        this._torchTouchedByUser = false;
+        this._autoTorch(session, 'photo');
 
         return new Promise(async (resolve) => {
             if (feedbackElement) feedbackElement.textContent = 'Snapping Image';
