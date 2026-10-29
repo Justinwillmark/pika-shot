@@ -613,18 +613,6 @@ button:focus { outline: none; }
 .sale-item { display: flex; align-items: center; background: var(--surface-color); padding: 12px; border-radius: var(--border-radius); margin-bottom: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.05); transition: background-color 0.2s, transform 0.2s; position: relative; overflow: hidden; cursor: pointer; }
 .sale-item.selectable { cursor: pointer; }
 .sale-item.selected { background-color: #E0F3F4; transform: scale(1.02); box-shadow: 0 4px 8px rgba(0, 140, 149, 0.3); }
-.sale-item.shared-log::before {
-    content: '';
-    position: absolute;
-    top: -1px;
-    left: -1px;
-    width: 0;
-    height: 0;
-    border-style: solid;
-    border-width: 15px 15px 0 0;
-    border-color: var(--primary-color) transparent transparent transparent;
-    border-top-left-radius: var(--border-radius);
-}
 .sale-item-overlay {
     position: absolute;
     top: 0;

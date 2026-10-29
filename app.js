@@ -244,6 +244,10 @@ document.addEventListener('DOMContentLoaded', () => {
             this.showLoader();
             this.registerServiceWorker();
             this.handleOnlineStatusChange = this.handleOnlineStatusChange.bind(this);
+            window.addEventListener('online', () => {
+                if (!this.state.user) return;
+                this.ensureFirebase().then(() => { this.checkIncomingTransfers(); this.watchPendingTransfers(); });
+            });
             this.setupEventListeners();
 
             try {
@@ -714,6 +718,95 @@ document.addEventListener('DOMContentLoaded', () => {
             await this.renderProducts();
         },
 
+        // --- Incoming transfers -------------------------------------------------------------------
+        _incomingTransfersQuery() {
+            return window.fb.query(
+                window.fb.collection(window.fb.db, 'shared_logs'),
+                window.fb.where('targetPhone', '==', this.state.user.phone),
+                window.fb.where('claimed', '==', false)
+            );
+        },
+
+        // Live listener that survives errors: it reconnects with a growing pause instead of silently dying.
+        _listenForIncomingTransfers() {
+            if (!this.state.firebaseReady || !this.state.user || !this.state.user.phone) return;
+            const phone = this.state.user.phone;
+            if (this._transfersListener) { this._transfersListener(); this._transfersListener = null; }
+            clearTimeout(this._transfersRetryTimer);
+            try {
+                this._transfersListener = window.fb.onSnapshot(this._incomingTransfersQuery(), (snapshot) => {
+                    this._transfersRetryDelay = 2000; // healthy again
+                    snapshot.docChanges().forEach((change) => {
+                        if (change.type !== 'added') return;
+                        const logData = change.doc.data();
+                        logData.id = change.doc.id;
+                        this._queueIncomingTransfer(logData);
+                    });
+                }, (error) => {
+                    console.error('Incoming transfer listener error, will reconnect:', error);
+                    this._transfersRetryDelay = Math.min((this._transfersRetryDelay || 2000) * 2, 60000);
+                    this._transfersRetryTimer = setTimeout(() => {
+                        if (this.state.user && this.state.user.phone === phone) this._listenForIncomingTransfers();
+                    }, this._transfersRetryDelay);
+                });
+            } catch (error) {
+                console.error("Error setting up transfer listener:", error);
+            }
+        },
+
+        // One-off catch-up read (app returned to the foreground, connection came back, ...)
+        async checkIncomingTransfers() {
+            if (!this.state.firebaseReady || !this.state.user || !this.state.user.phone) return;
+            try {
+                const snapshot = await window.fb.getDocs(this._incomingTransfersQuery());
+                snapshot.forEach((d) => {
+                    const logData = d.data();
+                    logData.id = d.id;
+                    this._queueIncomingTransfer(logData);
+                });
+            } catch (error) {
+                console.error('Could not check for incoming transfers:', error);
+            }
+        },
+
+        _queueIncomingTransfer(logData) {
+            if (!logData || !logData.id || logData.voided || logData.claimed) return;
+            if (!this._promptedTransfers) this._promptedTransfers = new Set();
+            if (this._promptedTransfers.has(logData.id)) return; // already shown this session
+            this._promptedTransfers.add(logData.id);
+            this._presentIncomingTransfer(logData, 0);
+        },
+
+        // Never pop the accept screen over something the user is in the middle of (a sale, a scan, a form)
+        _presentIncomingTransfer(logData, attempt) {
+            if (!this.state.user || logData.targetPhone !== this.state.user.phone) return;
+            const busy = this.elements.modalContainer.style.display === 'flex' || this.state.currentView === 'camera-view';
+            if (busy && attempt < 150) {
+                setTimeout(() => this._presentIncomingTransfer(logData, attempt + 1), 2000);
+                return;
+            }
+            this.handlePikaLogScanned(logData);
+        },
+
+        // If the first sign-in failed (e.g. the app was opened offline) try again once we can, then start syncing.
+        async ensureFirebase() {
+            if (this.state.firebaseReady || !navigator.onLine) return this.state.firebaseReady;
+            if (this._ensuringFirebase) return this._ensuringFirebase;
+            this._ensuringFirebase = (async () => {
+                try {
+                    await window.fb.signInAnonymously(window.fb.auth);
+                    this.state.firebaseReady = true;
+                    if (this.state.user && this.state.user.phone) this.startRealtimeSync();
+                } catch (error) {
+                    console.error('Firebase retry failed:', error);
+                } finally {
+                    this._ensuringFirebase = null;
+                }
+                return this.state.firebaseReady;
+            })();
+            return this._ensuringFirebase;
+        },
+
         startRealtimeSync() {
             if (this.state.user && this.state.user.phone) {
                 DB.setupRealtimeListeners(
@@ -730,28 +823,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 );
 
-                if (this.state.firebaseReady) {
-                    try {
-                        const logsQuery = window.fb.query(
-                            window.fb.collection(window.fb.db, 'shared_logs'),
-                            window.fb.where('targetPhone', '==', this.state.user.phone),
-                            window.fb.where('claimed', '==', false)
-                        );
-                        if (this._transfersListener) this._transfersListener();
-                        this._transfersListener = window.fb.onSnapshot(logsQuery, (snapshot) => {
-                            snapshot.docChanges().forEach((change) => {
-                                if (change.type === 'added') {
-                                    const logData = change.doc.data();
-                                    if (logData.voided) return;
-                                    logData.id = change.doc.id;
-                                    this.handlePikaLogScanned(logData);
-                                }
-                            });
-                        });
-                    } catch (error) {
-                        console.error("Error setting up transfer listener:", error);
-                    }
-                }
+                this._listenForIncomingTransfers();
 
                 this.watchPendingTransfers();
 
@@ -762,6 +834,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 this._visibilityHandler = async () => {
                     if (document.visibilityState === 'visible' && this.state.user) {
+                        this.ensureFirebase().then(() => this.checkIncomingTransfers());
                         await DB.resyncSalesFromCloud();
                         this.updateDashboard();
                         if (this.state.currentView === 'all-sales-view') {
@@ -777,6 +850,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (confirm('Are you sure you want to log out? This will clear local data (it remains safe in the cloud).')) {
                 await DB.clearUser(); // This also stops realtime listeners
                 this.stopWatchingTransfers();
+                if (this._transfersListener) { this._transfersListener(); this._transfersListener = null; }
+                clearTimeout(this._transfersRetryTimer);
+                this._promptedTransfers = null;
                 if (this._visibilityHandler) {
                     document.removeEventListener('visibilitychange', this._visibilityHandler);
                     this._visibilityHandler = null;
@@ -980,6 +1056,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.recentSalesList.innerHTML = `<p class="empty-state">No sales recorded today.</p>`;
             } else {
                 await this.renderSalesList(todaysSales, this.elements.recentSalesList, 6);
+            }
+
+            // From the third sale, give the page the height of a six-sale day so it scrolls comfortably
+            const list = this.elements.recentSalesList;
+            if (todaysSales.length >= 3 && todaysSales.length < 6) {
+                const firstItem = list.querySelector('.sale-item');
+                const rowHeight = ((firstItem && firstItem.offsetHeight) || 64) + 10; // item + its bottom margin
+                list.style.minHeight = `${rowHeight * 6}px`;
+            } else {
+                list.style.minHeight = '';
             }
         },
 
@@ -1443,7 +1529,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
             );
         },
-        async handleCameraPermission() { try { const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }); stream.getTracks().forEach(track => track.stop()); await this.loadMainApp(); } catch (err) { console.error("Camera permission denied:", err); alert("Camera access is required for barcode scanning. Please enable it in browser settings."); } },
+        async handleCameraPermission() { try { const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }); stream.getTracks().forEach(track => track.stop()); await this.loadMainApp(); this.startRealtimeSync(); } catch (err) { console.error("Camera permission denied:", err); alert("Camera access is required for barcode scanning. Please enable it in browser settings."); } },
         async loadCameraScannerInBackground() {
             try {
                 this.elements.sellItemBtnText.textContent = 'Loading...';
@@ -1507,7 +1593,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!ctx) return;
                 const schedule = () => {
                     const base = ctx.currentTime + 0.05; // small lead-in so the very start of the sound is never clipped
-                    notes.forEach(({ freq, start, dur, type, vol }) => {
+                    notes.forEach(({ freq, start, dur, type, vol, release }) => {
                         const osc = ctx.createOscillator();
                         const gain = ctx.createGain();
                         const t0 = base + start;
@@ -1516,7 +1602,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         osc.frequency.value = freq;
                         gain.gain.setValueAtTime(0.0001, t0);
                         gain.gain.linearRampToValueAtTime(peak, t0 + 0.01);
-                        gain.gain.setValueAtTime(peak, t0 + Math.max(0.011, dur - 0.09)); // hold, then a gentle release
+                        gain.gain.setValueAtTime(peak, t0 + Math.max(0.011, dur - (release || 0.09))); // hold, then release
                         gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
                         osc.connect(gain);
                         gain.connect(ctx.destination);
@@ -1541,11 +1627,8 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         async _handleSuccessfulScan() {
-            // clear two-tone "ding" (about a third of a second)
-            this._playNotes([
-                { freq: 1046.5, start: 0, dur: 0.14, vol: 0.28 },
-                { freq: 1568, start: 0.11, dur: 0.26, vol: 0.28 }
-            ]);
+            // one crisp checkout-scanner beep
+            this._playNotes([{ freq: 2300, start: 0, dur: 0.17, type: 'square', vol: 0.1, release: 0.03 }]);
             await DB.incrementScanCount();
             this.updateScanTracker();
         },
@@ -2676,11 +2759,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 const logCollectionRef = window.fb.collection(window.fb.db, 'shared_logs');
                 const logRef = await window.fb.addDoc(logCollectionRef, logData);
 
+                // Confirm the transfer really is on the server before telling the user it was sent
+                const saved = await window.fb.getDoc(logRef);
+                if (!saved.exists() || saved.data().targetPhone !== targetPhone || saved.data().claimed !== false) {
+                    throw new Error('Transfer was not saved correctly');
+                }
+
                 // Remember the pending transfer on each sale (it turns into "transferred" when accepted)
                 await this.handleLogShared(logRef.id, targetPhone);
                 
                 this.hideModal();
-                this.showToast("Transfer sent successfully!");
+                const recipientName = (this.elements.transferUserName.textContent || '').trim();
+                this.showToast(recipientName
+                    ? `Transfer sent! ${recipientName} will be asked to accept it.`
+                    : "Transfer sent! The recipient will be asked to accept it.");
 
             } catch (error) {
                 console.error("Error processing phone transfer:", error);
@@ -3198,7 +3290,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!this.state.scannedLogData) return;
 
             const isSalesperson = this.state.user.type === 'Salesperson';
-            if(isSalesperson) { alert('Salespeople cannot edit products.'); return; }
             const isRetailerReceiving = this.state.user.type === 'Retailer';
             const log = this.state.scannedLogData;
             const supplierId = log.senderId;
