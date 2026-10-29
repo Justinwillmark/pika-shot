@@ -125,6 +125,7 @@ document.addEventListener('DOMContentLoaded', () => {
             installBtn: document.getElementById('add-to-homescreen-btn'),
             receiptActions: document.getElementById('receipt-actions'),
             generateReceiptBtn: document.getElementById('generate-receipt-btn'),
+            editSaleBtn: document.getElementById('edit-sale-btn'),
             cancelSelectionBtn: document.getElementById('cancel-selection-btn'),
             selectionModeHint: document.getElementById('selection-mode-hint'),
             receiptModal: document.getElementById('receipt-modal'),
@@ -222,6 +223,8 @@ document.addEventListener('DOMContentLoaded', () => {
             deferredInstallPrompt: null,
             isSelectionMode: false,
             selectedSales: new Set(),
+            selectedSaleData: new Map(),
+            editingSale: null,
             longPressTimer: null,
             firebaseReady: false,
             retailerListener: null,
@@ -418,13 +421,17 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.discountAmountInput.addEventListener('input', this.updateSaleTotal.bind(this));
 
             this.elements.cancelSaleBtn.addEventListener('click', () => {
+                const wasEditing = !!this.state.editingSale;
+                this.state.editingSale = null;
                 this.hideModal();
-                this.navigateTo('home-view');
+                if (!wasEditing) this.navigateTo('home-view');
             });
             this.elements.confirmSaleBtn.addEventListener('click', this.handleConfirmSale.bind(this));
             window.addEventListener('beforeinstallprompt', this.handleBeforeInstallPrompt.bind(this));
             this.elements.installBtn.addEventListener('click', this.promptInstall.bind(this));
             this.elements.generateReceiptBtn.addEventListener('click', this.generateReceipt.bind(this));
+            this.elements.editSaleBtn.addEventListener('click', this.handleEditSale.bind(this));
+            setInterval(() => this.tickEditWindows(), 1000);
             this.elements.seeAllSalesBtn.addEventListener('click', () => this.navigateTo('all-sales-view'));
             this.elements.seeLastSalesBtn.addEventListener('click', () => this.navigateTo('all-sales-view'));
             if(document.getElementById('add-salesperson-fab')) {
@@ -996,7 +1003,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     discountMark = '<sup class="discount-mark">**</sup>';
                 }
 
-                saleEl.innerHTML = `<div class="sale-item-overlay">Previously Transferred</div><img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${this.formatNumber(sale.quantity)} x &#8358;${this.formatNumber(sale.price)}</span></div><p class="sale-price">${discountMark}&#8358;${this.formatNumber(sale.total)}</p>`;
+                saleEl.innerHTML = `<div class="sale-item-overlay">Previously Transferred</div><img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${this.formatNumber(sale.quantity)} x &#8358;${this.formatNumber(sale.price)}</span></div><p class="sale-price">${discountMark}&#8358;${this.formatNumber(sale.total)}</p>${this._saleEditExtrasHtml(sale)}`;
 
                 this.addSaleItemEventListeners(saleEl, sale);
                 targetElement.appendChild(saleEl);
@@ -1094,7 +1101,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         numberingHtml = `<span style="font-weight: bold; margin-right: 12px; color: var(--text-color); font-size: 1.1em; display: flex; align-items: center;">${index + 1}.</span>`;
                     }
 
-                    saleEl.innerHTML = `<div class="sale-item-overlay">Previously Transferred</div>${numberingHtml}<img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${this.formatNumber(sale.quantity)} x &#8358;${this.formatNumber(sale.price)}</span></div><p class="sale-price">${discountMark}&#8358;${this.formatNumber(sale.total)}</p>`;
+                    saleEl.innerHTML = `<div class="sale-item-overlay">Previously Transferred</div>${numberingHtml}<img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${this.formatNumber(sale.quantity)} x &#8358;${this.formatNumber(sale.price)}</span></div><p class="sale-price">${discountMark}&#8358;${this.formatNumber(sale.total)}</p>${this._saleEditExtrasHtml(sale)}`;
                     this.addSaleItemEventListeners(saleEl, sale);
                     groupContainer.appendChild(saleEl);
                 });
@@ -1846,6 +1853,7 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         handleProductFound(product) {
+            this.state.editingSale = null;
             this.state.sellingProduct = product;
             this.elements.saleProductImage.src = product.image ? URL.createObjectURL(product.image) : 'icons/icon-192.png';
             this.elements.saleProductName.textContent = product.name;
@@ -1866,7 +1874,7 @@ document.addEventListener('DOMContentLoaded', () => {
         },
         updateSaleTotal() {
             const quantity = this.unformatNumber(this.elements.saleQuantityInput.value);
-            const price = this.state.sellingProduct?.price || 0;
+            const price = this.state.editingSale ? this.state.editingSale.price : (this.state.sellingProduct?.price || 0);
             const subtotal = quantity * price;
 
             let discount = 0;
@@ -1903,36 +1911,43 @@ document.addEventListener('DOMContentLoaded', () => {
                 customerName = this.state.selectedContact.name;
             }
 
-            if (quantity <= 0 || !product || quantity > product.stock) { alert('Invalid quantity or product not available.'); return false; }
+            const editing = this.state.editingSale;
+            // When editing, the original sale's quantity goes back into stock before the new quantity is taken out
+            const availableStock = product ? product.stock + (editing ? editing.quantity : 0) : 0;
+            const unitPrice = editing ? editing.price : (product ? product.price : 0);
 
-            product.stock -= quantity;
+            if (quantity <= 0 || !product || quantity > availableStock) { alert('Invalid quantity or product not available.'); return false; }
+
+            product.stock = availableStock - quantity;
 
             await DB.saveProduct(product);
             
-            let total = Math.max(0, (quantity * product.price) - discount);
+            let total = Math.max(0, (quantity * unitPrice) - discount);
             if (activeRadio && activeRadio.value === 'credit') {
                 total = partPayment; // User requested: part payment becomes recorded total
             }
             
             const sale = {
-                id: Date.now(),
+                ...(editing || {}),
+                id: editing ? editing.id : Date.now(),
                 productId: product.id,
-                productName: product.name,
+                productName: editing ? editing.productName : product.name,
                 quantity: quantity,
-                price: product.price,
+                price: unitPrice,
                 discount: discount, // Save discount
                 saleType: activeRadio ? activeRadio.value : 'default',
                 customerName: customerName,
                 customerPhone: (this.state.selectedContact && this.state.selectedContact.phone) ? this.state.selectedContact.phone.trim().replace(/\s+/g, '') : null,
                 total: total,
-                timestamp: new Date(),
+                timestamp: editing ? editing.timestamp : new Date(),
                 image: product.image,
                 sharedAsLog: false,
                 unit: product.unit
             };
+            if (editing) sale.edited = true;
 
-            // Auto-transfer for credit sales
-            if (sale.saleType === 'credit' && this.state.selectedContact && this.state.selectedContact.phone) {
+            // Auto-transfer for credit sales (not repeated when an existing sale is edited)
+            if (!editing && sale.saleType === 'credit' && this.state.selectedContact && this.state.selectedContact.phone) {
                 try {
                     if (this.state.firebaseReady && window.fb) {
                         const targetPhone = this.state.selectedContact.phone.trim().replace(/\s+/g, '');
@@ -1963,16 +1978,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-            await DB.addSale(sale);
+            if (editing) {
+                await DB.updateSale(sale);
+            } else {
+                await DB.addSale(sale);
 
-            // --- SALES LOGGING: START ---
-            const saleDataForAdmin = {
-                userId: this.state.user.phone,
-                total: sale.total,
-                timestamp: window.fb.serverTimestamp() // Use server timestamp for accuracy
-            };
-            this._logToFirestore('sales_logs', null, saleDataForAdmin);
-            // --- SALES LOGGING: END ---
+                // --- SALES LOGGING: START ---
+                const saleDataForAdmin = {
+                    userId: this.state.user.phone,
+                    total: sale.total,
+                    timestamp: window.fb.serverTimestamp() // Use server timestamp for accuracy
+                };
+                this._logToFirestore('sales_logs', null, saleDataForAdmin);
+                // --- SALES LOGGING: END ---
+            }
 
             if (this.state.firebaseReady && product.supplierId && this.state.user.phone) {
                 try {
@@ -1987,12 +2006,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     if (product.isSalesperson) {
                         const saleDataForWholesaler = {
-                            ...sale,
-                            timestamp: window.fb.serverTimestamp()
+                            ...sale
                         };
                         delete saleDataForWholesaler.image; // Don't upload blob to Firestore
                         const salesSubcollectionRef = window.fb.collection(window.fb.db, `retailer_stocks/${product.supplierId}/supplied_retailers/${this.state.user.phone}/sales`);
-                        await window.fb.addDoc(salesSubcollectionRef, saleDataForWholesaler);
+                        if (editing) {
+                            // Update the wholesaler's existing copy of this sale instead of adding a second one
+                            delete saleDataForWholesaler.timestamp;
+                            const existing = await window.fb.getDocs(window.fb.query(salesSubcollectionRef, window.fb.where('id', '==', sale.id)));
+                            const updates = [];
+                            existing.forEach(d => updates.push(window.fb.updateDoc(d.ref, saleDataForWholesaler)));
+                            await Promise.all(updates);
+                        } else {
+                            saleDataForWholesaler.timestamp = window.fb.serverTimestamp();
+                            await window.fb.addDoc(salesSubcollectionRef, saleDataForWholesaler);
+                        }
                     }
 
                 } catch (error) {
@@ -2010,14 +2038,21 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             try {
+                const wasEditing = !!this.state.editingSale;
                 const success = await this._processSale();
 
                 this.elements.saleOfflineNotice.style.display = 'none'; // Hide if online
                 if (success) {
+                    this.state.editingSale = null;
                     this.hideModal();
                     await this.updateDashboard();
                     await this.renderProducts();
-                    this.navigateTo('home-view');
+                    if (wasEditing) {
+                        // Stay where the user was; just refresh the lists
+                        if (this.state.currentView === 'all-sales-view') await this.renderAllSales();
+                    } else {
+                        this.navigateTo('home-view');
+                    }
                 }
             } catch (error) {
                 console.error("Sale processing failed, likely offline:", error);
@@ -2139,14 +2174,93 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!this.state.isSelectionMode) return;
             this.state.isSelectionMode = false;
             this.state.selectedSales.clear();
+            this.state.selectedSaleData.clear();
             document.querySelectorAll('.sale-item').forEach(el => { el.classList.remove('selectable'); el.classList.remove('selected'); });
             this.elements.receiptActions.classList.remove('visible');
+            this.updateEditButton();
             if (this.elements.recentSalesList.children.length > 0 && this.elements.recentSalesList.children[0].className !== 'empty-state') {
                 this.elements.selectionModeHint.textContent = 'Tap to select';
             }
         },
         toggleSaleSelection(element, sale) {
-            if (this.state.selectedSales.has(sale.id)) { this.state.selectedSales.delete(sale.id); element.classList.remove('selected'); } else { this.state.selectedSales.add(sale.id); element.classList.add('selected'); } this.elements.generateReceiptBtn.disabled = this.state.selectedSales.size === 0;
+            if (this.state.selectedSales.has(sale.id)) { this.state.selectedSales.delete(sale.id); this.state.selectedSaleData.delete(sale.id); element.classList.remove('selected'); } else { this.state.selectedSales.add(sale.id); this.state.selectedSaleData.set(sale.id, sale); element.classList.add('selected'); } this.elements.generateReceiptBtn.disabled = this.state.selectedSales.size === 0;
+            if (this.state.selectedSales.size === 0) { this.exitSelectionMode(); return; }
+            this.updateEditButton();
+        },
+
+        // --- SALE EDITING (one edit, within 4 minutes of recording) ---
+        EDIT_WINDOW_MS: 4 * 60 * 1000,
+
+        isSaleEditable(sale) {
+            if (!sale || sale.edited || sale.sharedAsLog) return false;
+            const age = Date.now() - new Date(sale.timestamp).getTime();
+            return age >= 0 && age < this.EDIT_WINDOW_MS;
+        },
+
+        _saleEditExtrasHtml(sale) {
+            if (sale.edited) return '<span class="sale-edited-tag">Edited</span>';
+            if (!this.isSaleEditable(sale)) return '';
+            const startMs = new Date(sale.timestamp).getTime();
+            const elapsed = Date.now() - startMs;
+            return `<div class="sale-edit-timer" data-expires="${startMs + this.EDIT_WINDOW_MS}" style="animation-delay: -${(elapsed / 1000).toFixed(2)}s"></div>`;
+        },
+
+        updateEditButton() {
+            const btn = this.elements.editSaleBtn;
+            let show = false;
+            if (this.state.isSelectionMode && this.state.selectedSales.size === 1) {
+                show = this.isSaleEditable(this.state.selectedSaleData.get([...this.state.selectedSales][0]));
+            }
+            btn.classList.toggle('visible', show);
+            btn.setAttribute('aria-hidden', String(!show));
+            btn.tabIndex = show ? 0 : -1;
+        },
+
+        tickEditWindows() {
+            const now = Date.now();
+            document.querySelectorAll('.sale-edit-timer').forEach(el => {
+                if (now >= Number(el.dataset.expires)) el.remove();
+            });
+            if (this.state.isSelectionMode) this.updateEditButton();
+        },
+
+        async handleEditSale() {
+            if (this.state.selectedSales.size !== 1) return;
+            const saleId = [...this.state.selectedSales][0];
+            const allSales = await DB.getAllSales();
+            const sale = allSales.find(s => s.id === saleId);
+            if (!this.isSaleEditable(sale)) {
+                this.showToast("This sale can no longer be edited.");
+                this.updateEditButton();
+                return;
+            }
+            const products = await DB.getAllProducts();
+            const product = products.find(p => p.id === sale.productId);
+            if (!product) {
+                this.showToast("This sale's product no longer exists, so it can't be edited.");
+                return;
+            }
+
+            this.exitSelectionMode();
+            this.handleProductFound(product); // opens the confirm sale modal with defaults
+            this.state.editingSale = sale;
+
+            // Pre-fill the modal with this sale's details
+            this.elements.saleProductStock.textContent = `Stock: ${this.formatNumber(product.stock + sale.quantity)} ${product.unit} left`;
+            this.elements.saleQuantityInput.value = this.formatNumber(sale.quantity);
+            const typeRadio = Array.from(this.elements.saleTypeRadios).find(r => r.value === (sale.saleType || 'default')) ||
+                Array.from(this.elements.saleTypeRadios).find(r => r.value === 'default');
+            typeRadio.checked = true;
+            typeRadio.dispatchEvent(new Event('change')); // resets the discount / part-payment fields
+            if (typeRadio.value === 'discount') {
+                this.elements.discountAmountInput.value = this.formatNumber(sale.discount || 0);
+            } else if (typeRadio.value === 'credit') {
+                this.elements.discountAmountInput.value = this.formatNumber(sale.total || 0);
+                this.state.selectedContact = { name: sale.customerName, phone: sale.customerPhone || '' };
+                this.elements.selectedContactName.textContent = sale.customerName;
+                this.elements.selectedContactName.style.display = 'block';
+            }
+            this.updateSaleTotal();
         },
         async generateReceipt() {
             const allSales = await DB.getAllSales();
