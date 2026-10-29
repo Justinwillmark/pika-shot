@@ -56,6 +56,8 @@ document.addEventListener('DOMContentLoaded', () => {
             totalSalesEl: document.getElementById('total-sales'),
             itemsSoldEl: document.getElementById('items-sold'),
             toggleFiguresBtn: document.getElementById('toggle-figures-btn'),
+            toggleInventoryFiguresBtn: document.getElementById('toggle-inventory-figures-btn'),
+            productTotalValue: document.getElementById('product-total-value'),
             recentSalesList: document.getElementById('recent-sales-list'),
             seeAllContainer: document.getElementById('see-all-container'),
             seeAllSalesBtn: document.getElementById('see-all-sales-btn'),
@@ -140,10 +142,20 @@ document.addEventListener('DOMContentLoaded', () => {
             phoneTransferModal: document.getElementById('phone-transfer-modal'),
             transferPhoneInput: document.getElementById('transfer-phone-input'),
             cancelPhoneTransferBtn: document.getElementById('cancel-phone-transfer-btn'),
+            transferSummary: document.getElementById('transfer-summary'),
+            transferInputWrap: document.getElementById('transfer-input-wrap'),
+            transferDigitCount: document.getElementById('transfer-digit-count'),
+            transferMessage: document.getElementById('transfer-message'),
+            transferMessageText: document.getElementById('transfer-message-text'),
             transferUserDetails: document.getElementById('transfer-user-details'),
+            transferUserAvatar: document.getElementById('transfer-user-avatar'),
             transferUserName: document.getElementById('transfer-user-name'),
             transferUserBusiness: document.getElementById('transfer-user-business'),
             confirmPhoneTransferBtn: document.getElementById('confirm-phone-transfer-btn'),
+            incomingTransferContent: document.getElementById('incoming-transfer-content'),
+            incomingTransferChip: document.getElementById('incoming-transfer-chip'),
+            declineTransferBtn: document.getElementById('decline-transfer-btn'),
+            acceptTransferBtn: document.getElementById('accept-transfer-btn'),
             inviteCustomerModal: document.getElementById('invite-customer-modal'),
             cancelInviteBtn: document.getElementById('cancel-invite-btn'),
             sendInviteBtn: document.getElementById('send-invite-btn'),
@@ -361,6 +373,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     
                     this.elements.labelCredit.classList.toggle('active', saleType === 'credit');
                     this.elements.labelCredit.classList.toggle('text-muted', saleType !== 'credit');
+                    this.elements.labelDiscount.parentElement.classList.toggle('is-default', saleType === 'default');
 
                     if (saleType === 'default') {
                         this.elements.discountInputContainer.style.display = 'none';
@@ -442,7 +455,9 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.editSaleBtn.addEventListener('click', this.handleEditSale.bind(this));
             setInterval(() => this.tickEditWindows(), 1000);
             try { this.state.figuresHidden = localStorage.getItem('pikashot_hide_figures') === '1'; } catch (e) { /* storage unavailable */ }
-            if (this.elements.toggleFiguresBtn) this.elements.toggleFiguresBtn.addEventListener('click', this.toggleFigures.bind(this));
+            [this.elements.toggleFiguresBtn, this.elements.toggleInventoryFiguresBtn].forEach(btn => {
+                if (btn) btn.addEventListener('click', this.toggleFigures.bind(this));
+            });
             Camera.onTorchChange = (on) => { if (this.elements.torchBtn) this.elements.torchBtn.classList.toggle('torch-on', on); };
             // Browsers only allow sound after a user gesture, so unlock audio on the first touch/click.
             ['pointerdown', 'touchstart', 'keydown'].forEach(evt => document.addEventListener(evt, () => this._unlockAudio(), { passive: true }));
@@ -465,13 +480,17 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.printReceiptBtn.addEventListener('click', () => window.print());
             this.elements.shareLogBtn.addEventListener('click', this.initiatePhoneTransfer.bind(this));
             this.elements.confirmPhoneTransferBtn.addEventListener('click', this.processPhoneTransfer.bind(this));
-            this.elements.cancelPhoneTransferBtn.addEventListener('click', () => this.hideModal());
+            this.elements.cancelPhoneTransferBtn.addEventListener('click', this.closePhoneTransfer.bind(this));
+            this.elements.transferMessage.addEventListener('click', () => {
+                if (this.elements.transferMessage.classList.contains('error')) this.findUserForTransfer();
+            });
             this.elements.transferPhoneInput.addEventListener('input', (e) => {
-                const val = e.target.value.trim();
-                this.elements.transferUserDetails.style.display = 'none';
-                this.elements.confirmPhoneTransferBtn.style.display = 'none';
-                
-                if (val.length === 11) {
+                const digits = e.target.value.replace(/\D/g, '').slice(0, 11);
+                if (e.target.value !== digits) e.target.value = digits;
+                this._setTransferState('idle');
+
+                if (digits.length === 11) {
+                    e.target.blur(); // a full number needs no more typing: put the keyboard away so Send is in plain view
                     this.findUserForTransfer();
                 }
             });
@@ -497,24 +516,22 @@ document.addEventListener('DOMContentLoaded', () => {
                     this.showProductSelection();
                 });
             }
-            if (this.elements.decreaseQuantityBtn) {
-                this.elements.decreaseQuantityBtn.addEventListener('click', () => {
-                    let currentVal = parseInt(this.elements.saleQuantityInput.value) || 1;
-                    if (currentVal > 1) {
-                        this.elements.saleQuantityInput.value = currentVal - 1;
-                        this.elements.saleQuantityInput.dispatchEvent(new Event('input'));
-                    }
-                });
-            }
-            if (this.elements.increaseQuantityBtn) {
-                this.elements.increaseQuantityBtn.addEventListener('click', () => {
-                    let currentVal = parseInt(this.elements.saleQuantityInput.value) || 0;
-                    this.elements.saleQuantityInput.value = currentVal + 1;
+            this._bindHoldRepeat(this.elements.decreaseQuantityBtn, () => {
+                const currentVal = Math.floor(this.unformatNumber(this.elements.saleQuantityInput.value)) || 1;
+                if (currentVal > 1) {
+                    this.elements.saleQuantityInput.value = currentVal - 1;
                     this.elements.saleQuantityInput.dispatchEvent(new Event('input'));
-                });
-            }
+                }
+            });
+            this._bindHoldRepeat(this.elements.increaseQuantityBtn, () => {
+                const currentVal = Math.floor(this.unformatNumber(this.elements.saleQuantityInput.value));
+                this.elements.saleQuantityInput.value = currentVal + 1;
+                this.elements.saleQuantityInput.dispatchEvent(new Event('input'));
+            });
             this.elements.rejectLogBtn.addEventListener('click', () => { this.hideModal(); this.state.scannedLogData = null; });
             this.elements.acceptLogBtn.addEventListener('click', this.acceptPikaLog.bind(this));
+            this.elements.declineTransferBtn.addEventListener('click', () => { this.hideModal(); this.state.scannedLogData = null; });
+            this.elements.acceptTransferBtn.addEventListener('click', this.acceptPikaLog.bind(this));
             this.elements.retryAddScanBtn.addEventListener('click', () => { this.hideModal(); this.startAddProduct(); });
             this.elements.cancelAddScanBtn.addEventListener('click', () => this.hideModal());
             this.elements.productExistsOkBtn.addEventListener('click', () => this.hideModal());
@@ -573,6 +590,28 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.createPinInput.addEventListener('input', (e) => {
                 e.target.value = e.target.value.replace(/\D/g, '').slice(0, 6);
             });
+        },
+
+        // Runs `action` once on press, then keeps running it 4 times a second while the button stays held down.
+        _bindHoldRepeat(btn, action) {
+            if (!btn) return;
+            const REPEAT_MS = 250;
+            let timer = null;
+            const stop = () => { clearInterval(timer); timer = null; };
+            btn.addEventListener('pointerdown', (e) => {
+                if (e.pointerType === 'mouse' && e.button !== 0) return;
+                stop();
+                action();
+                timer = setInterval(() => {
+                    if (!btn.offsetParent) { stop(); return; } // the modal went away while the button was held
+                    action();
+                }, REPEAT_MS);
+            });
+            ['pointerup', 'pointercancel', 'pointerleave'].forEach(evt => btn.addEventListener(evt, stop));
+            btn.addEventListener('blur', stop);
+            btn.addEventListener('contextmenu', (e) => e.preventDefault()); // a long press must not open a menu
+            // Taps and holds are handled above; a click without a pointer press (keyboard, screen reader) steps once.
+            btn.addEventListener('click', (e) => { if (e.detail === 0) action(); });
         },
 
         // --- AUTH & ONBOARDING LOGIC ---
@@ -888,8 +927,33 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (this.toggleOnboardingTooltip) this.toggleOnboardingTooltip();
         },
-        showModal(modalId) { this.elements.modalContainer.style.display = 'flex'; this.elements.modalContainer.querySelectorAll('.modal-content').forEach(m => m.style.display = 'none'); const modalToShow = document.getElementById(modalId); if (modalToShow) { modalToShow.style.display = 'flex'; } },
-        hideModal() { this.elements.modalContainer.style.display = 'none'; this.elements.modalContainer.querySelectorAll('.modal-content').forEach(m => m.style.display = 'none'); },
+        showModal(modalId) { this.elements.modalContainer.style.display = 'flex'; this.elements.modalContainer.querySelectorAll('.modal-content').forEach(m => m.style.display = 'none'); const modalToShow = document.getElementById(modalId); if (modalToShow) { modalToShow.style.display = 'flex'; } this._followKeyboard(modalId === 'phone-transfer-modal'); },
+        hideModal() { this.elements.modalContainer.style.display = 'none'; this.elements.modalContainer.querySelectorAll('.modal-content').forEach(m => m.style.display = 'none'); this._followKeyboard(false); },
+
+        // While on, the modal layer is sized to the part of the screen that is not under the on-screen keyboard,
+        // so a centered modal always sits fully above it.
+        _followKeyboard(on) {
+            const vv = window.visualViewport;
+            const box = this.elements.modalContainer;
+            if (!vv) return;
+            if (!this._keyboardFit) {
+                this._keyboardFit = () => {
+                    const visible = window.visualViewport;
+                    box.style.top = `${visible.offsetTop}px`;
+                    box.style.height = `${visible.height}px`;
+                };
+            }
+            vv.removeEventListener('resize', this._keyboardFit);
+            vv.removeEventListener('scroll', this._keyboardFit);
+            if (on) {
+                vv.addEventListener('resize', this._keyboardFit);
+                vv.addEventListener('scroll', this._keyboardFit);
+                this._keyboardFit();
+            } else {
+                box.style.top = '';
+                box.style.height = '';
+            }
+        },
         toggleOnboardingTooltip() {
             const tooltip = document.getElementById('onboarding-tooltip');
             if (!tooltip) return;
@@ -1076,14 +1140,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.totalSalesEl.textContent = hidden ? '***' : figures.total;
                 this.elements.itemsSoldEl.textContent = hidden ? '***' : figures.items;
             }
-            const btn = this.elements.toggleFiguresBtn;
-            if (btn) {
+
+            // The total worth of the inventory (My Products) follows the same hide / show choice
+            const inventory = this.state.inventoryValue;
+            if (this.elements.productTotalValue) {
+                this.elements.productTotalValue.textContent = inventory == null ? '' : (hidden ? '***' : inventory);
+            }
+            if (this.elements.toggleInventoryFiguresBtn) {
+                this.elements.toggleInventoryFiguresBtn.style.display = inventory == null ? 'none' : '';
+            }
+
+            [this.elements.toggleFiguresBtn, this.elements.toggleInventoryFiguresBtn].forEach(btn => {
+                if (!btn) return;
                 btn.setAttribute('aria-pressed', String(hidden));
                 btn.setAttribute('aria-label', hidden ? 'Show figures' : 'Hide figures');
                 const open = btn.querySelector('.eye-open'), closed = btn.querySelector('.eye-closed');
                 if (open) open.style.display = hidden ? 'none' : '';
                 if (closed) closed.style.display = hidden ? '' : 'none';
-            }
+            });
         },
 
         toggleFigures(e) {
@@ -1386,17 +1460,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
             this.elements.productGrid.innerHTML = '';
             this.elements.productSkuCount.textContent = `${allProducts.length} products`;
-            let totalValue = allProducts.reduce((sum, p) => sum + ((Number(p.price) || 0) * (Number(p.stock) || 0)), 0);
-            if (!this.elements.productTotalValue) {
-                this.elements.productTotalValue = document.getElementById('product-total-value');
-            }
-            if (this.elements.productTotalValue) {
-                if (allProducts.length === 0) {
-                    this.elements.productTotalValue.textContent = '';
-                } else {
-                    this.elements.productTotalValue.textContent = `₦${this.formatNumber(totalValue)}`;
-                }
-            }
+            const totalValue = allProducts.reduce((sum, p) => sum + ((Number(p.price) || 0) * (Number(p.stock) || 0)), 0);
+            this.state.inventoryValue = allProducts.length === 0 ? null : `₦${this.formatNumber(totalValue)}`;
+            this.applyFigureVisibility();
 
             let filteredProducts = allProducts;
 
@@ -1452,10 +1518,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (product.stock <= 0) {
                     badgeHtml = '<div class="out-of-stock-badge">Out of Stock</div>';
                 } else if (product.isSalesperson) {
-                    if (product.needsSetup === 'barcode-and-price') {
-                        badgeHtml = '<div class="setup-badge">Add image & barcode</div>';
-                    } else if (product.needsSetup === 'price') {
-                        badgeHtml = '<div class="setup-badge">Add image</div>';
+                    // a salesperson's only setup step is the picture, which usually arrives with the transfer now
+                    if (!product.image) {
+                        if (product.needsSetup === 'barcode-and-price') {
+                            badgeHtml = '<div class="setup-badge">Add image & barcode</div>';
+                        } else if (product.needsSetup === 'price') {
+                            badgeHtml = '<div class="setup-badge">Add image</div>';
+                        }
                     }
                 } else if (product.needsSetup === 'barcode-and-price') {
                     badgeHtml = '<div class="setup-badge">Add barcode & price</div>';
@@ -1473,10 +1542,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     ${badgeHtml}
                     <button class="edit-btn-icon">${pencilIconSVG}</button>
                     <div class="product-card-image-wrapper">
-                        <img src="${imageUrl}" alt="${product.name}">
+                        <img src="${imageUrl}" alt="${this._esc(product.name)}">
                     </div>
                     <div class="product-card-info">
-                        <h4>${displayName}</h4>
+                        <h4>${this._esc(displayName)}</h4>
                         <p class="product-price">&#8358;${this.formatNumber(product.price)}</p>
                         <p class="product-stock">${product.stock > 0 ? `${this.formatNumber(product.stock)} ${product.unit} left` : ''}</p>
                     </div>`;
@@ -2230,6 +2299,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                     barcode: product.barcode || null
                                 }]
                             };
+                            await this._attachItemImages(logData.items, [sale], [product]);
                             const logCollectionRef = window.fb.collection(window.fb.db, 'shared_logs');
                             const logRef = await window.fb.addDoc(logCollectionRef, logData);
                             // The sale only counts as transferred once the recipient accepts it
@@ -2573,7 +2643,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const balance = Math.max(0, gross - paid);
                     balanceTotal += balance;
                     totalDue += gross;
-                    extra += `<div class="rc-sub credit"><span>Credit${sale.customerName ? ' &middot; ' + this._esc(sale.customerName) : ''}</span><span></span></div>`;
+                    extra += `<div class="rc-sub credit"><span>Credit${sale.customerName ? ' &middot; ' + this._esc(sale.customerName) : ''}</span></div>`;
                     extra += `<div class="rc-sub credit"><span>Paid</span><span>${money(paid)}</span></div>`;
                     extra += `<div class="rc-sub credit"><span>Balance</span><span>${money(balance)}</span></div>`;
                 } else {
@@ -2581,7 +2651,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 itemsHtml += `<div class="rc-item"><div class="rc-row"><span class="rc-item-name">${this._esc(sale.productName)}</span><span class="rc-amt">${money(gross)}</span></div>` +
-                    `<div class="rc-calc">${this.formatNumber(sale.quantity)} x ${money(sale.price)}</div>${extra}</div>`;
+                    `<div class="rc-calc">${this.formatNumber(sale.quantity)} &times; ${money(sale.price)}</div>${extra}</div>`;
             });
 
             let summaryHtml = '';
@@ -2589,25 +2659,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 summaryHtml += `<div class="rc-sum muted"><span>Subtotal</span><span>${money(subtotal)}</span></div>`;
                 summaryHtml += `<div class="rc-sum discount"><span>Discount</span><span>-${money(discountTotal)}</span></div>`;
             }
-            summaryHtml += `<div class="rc-total"><span>TOTAL</span><span>${money(totalDue)}</span></div>`;
+            summaryHtml += `<div class="rc-total"><span>Total</span><span>${money(totalDue)}</span></div>`;
             if (hasCredit) {
                 summaryHtml += `<div class="rc-sum muted"><span>Amount paid</span><span>${money(paidTotal)}</span></div>`;
-                summaryHtml += `<div class="rc-balance"><span>BALANCE DUE</span><span>${money(balanceTotal)}</span></div>`;
+                summaryHtml += `<div class="rc-balance"><span>Balance due</span><span>${money(balanceTotal)}</span></div>`;
             }
 
             const user = this.state.user || {};
             const metaLine = [user.location, user.phone].filter(Boolean).map(v => this._esc(v)).join(' &middot; ');
-            const customerLine = customers.size === 1 ? `<p>Customer: ${this._esc([...customers][0])}</p>` : '';
+            const customerRow = customers.size === 1 ? `<div class="rc-kv"><span>Customer</span><span>${this._esc([...customers][0])}</span></div>` : '';
 
             this.elements.receiptContent.innerHTML =
                 `<div class="receipt-header"><div class="rc-store">${this._esc(user.business)}</div>${metaLine ? `<div class="rc-meta">${metaLine}</div>` : ''}</div>` +
-                `<hr class="rc-rule">` +
+                `<div class="rc-info"><div class="rc-kv"><span>Receipt</span><span>${receiptId}</span></div>` +
+                `<div class="rc-kv"><span>Date</span><span>${dateStr} &middot; ${timeStr}</span></div>${customerRow}</div>` +
+                `<div class="rc-cols"><span>Item</span><span>Amount</span></div>` +
                 `<div class="receipt-items">${itemsHtml}</div>` +
-                `<hr class="rc-rule double">` +
-                summaryHtml +
-                `<hr class="rc-rule">` +
-                `<div class="receipt-footer"><p class="rc-thanks">Thank you for your patronage!</p>${customerLine}` +
-                `<p class="rc-id">Receipt ${receiptId}</p><p>${dateStr} &middot; ${timeStr}</p>` +
+                `<div class="rc-summary">${summaryHtml}</div>` +
+                `<div class="receipt-footer"><p class="rc-thanks">Thank you for your patronage!</p>` +
                 `<p class="rc-brand">Powered by PikaShot</p></div>`;
 
             const chip = document.getElementById('receipt-count-chip');
@@ -2652,29 +2721,60 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             // -----------------------------------------------------------
 
+            const productCount = new Set(selectedSaleObjects.map(s => s.productId != null ? s.productId : s.productName)).size;
+            this.elements.transferSummary.textContent = `${productCount} product${productCount === 1 ? '' : 's'} selected`;
             this.elements.transferPhoneInput.value = '';
-            this.elements.transferUserDetails.style.display = 'none';
-            this.elements.confirmPhoneTransferBtn.style.display = 'none';
+            this._setTransferState('idle');
+            const scroller = document.getElementById('receipt-scroll');
+            this._receiptScrollTop = scroller ? scroller.scrollTop : 0;
             this.hideModal();
             this.showModal('phone-transfer-modal');
+            setTimeout(() => this.elements.transferPhoneInput.focus(), 80);
+        },
+
+        // Backing out of a transfer takes the user back to the receipt it was started from
+        closePhoneTransfer() {
+            this.elements.transferPhoneInput.blur();
+            if (!this.elements.receiptContent.innerHTML.trim()) {
+                this.hideModal();
+                return;
+            }
+            this.showModal('receipt-modal');
+            const scroller = document.getElementById('receipt-scroll');
+            if (scroller) scroller.scrollTop = this._receiptScrollTop || 0;
+        },
+
+        // 'idle' | 'checking' | 'found' | 'error': what the transfer modal shows under the phone number
+        _setTransferState(state, text) {
+            const el = this.elements;
+            const digits = el.transferPhoneInput.value.length;
+            el.transferDigitCount.textContent = `${digits}/11`;
+            el.transferInputWrap.classList.toggle('complete', digits === 11);
+            el.transferUserDetails.style.display = state === 'found' ? 'flex' : 'none';
+            el.transferMessage.style.display = (state === 'checking' || state === 'error') ? 'flex' : 'none';
+            el.transferMessage.classList.toggle('error', state === 'error');
+            el.transferMessageText.textContent = text || '';
+            el.confirmPhoneTransferBtn.disabled = state !== 'found';
         },
 
         async findUserForTransfer() {
             const targetPhone = this.elements.transferPhoneInput.value.trim();
             if (targetPhone.length !== 11) return;
-            
+
             if (targetPhone === this.state.user.phone) {
-                alert("You cannot transfer products to yourself.");
+                this._setTransferState('error', "You can't transfer products to yourself.");
                 return;
             }
 
-            this.showLoader();
+            this._setTransferState('checking', 'Checking number...');
+            const stillCurrent = () => this.elements.transferPhoneInput.value.trim() === targetPhone;
             try {
                 const userRef = window.fb.doc(window.fb.db, 'users', targetPhone);
                 const userSnap = await window.fb.getDoc(userRef);
-                
+                if (!stillCurrent()) return; // the number was changed while we were looking
+
                 if (!userSnap.exists()) {
-                    this.hideLoader();
+                    this._setTransferState('idle');
                     this.hideModal();
                     this.showModal('invite-customer-modal');
                     return;
@@ -2683,18 +2783,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 const userData = userSnap.data();
                 const userName = userData.name || userData.phone || "Unknown";
                 const userBusiness = userData.business || "N/A";
-                
+
                 this.elements.transferUserName.textContent = userName;
                 this.elements.transferUserBusiness.textContent = userBusiness;
-                
-                this.elements.transferUserDetails.style.display = 'block';
-                this.elements.confirmPhoneTransferBtn.style.display = 'block';
-
+                this.elements.transferUserAvatar.textContent = (String(userName).trim().charAt(0) || '?').toUpperCase();
+                this._setTransferState('found');
             } catch (error) {
                 console.error("Error finding user:", error);
-                alert("Could not find the user. Please check your internet connection.");
-            } finally {
-                this.hideLoader();
+                if (stillCurrent()) this._setTransferState('error', "Couldn't check this number. Tap here to try again.");
             }
         },
 
@@ -2756,6 +2852,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     })
                 };
 
+                await this._attachItemImages(logData.items, aggregatedSaleObjects, allProducts);
+
                 const logCollectionRef = window.fb.collection(window.fb.db, 'shared_logs');
                 const logRef = await window.fb.addDoc(logCollectionRef, logData);
 
@@ -2782,7 +2880,69 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         },
 
-                async handleAddSalesperson() {
+                // --- Product pictures that travel with a transfer ---------------------------------------------
+        // Each item carries a tiny thumbnail (a few KB of text) inside the transfer itself, so the receiver sees the
+        // product straight away: no extra download, no extra service. A transfer holds at most IMAGE_BUDGET characters
+        // of pictures, which keeps it far below the 1 MB limit of a Firestore document and quick on slow networks.
+        // Items whose picture does not fit (or that have none) are simply sent without one.
+        IMAGE_BUDGET: 400000,
+        THUMB_SIZE: 128,
+
+        async _attachItemImages(items, sales, products) {
+            let used = 0;
+            for (let i = 0; i < items.length; i++) {
+                try {
+                    const product = products.find(p => p.id === sales[i].productId);
+                    if (!product || !(product.image instanceof Blob)) continue;
+                    const thumb = await this._makeThumbnail(product.image);
+                    if (thumb && used + thumb.length <= this.IMAGE_BUDGET) {
+                        items[i].image = thumb;
+                        used += thumb.length;
+                    }
+                } catch (e) { /* a picture must never get in the way of the transfer itself */ }
+            }
+        },
+
+        // Blob -> small square JPEG data URL (or null if the picture cannot be read). The app only ever shows product
+        // pictures in square-ish boxes (object-fit: cover), so the middle square is all that needs to travel.
+        _makeThumbnail(blob) {
+            return new Promise((resolve) => {
+                const url = URL.createObjectURL(blob);
+                const img = new Image();
+                const finish = (value) => { URL.revokeObjectURL(url); resolve(value); };
+                img.onload = () => {
+                    try {
+                        const side = Math.min(img.naturalWidth, img.naturalHeight);
+                        if (!side) { finish(null); return; }
+                        const size = Math.min(this.THUMB_SIZE, side);
+                        const canvas = document.createElement('canvas');
+                        canvas.width = canvas.height = size;
+                        canvas.getContext('2d').drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, size, size);
+                        finish(canvas.toDataURL('image/jpeg', 0.55));
+                    } catch (e) { finish(null); }
+                };
+                img.onerror = () => finish(null);
+                img.src = url;
+            });
+        },
+
+        // Transfers come from other users: only ever accept a plain base64 picture
+        _safeImageUrl(value) {
+            return (typeof value === 'string' && value.length < 200000 && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(value)) ? value : '';
+        },
+
+        _imageUrlToBlob(value) {
+            const url = this._safeImageUrl(value);
+            if (!url) return null;
+            try {
+                const binary = atob(url.slice(url.indexOf(',') + 1));
+                const bytes = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                return new Blob([bytes], { type: url.slice(5, url.indexOf(';')) });
+            } catch (e) { return null; }
+        },
+
+        async handleAddSalesperson() {
             const newPhone = document.getElementById('new-salesperson-phone').value.trim();
             if(newPhone.length < 10) {
                 alert("Please enter a valid phone number.");
@@ -3239,51 +3399,51 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             this.state.scannedLogData = logData;
-            this.elements.confirmLogTitle.textContent = `Accept Transfer from ${logData.senderStore}?`;
+            this.renderIncomingTransfer(logData, currentUserRole);
+            this.showModal('incoming-transfer-modal');
+        },
 
-            const totalCost = logData.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-            const dateScanned = new Date().toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' });
+        // The accept popup is the sender's receipt: same paper, same lines, plus a small picture per product.
+        renderIncomingTransfer(logData, currentUserRole) {
+            const money = (n) => `&#8358;${this.formatNumber(n)}`;
+            const items = Array.isArray(logData.items) ? logData.items : [];
+            const totalCost = items.reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 0), 0);
+            const sent = DB._normalizeTimestamp(logData.timestamp);
+            const dateStr = sent.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+            const timeStr = sent.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+            const anyPicture = items.some(item => this._safeImageUrl(item.image));
 
-            const itemsHtml = logData.items.map(item => {
-                let displayName = `${item.name} (${this.formatNumber(item.quantity)} ${item.unit})`;
+            const itemsHtml = items.map(item => {
+                const unit = this._esc(item.unit);
+                const lineTotal = (Number(item.price) || 0) * (Number(item.quantity) || 0);
+                let sub = '';
                 if (item.unit === 'cartons' && item.subUnitType && item.subUnitQuantity > 0) {
-                    displayName = `${item.name} (${this.formatNumber(item.quantity)} ${item.unit} -> ${this.formatNumber(item.quantity * item.subUnitQuantity)} ${item.subUnitType})`;
+                    sub = `<div class="rc-sub"><span>= ${this.formatNumber(item.quantity * item.subUnitQuantity)} ${this._esc(item.subUnitType)}</span></div>`;
                 }
-
-                return `
-                <div class="log-details-row">
-                    <div class="log-details-cell item">${displayName}</div>
-                    <div class="log-details-cell price">@ &#8358;${this.formatNumber(item.price)}</div>
-                    <div class="log-details-cell total">&#8358;${this.formatNumber(item.quantity * item.price)}</div>
-                </div>
-            `}).join('');
+                const picture = this._safeImageUrl(item.image);
+                const thumb = !anyPicture ? ''
+                    : picture ? `<img class="rc-thumb" src="${picture}" alt="" width="40" height="40">`
+                    : `<span class="rc-thumb" aria-hidden="true"></span>`;
+                return `<div class="rc-item${anyPicture ? ' has-thumb' : ''}">${thumb}<div class="rc-item-main">` +
+                    `<div class="rc-row"><span class="rc-item-name">${this._esc(item.name)}</span><span class="rc-amt">${money(lineTotal)}</span></div>` +
+                    `<div class="rc-calc">${this.formatNumber(item.quantity)} ${unit} &times; ${money(item.price)}</div>${sub}` +
+                    `</div></div>`;
+            }).join('');
 
             const noticeText = currentUserRole === 'Salesperson'
-                ? "Accept for instant restocking. The wholesaler will see stock levels, and sales in real time."
-                : "Accept, sell and record for free airtime. Sender will see your stock level for these items.";
+                ? 'Your wholesaler will see your stock and sales.'
+                : 'The sender will see your stock of these items.';
 
-            const contentHtml = `
-                <div class="log-summary">
-                    <p><strong>From:</strong> ${logData.senderStore}</p>
-                    <p><strong>Date:</strong> ${dateScanned}</p>
-                </div>
-                <div class="log-details-table">
-                    <div class="log-details-row header">
-                        <div class="log-details-cell item">Product</div>
-                        <div class="log-details-cell price">Unit Price</div>
-                        <div class="log-details-cell total">Subtotal</div>
-                    </div>
-                    ${itemsHtml}
-                    <div class="log-details-row footer">
-                        <div class="log-details-cell item">TOTAL PURCHASE</div>
-                        <div class="log-details-cell total">&#8358;${this.formatNumber(totalCost)}</div>
-                    </div>
-                </div>
-                <p class="log-accept-notice">${noticeText}</p>
-            `;
-
-            this.elements.confirmLogContent.innerHTML = contentHtml;
-            this.showModal('confirm-log-modal');
+            this.elements.incomingTransferChip.textContent = `${items.length} item${items.length === 1 ? '' : 's'}`;
+            this.elements.incomingTransferContent.innerHTML =
+                `<div class="receipt-header"><div class="rc-from">From</div><div class="rc-store">${this._esc(logData.senderStore)}</div></div>` +
+                `<div class="rc-info"><div class="rc-kv"><span>Sent</span><span>${dateStr} &middot; ${timeStr}</span></div></div>` +
+                `<div class="rc-cols"><span>Product</span><span>Amount</span></div>` +
+                `<div class="receipt-items">${itemsHtml}</div>` +
+                `<div class="rc-summary"><div class="rc-total"><span>Total</span><span>${money(totalCost)}</span></div></div>` +
+                `<p class="rc-note">${noticeText}</p>`;
+            const scroller = this.elements.incomingTransferContent.parentElement;
+            if (scroller) scroller.scrollTop = 0;
         },
 
         async acceptPikaLog() {
@@ -3370,6 +3530,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         existingProduct.needsSetup = needsSetup;
                     }
                     existingProduct.lockedUntilOOS = false;
+                    // The sender's picture only fills a gap: a picture the user already has is never replaced
+                    if (!existingProduct.image) {
+                        const sentImage = this._imageUrlToBlob(item.image);
+                        if (sentImage) existingProduct.image = sentImage;
+                    }
                     existingProduct.isSalesperson = isSalesperson;
                     existingProduct.originalName = originalName;
                     existingProduct.wholesalerPrice = wholesalerPrice;
@@ -3386,7 +3551,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         price: costPrice,
                         stock: stockToAdd,
                         unit: unitType,
-                        image: null,
+                        image: this._imageUrlToBlob(item.image),
                         barcode: barcode,
                         createdAt: new Date(),
                         supplierId: supplierId,

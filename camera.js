@@ -17,7 +17,10 @@ const Camera = {
     _torchTimer: null,
     _cropCanvas: null,
     torchOn: false,
-    _torchTouchedByUser: false,
+    // The user's own torch choice, remembered across scans and photos: true = always light up, false = keep it off,
+    // null = never chosen (the night / low-light assists below may still switch it on).
+    torchPref: null,
+    TORCH_PREF_KEY: 'pikashot_torch_pref',
     onTorchChange: null,      // optional callback(isOn) so the UI can reflect torch state
 
     SCAN_WINDOW_MS: 12000,    // how long one scan attempt keeps looking before giving up
@@ -26,6 +29,10 @@ const Camera = {
     STRUCTURED_FORMATS: ['qr_code', 'data_matrix', 'aztec', 'pdf417'],
 
     async init() {
+        try {
+            const saved = localStorage.getItem(this.TORCH_PREF_KEY);
+            this.torchPref = saved === '1' ? true : saved === '0' ? false : null;
+        } catch (e) { /* storage unavailable: the choice just lasts for this visit */ }
         if ('BarcodeDetector' in window) {
             try {
                 let formats = null;
@@ -284,9 +291,15 @@ const Camera = {
         }
     },
 
+    // A tap on the torch button is remembered: once switched on it comes on by itself for every scan and photo
+    // until the user switches it off.
     async toggleTorch() {
-        this._torchTouchedByUser = true;
-        return this._setTorch(!this.torchOn);
+        const ok = await this._setTorch(!this.torchOn);
+        if (ok) {
+            this.torchPref = this.torchOn;
+            try { localStorage.setItem(this.TORCH_PREF_KEY, this.torchPref ? '1' : '0'); } catch (e) { /* ignore */ }
+        }
+        return ok;
     },
 
     // Keeps trying for a moment because many phones only report torch support once the camera is warm.
@@ -295,7 +308,7 @@ const Camera = {
         let tries = 0;
         this._torchTimer = setInterval(async () => {
             tries++;
-            if (!this._alive(session) || this._torchTouchedByUser || this.torchOn || tries > 10) {
+            if (!this._alive(session) || this.torchPref === false || this.torchOn || tries > 10) {
                 clearInterval(this._torchTimer);
                 return;
             }
@@ -319,7 +332,6 @@ const Camera = {
         this.stop();                       // also invalidates any scan that is still starting up
         const session = this._session;
         this.isScanning = true;
-        this._torchTouchedByUser = false;
 
         const ctx = {
             start: Date.now(), deadline: Date.now() + this.SCAN_WINDOW_MS,
@@ -342,7 +354,8 @@ const Camera = {
         ctx.deadline = ctx.start + this.SCAN_WINDOW_MS;
         ctx.lastAdvance = Date.now();
         this._tuneTrack();
-        if (this.isNightTime()) this._autoTorch(session, 'night');
+        if (this.torchPref === true) this._autoTorch(session, 'saved');
+        else if (this.isNightTime()) this._autoTorch(session, 'night');
 
         this._startWatch(session, ctx);
         this._scanLoop(session, ctx);
@@ -378,7 +391,7 @@ const Camera = {
                         this._tuneTrack();
                         const wasOn = this.torchOn;
                         if (wasOn) { this.torchOn = false; if (this.onTorchChange) this.onTorchChange(false); }
-                        if (!this._torchTouchedByUser && (wasOn || this.isNightTime())) this._autoTorch(session, 'restart');
+                        if (this.torchPref !== false && (wasOn || this.isNightTime())) this._autoTorch(session, 'restart');
                     }
                     return;
                 }
@@ -388,7 +401,7 @@ const Camera = {
             const elapsed = now - ctx.start;
             if (elapsed > 4000 && !ctx.lowLightAssist) {
                 ctx.lowLightAssist = true;
-                if (!this.torchOn && !this._torchTouchedByUser && this._torchSupported()) this._setTorch(true);
+                if (!this.torchOn && this.torchPref !== false && this._torchSupported()) this._setTorch(true);
             }
             if (elapsed > 5000 && !ctx.statusShown) {
                 ctx.statusShown = true;
@@ -589,8 +602,7 @@ const Camera = {
             return { blob: null };
         }
         this._tuneTrack();
-        // The light helps photos too; it stays off if the user switches it off.
-        this._torchTouchedByUser = false;
+        // The light helps photos too; it stays off once the user has switched it off.
         this._autoTorch(session, 'photo');
 
         return new Promise(async (resolve) => {

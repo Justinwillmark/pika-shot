@@ -271,7 +271,7 @@ html, body {
 
 /* NEW TRIPLE TOGGLE STYLES */
 .sale-type-section {
-    margin-bottom: 16px;
+    margin-bottom: 24px;
     padding-top: 12px;
     border-top: 1px dashed var(--border-color);
 }
@@ -290,6 +290,10 @@ html, body {
 }
 .toggle-label.active {
     color: var(--text-color); /* Not text-muted */
+}
+/* Nothing selected: both labels stay as light as the "Total" caption below them */
+.triple-toggle-container.is-default .toggle-label {
+    font-weight: 400;
 }
 .text-muted {
     color: var(--text-light);
@@ -724,6 +728,8 @@ button:focus { outline: none; }
 .product-header { padding: 16px 20px 0; display: flex; justify-content: space-between; align-items: center; }
 .sku-count { text-align: left; font-size: 0.9rem; font-weight: 500; color: var(--text-light); margin: 0; }
 .total-value { text-align: right; font-size: 0.9rem; font-weight: 500; color: var(--text-light); margin: 0; }
+.total-value-wrap { display: flex; align-items: center; gap: 4px; }
+.total-value-wrap .figures-toggle { margin: -4px -4px -4px 0; }
 
 /* This new wrapper makes the search and filter controls stick together at the top */
 .product-controls-sticky-header {
@@ -1060,6 +1066,8 @@ button:focus { outline: none; }
 
 .quantity-stepper { display: grid; grid-template-columns: 2fr 6fr 2fr; gap: 10px; width: 100%; align-items: stretch; }
 .quantity-stepper .btn { width: 100%; padding: 0; font-size: 1.4rem; line-height: 1; }
+/* + / - can be held down to repeat, so no scrolling, text selection or long-press menu may start from them */
+.quantity-stepper .btn { touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .quantity-stepper input { width: 100%; min-width: 0; text-align: center; font-weight: 600; }
 #confirm-sale-modal .sale-item-details { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
 #confirm-sale-modal img { width: 60px; height: 60px; border-radius: 8px; object-fit: cover; }
@@ -1121,14 +1129,6 @@ button:focus { outline: none; }
     flex-shrink: 0; /* Keep actions at bottom */
 }
 /* --- END FIX --- */
-
-.log-accept-notice {
-    font-size: 0.75rem;
-    color: var(--text-light);
-    text-align: center;
-    margin-top: 10px;
-    margin-bottom: -10px;
-}
 
 .delete-btn-icon { position: absolute; top: 16px; right: 16px; z-index: 5; background: #fee; border: 1px solid var(--danger-color); border-radius: 50%; width: 32px; height: 32px; padding: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
 .delete-btn-icon:hover { background: var(--danger-color); }
@@ -1258,7 +1258,7 @@ button:focus { outline: none; }
 /* Receipt & Log Modals */
 .receipt-modal {
     padding: 0;
-    max-width: 460px;
+    max-width: 480px;
     max-height: min(90vh, 90dvh);
     overflow: hidden;           /* only the paper area scrolls, never the buttons */
     background: #eef1f3;
@@ -1268,7 +1268,7 @@ button:focus { outline: none; }
 .receipt-count-chip { font-size: 0.72rem; font-weight: 600; color: var(--primary-dark); background: #dcefef; border-radius: 999px; padding: 3px 10px; white-space: nowrap; }
 .receipt-scroll {
     flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
-    padding: 18px 14px 22px;
+    padding: 16px 8px 20px;
     /* soft fades appear only while there is more to scroll */
     background:
         linear-gradient(#eef1f3 30%, rgba(238,241,243,0)) center top,
@@ -1282,13 +1282,12 @@ button:focus { outline: none; }
 .receipt-paper {
     position: relative;
     background: #fff;
-    padding: 26px 22px 24px;
-    font-family: 'IBM Plex Mono', 'Courier New', Courier, monospace;
+    padding: 22px 16px 20px;
+    font-family: var(--font-family);
     font-size: 0.9rem;
-    line-height: 1.5;
+    line-height: 1.4;
     color: #1d1d1d;
     width: 100%;
-    max-width: 420px;
     margin: 0 auto;
     box-shadow: 0 2px 10px rgba(0,0,0,0.12);
     font-variant-numeric: tabular-nums;
@@ -1301,49 +1300,83 @@ button:focus { outline: none; }
 .receipt-paper::before { top: -7px; background-image: linear-gradient(135deg, transparent 50%, #fff 50%), linear-gradient(225deg, transparent 50%, #fff 50%); background-size: 6px 8px; background-position: 0 0, 6px 0; }
 .receipt-paper::after { bottom: -7px; background-image: linear-gradient(45deg, transparent 50%, #fff 50%), linear-gradient(315deg, transparent 50%, #fff 50%); background-size: 6px 8px; background-position: 0 0, 6px 0; }
 
-.receipt-header { text-align: center; }
-.receipt-header .rc-store { font-size: 1.2rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; line-height: 1.25; word-break: break-word; }
-.receipt-header .rc-meta { font-size: 0.78rem; color: #666; margin-top: 4px; }
-.rc-rule { border: 0; border-top: 1px dashed #aaa; margin: 18px 0; }
-.rc-rule.double { border-top: 3px double #1d1d1d; margin: 18px 0 14px; }
-.rc-item + .rc-item { margin-top: 16px; }
-.rc-row { display: flex; justify-content: space-between; align-items: baseline; gap: 14px; }
-.rc-item-name { font-weight: 600; word-break: break-word; overflow-wrap: anywhere; }
-.rc-amt { font-weight: 600; white-space: nowrap; }
-.rc-calc { color: #777; font-size: 0.8rem; margin-top: 1px; }
-.rc-sub { display: flex; justify-content: space-between; gap: 12px; font-size: 0.8rem; color: #666; margin-top: 2px; }
+/* Type scale: store name > amounts > item names > everything else (small and grey) */
+.receipt-header { text-align: center; padding-bottom: 14px; }
+.receipt-header .rc-store { font-size: 1.05rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; line-height: 1.25; overflow-wrap: anywhere; }
+.receipt-header .rc-meta { font-size: 0.72rem; color: #777; margin-top: 4px; overflow-wrap: anywhere; }
+.rc-info { display: flex; flex-direction: column; gap: 3px; padding: 10px 0; border-top: 1px dashed #bbb; border-bottom: 1px dashed #bbb; }
+.rc-kv { display: flex; justify-content: space-between; gap: 12px; font-size: 0.74rem; color: #888; }
+.rc-kv span:last-child { min-width: 0; text-align: right; color: #333; font-weight: 500; overflow-wrap: anywhere; }
+.rc-cols { display: flex; justify-content: space-between; margin-top: 14px; padding-bottom: 5px; border-bottom: 1.5px solid #1d1d1d; font-size: 0.64rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #888; }
+/* every line item is a block of its own, divided by a hairline */
+.rc-item { padding: 10px 0; }
+.rc-item + .rc-item { border-top: 1px solid #ececec; }
+.rc-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.rc-item-name { flex: 1 1 auto; min-width: 0; font-size: 0.92rem; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; hyphens: auto; }
+.rc-amt { flex: none; font-size: 0.92rem; font-weight: 600; white-space: nowrap; }
+.rc-calc { color: #777; font-size: 0.76rem; margin-top: 2px; }
+.rc-sub { display: flex; justify-content: space-between; gap: 12px; font-size: 0.74rem; color: #777; margin-top: 2px; }
 .rc-sub.credit { color: #b3261e; }
-.rc-sum { display: flex; justify-content: space-between; gap: 12px; margin-top: 6px; }
+.rc-summary { padding-top: 10px; border-top: 1.5px solid #1d1d1d; }
+.rc-sum { display: flex; justify-content: space-between; gap: 12px; margin-top: 4px; font-size: 0.8rem; }
 .rc-sum.muted { color: #666; }
 .rc-sum.discount { color: #1c7c54; }
-.rc-total { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 1.3rem; font-weight: 700; margin-top: 10px; }
-.rc-balance { display: flex; justify-content: space-between; gap: 12px; margin-top: 12px; padding: 9px 12px; border: 1px dashed #b3261e; border-radius: 4px; color: #b3261e; font-weight: 700; }
-.receipt-footer { text-align: center; color: #555; font-size: 0.8rem; }
-.receipt-footer p { margin: 0; text-align: center; color: inherit; line-height: 1.6; }
-.receipt-footer .rc-thanks { font-size: 0.9rem; font-weight: 600; color: #1d1d1d; margin-bottom: 10px; }
-.receipt-footer .rc-id { font-weight: 600; color: #1d1d1d; }
-.receipt-footer .rc-brand { font-size: 0.66rem; color: #999; margin-top: 12px; letter-spacing: 0.1em; text-transform: uppercase; }
+.rc-total { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-top: 8px; font-size: 1.25rem; font-weight: 700; }
+.rc-total span:first-child { font-size: 0.7rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #555; }
+.rc-balance { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-top: 12px; padding: 8px 10px; border: 1px dashed #b3261e; border-radius: 6px; color: #b3261e; font-size: 0.9rem; font-weight: 700; }
+.rc-balance span:first-child { font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; }
+.receipt-footer { margin-top: 16px; padding-top: 14px; border-top: 1px dashed #bbb; text-align: center; color: #777; font-size: 0.76rem; }
+.receipt-footer p { margin: 0; text-align: center; color: inherit; line-height: 1.5; }
+.receipt-footer .rc-thanks { font-size: 0.82rem; font-weight: 600; color: #333; }
+.receipt-footer .rc-brand { font-size: 0.6rem; color: #aaa; margin-top: 10px; letter-spacing: 0.12em; text-transform: uppercase; }
+
+/* Phones: let the receipt use nearly the full screen width */
+@media (max-width: 520px) {
+    #receipt-modal, #incoming-transfer-modal { width: calc(100% + 16px); margin: 0 -8px; }
+}
 
 .receipt-modal-actions { flex-shrink: 0; display: flex; flex-direction: column; gap: 10px; padding: 12px 16px 16px; background: var(--surface-color); box-shadow: 0 -4px 12px rgba(0,0,0,0.08); }
 .receipt-modal-row { display: flex; gap: 10px; }
 .receipt-modal-row .btn { flex: 1 1 0; min-width: 0; padding-left: 8px; padding-right: 8px; }
 .receipt-modal-actions .btn-primary { width: 100%; }
 
+/* === Transfer modal === */
+/* max-height follows the modal layer, which app.js shrinks to the area above the on-screen keyboard */
+.transfer-modal { max-height: 100%; padding: 20px; }
+.transfer-head { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+.transfer-icon { flex: none; width: 44px; height: 44px; border-radius: 50%; background: #e6f4f5; color: var(--primary-color); display: flex; align-items: center; justify-content: center; }
+.transfer-head h2 { margin: 0; text-align: left; font-size: 1.15rem; }
+.transfer-head .transfer-summary { margin: 2px 0 0; text-align: left; font-size: 0.8rem; line-height: 1.3; color: var(--text-light); }
+.transfer-label { margin-bottom: 8px; font-size: 0.8rem; font-weight: 600; color: var(--text-light); }
+.transfer-input-wrap { display: flex; align-items: center; gap: 10px; height: 56px; padding: 0 14px; border: 1.5px solid var(--border-color); border-radius: 14px; background: #fafafa; color: var(--text-light); transition: border-color 0.2s, box-shadow 0.2s, background-color 0.2s; }
+.transfer-input-wrap:focus-within { border-color: var(--primary-color); background: #fff; box-shadow: 0 0 0 3px rgba(0, 140, 149, 0.15); }
+.transfer-input-wrap svg { flex: none; }
+.transfer-input-wrap input { flex: 1; min-width: 0; height: 100%; padding: 0; border: none; outline: none; background: transparent; font-size: 1.25rem; font-weight: 600; letter-spacing: 0.04em; color: var(--text-color); font-variant-numeric: tabular-nums; }
+.transfer-input-wrap input::placeholder { color: #c8c8c8; font-weight: 500; }
+.transfer-digit-count { flex: none; font-size: 0.75rem; font-variant-numeric: tabular-nums; }
+.transfer-input-wrap.complete .transfer-digit-count { color: var(--primary-color); font-weight: 600; }
+.transfer-message { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 0.85rem; line-height: 1.35; color: var(--text-light); }
+.transfer-message.error { color: var(--danger-color); cursor: pointer; }
+.transfer-spinner { flex: none; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #d9dde0; border-top-color: var(--primary-color); animation: spin 0.8s linear infinite; }
+.transfer-message.error .transfer-spinner { display: none; }
+.transfer-recipient { display: flex; align-items: center; gap: 12px; margin-top: 14px; padding: 12px; border: 1px solid #cfe9ea; border-radius: 14px; background: #f1f9f9; animation: slideDown 0.25s ease-out; }
+.transfer-avatar { flex: none; width: 40px; height: 40px; border-radius: 50%; background: var(--primary-color); color: #fff; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.transfer-recipient-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.transfer-recipient-text strong { font-size: 1rem; line-height: 1.25; overflow-wrap: anywhere; }
+.transfer-recipient-text span { font-size: 0.8rem; color: var(--text-light); overflow-wrap: anywhere; }
+.transfer-check { flex: none; color: var(--primary-color); }
+.transfer-modal .modal-actions { margin-top: 22px; }
+
 #qr-code-modal { text-align: center; }
 #qr-canvas { width: 90% !important; height: auto !important; max-width: 300px; margin: 0 auto; }
 .qr-help-text { font-size: 0.9rem; color: var(--text-light); margin-top: 16px; }
-.log-summary { text-align: left; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 1px solid var(--border-color); }
-.log-summary p { font-size: 0.9rem; color: var(--text-light); margin: 4px 0; }
-.log-summary p strong { color: var(--text-color); }
-.log-details-table { font-size: 0.9rem; width: 100%; }
-.log-details-row { display: flex; justify-content: space-between; padding: 8px 4px; border-bottom: 1px solid var(--border-color); }
-.log-details-row:last-child { border-bottom: none; }
-.log-details-row.header { font-weight: 600; color: var(--text-light); padding-bottom: 4px; border-bottom: 2px solid var(--text-color); }
-.log-details-row.footer { font-weight: bold; font-size: 1.1rem; color: var(--primary-color); margin-top: 8px; border-top: 2px double var(--text-color); padding-top: 10px; }
-.log-details-cell.item { flex-grow: 1; text-align: left; padding-right: 8px; overflow-wrap: break-word; }
-.log-details-cell.price { width: 30%; text-align: right; white-space: nowrap; }
-.log-details-cell.total { width: 35%; text-align: right; white-space: nowrap; }
-.log-details-row.footer .item { color: var(--text-color); }
+/* Accept-transfer popup: the sender's receipt, with a small picture beside each product */
+.rc-from { font-size: 0.62rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: #888; margin-bottom: 3px; }
+.rc-item.has-thumb { display: flex; align-items: flex-start; gap: 10px; }
+.rc-item-main { flex: 1 1 auto; min-width: 0; }
+.rc-thumb { flex: none; width: 40px; height: 40px; border-radius: 6px; object-fit: cover; background: #eef1f3; }
+.receipt-paper .rc-note { margin: 14px 0 0; font-size: 0.74rem; line-height: 1.4; color: #888; text-align: center; }
+.receipt-modal-row .btn-primary { flex-grow: 2; }
 
 /* Print Styles */
 @media print {
@@ -1394,7 +1427,7 @@ button:focus { outline: none; }
     .dashboard-grid { grid-template-columns: 1fr 1fr; }
     .product-grid { grid-template-columns: repeat(auto-fill, minmax(125px, 1fr)); gap: 12px; padding: 12px; }
     .page { padding-bottom: 75px; }
-    .modal-content { padding: 16px; }
+    .modal-content:not(.receipt-modal) { padding: 16px; }
 }
 
 /* Celebration popup (transfer accepted / products received) */
