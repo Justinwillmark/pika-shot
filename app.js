@@ -55,6 +55,7 @@ document.addEventListener('DOMContentLoaded', () => {
             homeDashboardContent: document.getElementById('home-dashboard-content'),
             totalSalesEl: document.getElementById('total-sales'),
             itemsSoldEl: document.getElementById('items-sold'),
+            toggleFiguresBtn: document.getElementById('toggle-figures-btn'),
             recentSalesList: document.getElementById('recent-sales-list'),
             seeAllContainer: document.getElementById('see-all-container'),
             seeAllSalesBtn: document.getElementById('see-all-sales-btn'),
@@ -225,6 +226,8 @@ document.addEventListener('DOMContentLoaded', () => {
             selectedSales: new Set(),
             selectedSaleData: new Map(),
             editingSale: null,
+            figuresHidden: false,
+            dashFigures: null,
             longPressTimer: null,
             firebaseReady: false,
             retailerListener: null,
@@ -432,6 +435,11 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.generateReceiptBtn.addEventListener('click', this.generateReceipt.bind(this));
             this.elements.editSaleBtn.addEventListener('click', this.handleEditSale.bind(this));
             setInterval(() => this.tickEditWindows(), 1000);
+            try { this.state.figuresHidden = localStorage.getItem('pikashot_hide_figures') === '1'; } catch (e) { /* storage unavailable */ }
+            if (this.elements.toggleFiguresBtn) this.elements.toggleFiguresBtn.addEventListener('click', this.toggleFigures.bind(this));
+            Camera.onTorchChange = (on) => { if (this.elements.torchBtn) this.elements.torchBtn.classList.toggle('torch-on', on); };
+            // Browsers only allow sound after a user gesture, so unlock audio on the first touch/click.
+            ['pointerdown', 'touchstart', 'keydown'].forEach(evt => document.addEventListener(evt, () => this._unlockAudio(), { passive: true }));
             this.elements.seeAllSalesBtn.addEventListener('click', () => this.navigateTo('all-sales-view'));
             this.elements.seeLastSalesBtn.addEventListener('click', () => this.navigateTo('all-sales-view'));
             if(document.getElementById('add-salesperson-fab')) {
@@ -713,6 +721,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     },
                     () => { // On Sales Change
                         this.updateDashboard();
+                        this.watchPendingTransfers();
                         if (this.state.currentView === 'all-sales-view') {
                             this.renderAllSales();
                         }
@@ -741,6 +750,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
 
+                this.watchPendingTransfers();
+
                 // Re-fetch sales when user returns to the app tab
                 // This catches any sales missed while the listener was disconnected
                 if (this._visibilityHandler) {
@@ -762,6 +773,7 @@ document.addEventListener('DOMContentLoaded', () => {
         async handleLogout() {
             if (confirm('Are you sure you want to log out? This will clear local data (it remains safe in the cloud).')) {
                 await DB.clearUser(); // This also stops realtime listeners
+                this.stopWatchingTransfers();
                 if (this._visibilityHandler) {
                     document.removeEventListener('visibilitychange', this._visibilityHandler);
                     this._visibilityHandler = null;
@@ -945,8 +957,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const todaysSales = await DB.getSalesToday();
             const totalSales = todaysSales.reduce((sum, sale) => sum + sale.total, 0);
             const itemsSold = todaysSales.reduce((sum, sale) => sum + sale.quantity, 0);
-            this.elements.totalSalesEl.textContent = `₦${this.formatNumber(totalSales)}`;
-            this.elements.itemsSoldEl.textContent = this.formatNumber(itemsSold);
+            this.state.dashFigures = { total: `₦${this.formatNumber(totalSales)}`, items: this.formatNumber(itemsSold) };
+            this.applyFigureVisibility();
 
             this.elements.seeAllContainer.style.display = todaysSales.length > 6 ? 'block' : 'none';
             this.elements.selectionModeHint.style.display = todaysSales.length > 0 ? 'block' : 'none';
@@ -966,6 +978,43 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 await this.renderSalesList(todaysSales, this.elements.recentSalesList, 6);
             }
+        },
+
+        applyFigureVisibility() {
+            const hidden = this.state.figuresHidden;
+            const figures = this.state.dashFigures;
+            if (figures) {
+                this.elements.totalSalesEl.textContent = hidden ? '***' : figures.total;
+                this.elements.itemsSoldEl.textContent = hidden ? '***' : figures.items;
+            }
+            const btn = this.elements.toggleFiguresBtn;
+            if (btn) {
+                btn.setAttribute('aria-pressed', String(hidden));
+                btn.setAttribute('aria-label', hidden ? 'Show figures' : 'Hide figures');
+                const open = btn.querySelector('.eye-open'), closed = btn.querySelector('.eye-closed');
+                if (open) open.style.display = hidden ? 'none' : '';
+                if (closed) closed.style.display = hidden ? '' : 'none';
+            }
+        },
+
+        toggleFigures(e) {
+            e.stopPropagation(); // the card itself opens All Sales
+            this.state.figuresHidden = !this.state.figuresHidden;
+            try { localStorage.setItem('pikashot_hide_figures', this.state.figuresHidden ? '1' : '0'); } catch (err) { /* storage unavailable */ }
+            this.applyFigureVisibility();
+        },
+
+        // Edited sales get an "Edited" tag outside the box, so they sit in a small wrapper row.
+        _appendSaleEl(container, saleEl, sale) {
+            if (!sale.edited) { container.appendChild(saleEl); return; }
+            const row = document.createElement('div');
+            row.className = 'sale-row';
+            const tag = document.createElement('span');
+            tag.className = 'sale-edited-tag';
+            tag.textContent = 'Edited';
+            row.appendChild(saleEl);
+            row.appendChild(tag);
+            container.appendChild(row);
         },
 
         async renderSalesList(sales, targetElement, limit) {
@@ -1006,7 +1055,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 saleEl.innerHTML = `<div class="sale-item-overlay">Previously Transferred</div><img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${this.formatNumber(sale.quantity)} x &#8358;${this.formatNumber(sale.price)}</span></div><p class="sale-price">${discountMark}&#8358;${this.formatNumber(sale.total)}</p>${this._saleEditExtrasHtml(sale)}`;
 
                 this.addSaleItemEventListeners(saleEl, sale);
-                targetElement.appendChild(saleEl);
+                this._appendSaleEl(targetElement, saleEl, sale);
             });
         },
 
@@ -1103,7 +1152,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     saleEl.innerHTML = `<div class="sale-item-overlay">Previously Transferred</div>${numberingHtml}<img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${this.formatNumber(sale.quantity)} x &#8358;${this.formatNumber(sale.price)}</span></div><p class="sale-price">${discountMark}&#8358;${this.formatNumber(sale.total)}</p>${this._saleEditExtrasHtml(sale)}`;
                     this.addSaleItemEventListeners(saleEl, sale);
-                    groupContainer.appendChild(saleEl);
+                    this._appendSaleEl(groupContainer, saleEl, sale);
                 });
                 this.elements.allSalesList.appendChild(groupContainer);
             }
@@ -1214,6 +1263,23 @@ document.addEventListener('DOMContentLoaded', () => {
             if (this.toggleOnboardingTooltip) this.toggleOnboardingTooltip();
             
             allProducts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)); // Sort by newest first
+
+            if (this.state.productSelectionMode) {
+                // Picking a product to sell: best sellers first (in-stock before out-of-stock) so there is less scrolling.
+                const stats = {};
+                (await DB.getAllSales()).forEach(sale => {
+                    const st = stats[sale.productId] || (stats[sale.productId] = { count: 0, qty: 0 });
+                    st.count++;
+                    st.qty += Number(sale.quantity) || 0;
+                });
+                const none = { count: 0, qty: 0 };
+                allProducts.sort((a, b) => {
+                    const aOut = a.stock <= 0, bOut = b.stock <= 0;
+                    if (aOut !== bOut) return aOut ? 1 : -1;
+                    const sa = stats[a.id] || none, sb = stats[b.id] || none;
+                    return (sb.count - sa.count) || (sb.qty - sa.qty) || (new Date(b.createdAt) - new Date(a.createdAt));
+                });
+            }
 
             this.elements.productGrid.innerHTML = '';
             this.elements.productSkuCount.textContent = `${allProducts.length} products`;
@@ -1380,19 +1446,68 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         },
 
-        async _handleSuccessfulScan() {
+        _scanOptions() {
+            return {
+                onStatus: (text) => { this.elements.scanFeedback.textContent = text; },
+                onError: (message) => {
+                    alert(message);
+                    this.state.isScanCanceled = true;
+                    history.back();
+                }
+            };
+        },
+
+        // --- Sounds (one shared AudioContext; browsers only start it after a user gesture) ---
+        _getAudioCtx() {
+            if (!this._audioCtx) {
+                const Ctx = window.AudioContext || window.webkitAudioContext;
+                if (!Ctx) return null;
+                this._audioCtx = new Ctx();
+            }
+            return this._audioCtx;
+        },
+
+        _unlockAudio() {
             try {
-                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                const oscillator = audioCtx.createOscillator();
-                const gainNode = audioCtx.createGain();
-                oscillator.connect(gainNode);
-                gainNode.connect(audioCtx.destination);
-                oscillator.type = 'square';
-                oscillator.frequency.value = 800; // Hz
-                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime); // 10% volume
-                oscillator.start();
-                oscillator.stop(audioCtx.currentTime + 0.1); // 100ms beep
-            } catch(e) {}
+                const ctx = this._getAudioCtx();
+                if (ctx && ctx.state === 'suspended') ctx.resume();
+            } catch (e) { /* audio unavailable */ }
+        },
+
+        _playNotes(notes) {
+            try {
+                const ctx = this._getAudioCtx();
+                if (!ctx) return;
+                if (ctx.state === 'suspended') ctx.resume();
+                notes.forEach(({ freq, start, dur, type, vol }) => {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    const t0 = ctx.currentTime + start;
+                    osc.type = type || 'sine';
+                    osc.frequency.value = freq;
+                    gain.gain.setValueAtTime(0.0001, t0);
+                    gain.gain.exponentialRampToValueAtTime(vol || 0.15, t0 + 0.02);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start(t0);
+                    osc.stop(t0 + dur + 0.05);
+                });
+            } catch (e) { /* audio unavailable */ }
+        },
+
+        _playTransferChime() {
+            // bright rising arpeggio: C5 E5 G5 C6
+            this._playNotes([
+                { freq: 523.25, start: 0, dur: 0.35 },
+                { freq: 659.25, start: 0.12, dur: 0.35 },
+                { freq: 783.99, start: 0.24, dur: 0.35 },
+                { freq: 1046.5, start: 0.36, dur: 0.7, vol: 0.18 }
+            ]);
+        },
+
+        async _handleSuccessfulScan() {
+            this._playNotes([{ freq: 800, start: 0, dur: 0.1, type: 'square', vol: 0.08 }]);
             await DB.incrementScanCount();
             this.updateScanTracker();
         },
@@ -1411,7 +1526,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.cancelScanBtn.style.maxWidth = '300px';
             }
             if (!this.state.cameraReady) { alert("Scanner is not ready yet. Please wait or check your connection."); return; }
-            if (!Camera.barcodeDetector) { alert("Barcode scanning is not available on this browser."); return; }
+            if (!Camera.isSupported()) { alert("Barcode scanning is not available on this device."); return; }
             this.elements.scanFeedback.textContent = 'Scan product barcode';
             this.navigateTo('camera-view');
             Camera.startScan(
@@ -1430,7 +1545,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         this.showModal('add-product-failed-modal');
                     }, 500);
                 },
-                this.elements.scanTimerDisplay
+                this.elements.scanTimerDisplay,
+                this._scanOptions()
             );
         },
 
@@ -1474,7 +1590,7 @@ document.addEventListener('DOMContentLoaded', () => {
         startSellScan() {
             this.state.isScanCanceled = false;
             if (!this.state.cameraReady) { alert("Scanner is not ready yet. Please wait or check your connection."); return; }
-            if (!Camera.barcodeDetector) { alert("Barcode scanning is not available on this browser."); return; }
+            if (!Camera.isSupported()) { alert("Barcode scanning is not available on this device."); return; }
             if (this.elements.scanSelectFromProductsBtn) {
                 this.elements.scanSelectFromProductsBtn.style.display = 'block';
                 this.elements.cancelScanBtn.style.flex = '0 0 30%';
@@ -1515,7 +1631,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     history.back();
                     this.handleSellScanNotFound(true);
                 },
-                this.elements.scanTimerDisplay
+                this.elements.scanTimerDisplay,
+                this._scanOptions()
             );
         },
 
@@ -1822,7 +1939,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         alert('No barcode found. Please try again.');
                     }, 500);
                 },
-                this.elements.scanTimerDisplay
+                this.elements.scanTimerDisplay,
+                this._scanOptions()
             );
         },
 
@@ -1969,8 +2087,9 @@ document.addEventListener('DOMContentLoaded', () => {
                                 }]
                             };
                             const logCollectionRef = window.fb.collection(window.fb.db, 'shared_logs');
-                            await window.fb.addDoc(logCollectionRef, logData);
-                            sale.sharedAsLog = true;
+                            const logRef = await window.fb.addDoc(logCollectionRef, logData);
+                            // The sale only counts as transferred once the recipient accepts it
+                            sale.pendingTransfer = { logId: logRef.id, to: targetPhone };
                         }
                     }
                 } catch (error) {
@@ -2045,6 +2164,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (success) {
                     this.state.editingSale = null;
                     this.hideModal();
+                    this.watchPendingTransfers(); // a credit sale may have been sent to the customer automatically
                     await this.updateDashboard();
                     await this.renderProducts();
                     if (wasEditing) {
@@ -2130,6 +2250,11 @@ document.addEventListener('DOMContentLoaded', () => {
             this.hideModal();
             this.state.productSelectionMode = true;
 
+            // Start from the full list (no stale search/filter) so the top sellers are what the user sees first
+            this.elements.productSearchInput.value = '';
+            this.state.productFilter = 'all';
+            this.elements.productFilterTabs.forEach(btn => btn.classList.toggle('active', btn.dataset.filter === 'all'));
+
             // Fix: If already on products-view, navigateTo returns early, so we must force the UI update
             if (this.state.currentView === 'products-view') {
                 this.exitSelectionMode(); // Ensure receipt selection mode is off
@@ -2139,6 +2264,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 this.navigateTo('products-view');
             }
+            await this.renderProducts();
         },
 
         addSaleItemEventListeners(element, sale) {
@@ -2189,20 +2315,19 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         // --- SALE EDITING (one edit, within 4 minutes of recording) ---
-        EDIT_WINDOW_MS: 4 * 60 * 1000,
+        EDIT_WINDOW_MS: 10 * 60 * 1000,
 
         isSaleEditable(sale) {
-            if (!sale || sale.edited || sale.sharedAsLog) return false;
+            if (!sale || sale.edited || sale.sharedAsLog || sale.pendingTransfer) return false;
             const age = Date.now() - new Date(sale.timestamp).getTime();
             return age >= 0 && age < this.EDIT_WINDOW_MS;
         },
 
         _saleEditExtrasHtml(sale) {
-            if (sale.edited) return '<span class="sale-edited-tag">Edited</span>';
             if (!this.isSaleEditable(sale)) return '';
             const startMs = new Date(sale.timestamp).getTime();
             const elapsed = Date.now() - startMs;
-            return `<div class="sale-edit-timer" data-expires="${startMs + this.EDIT_WINDOW_MS}" style="animation-delay: -${(elapsed / 1000).toFixed(2)}s"></div>`;
+            return `<div class="sale-edit-timer" data-expires="${startMs + this.EDIT_WINDOW_MS}" style="animation-duration: ${this.EDIT_WINDOW_MS / 1000}s; animation-delay: -${(elapsed / 1000).toFixed(2)}s"></div>`;
         },
 
         updateEditButton() {
@@ -2262,30 +2387,95 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             this.updateSaleTotal();
         },
+        _esc(value) {
+            return String(value == null ? '' : value).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+        },
+
         async generateReceipt() {
             const allSales = await DB.getAllSales();
-            const selectedSaleObjects = allSales.filter(s => this.state.selectedSales.has(s.id));
+            const selectedSaleObjects = allSales
+                .filter(s => this.state.selectedSales.has(s.id))
+                .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
             if (selectedSaleObjects.length === 0) return;
+
+            const money = (n) => `&#8358;${this.formatNumber(n)}`;
             const receiptId = `PS-${Date.now().toString().slice(-6)}`;
             const now = new Date();
-            let totalAmount = 0;
+            const dateStr = now.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+            const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+
+            let subtotal = 0, discountTotal = 0, totalDue = 0, paidTotal = 0, balanceTotal = 0;
+            let hasCredit = false;
             let itemsHtml = '';
+            const customers = new Set();
+
             selectedSaleObjects.forEach(sale => {
-                totalAmount += sale.total;
-                // Add discount marker if applicable
-                let discountMark = '';
-                if (sale.saleType === 'credit') {
-                    discountMark = '<sup style="font-weight:bold; color:red;">**</sup>';
-                } else if (sale.discount && sale.discount > 0) {
-                    discountMark = '<sup style="font-weight:bold; color:var(--primary-color);">**</sup>';
+                const gross = (Number(sale.quantity) || 0) * (Number(sale.price) || 0);
+                const paid = Number(sale.total) || 0;
+                const isCredit = sale.saleType === 'credit';
+                const discount = (!isCredit && sale.discount > 0) ? Number(sale.discount) : 0;
+                subtotal += gross;
+                discountTotal += discount;
+                paidTotal += paid;
+                if (sale.customerName && sale.customerName !== 'Walk-in Customer') customers.add(sale.customerName);
+
+                let extra = '';
+                if (discount > 0) {
+                    extra += `<div class="rc-sub"><span>Discount</span><span>-${money(discount)}</span></div>`;
+                    totalDue += paid;
+                } else if (isCredit) {
+                    hasCredit = true;
+                    const balance = Math.max(0, gross - paid);
+                    balanceTotal += balance;
+                    totalDue += gross;
+                    extra += `<div class="rc-sub credit"><span>Credit${sale.customerName ? ' &middot; ' + this._esc(sale.customerName) : ''}</span><span></span></div>`;
+                    extra += `<div class="rc-sub credit"><span>Paid</span><span>${money(paid)}</span></div>`;
+                    extra += `<div class="rc-sub credit"><span>Balance</span><span>${money(balance)}</span></div>`;
+                } else {
+                    totalDue += paid;
                 }
-                itemsHtml += `<tr><td>${sale.productName}</td><td class="col-qty">${this.formatNumber(sale.quantity)}</td><td class="col-price">&#8358;${this.formatNumber(sale.price)}</td><td class="col-total">${discountMark}&#8358;${this.formatNumber(sale.total)}</td></tr>`;
+
+                itemsHtml += `<div class="rc-item"><div class="rc-item-name">${this._esc(sale.productName)}</div>` +
+                    `<div class="rc-line"><span class="rc-calc">${this.formatNumber(sale.quantity)} x ${money(sale.price)}</span><span class="rc-amt">${money(gross)}</span></div>${extra}</div>`;
             });
-            const receiptHtml = `<div class="receipt-header"><h3>${this.state.user.business}</h3><p>${this.state.user.location} | ${this.state.user.phone}</p><p><strong>Receipt ID:</strong> ${receiptId}</p></div><div class="receipt-items"><table><thead><tr><th>Item</th><th class="col-qty">Qty</th><th class="col-price">Price</th><th class="col-total">Total</th></tr></thead><tbody>${itemsHtml}</tbody></table></div><div class="receipt-total"><div class="total-row"><span>TOTAL</span><span>&#8358;${this.formatNumber(totalAmount)}</span></div></div><div class="receipt-footer"><p>Thank you for your patronage!</p><p>${now.toLocaleDateString('en-NG')} ${now.toLocaleTimeString('en-NG')}</p><p style="font-size: 0.7rem; color: #888; margin-top: 10px;">Powered by PikaShot</p></div>`;
-            this.elements.receiptContent.innerHTML = receiptHtml;
+
+            let summaryHtml = '';
+            if (discountTotal > 0) {
+                summaryHtml += `<div class="rc-sum muted"><span>Subtotal</span><span>${money(subtotal)}</span></div>`;
+                summaryHtml += `<div class="rc-sum discount"><span>Discount</span><span>-${money(discountTotal)}</span></div>`;
+            }
+            summaryHtml += `<div class="rc-total"><span>TOTAL</span><span>${money(totalDue)}</span></div>`;
+            if (hasCredit) {
+                summaryHtml += `<div class="rc-sum muted"><span>Amount paid</span><span>${money(paidTotal)}</span></div>`;
+                summaryHtml += `<div class="rc-balance"><span>BALANCE DUE</span><span>${money(balanceTotal)}</span></div>`;
+            }
+
+            const user = this.state.user || {};
+            const customerRow = customers.size === 1 ? `<div class="rc-info"><span>Customer</span><strong>${this._esc([...customers][0])}</strong></div>` : '';
+            const metaLine = [user.location, user.phone].filter(Boolean).map(v => this._esc(v)).join(' &middot; ');
+
+            this.elements.receiptContent.innerHTML =
+                `<div class="receipt-header"><div class="rc-store">${this._esc(user.business)}</div>${metaLine ? `<div class="rc-meta">${metaLine}</div>` : ''}</div>` +
+                `<hr class="rc-rule">` +
+                `<div class="rc-info"><span>Receipt</span><strong>${receiptId}</strong></div>` +
+                `<div class="rc-info"><span>Date</span><strong>${dateStr}</strong></div>` +
+                `<div class="rc-info"><span>Time</span><strong>${timeStr}</strong></div>` +
+                customerRow +
+                `<hr class="rc-rule">` +
+                `<div class="rc-cols"><span>Item</span><span>Amount</span></div>` +
+                `<div class="receipt-items">${itemsHtml}</div>` +
+                `<hr class="rc-rule double">` +
+                summaryHtml +
+                `<hr class="rc-rule">` +
+                `<div class="receipt-footer"><p class="rc-thanks">Thank you for your patronage!</p><p class="rc-brand">Powered by PikaShot</p></div>`;
+
+            const chip = document.getElementById('receipt-count-chip');
+            if (chip) chip.textContent = `${selectedSaleObjects.length} item${selectedSaleObjects.length === 1 ? '' : 's'}`;
             this.showModal('receipt-modal');
+            const scroller = document.getElementById('receipt-scroll');
+            if (scroller) scroller.scrollTop = 0;
         },
-        async shareReceipt() { const receiptElement = this.elements.receiptContent; try { const canvas = await html2canvas(receiptElement, { scale: 2 }); canvas.toBlob(async (blob) => { if (navigator.share && blob) { try { await navigator.share({ files: [new File([blob], 'pikashot-receipt.png', { type: 'image/png' })], title: 'Your Receipt', text: 'Here is your receipt from ' + this.state.user.business, }); } catch (error) { console.error('Error sharing:', error); } } else { alert('Sharing is not supported on this browser, or there was an error creating the image.'); } }, 'image/png'); } catch (error) { console.error('Error generating receipt image:', error); alert('Could not generate receipt image.'); } },
+        async shareReceipt() { const receiptElement = this.elements.receiptContent; try { const canvas = await html2canvas(receiptElement, { scale: 2, backgroundColor: '#ffffff' }); canvas.toBlob(async (blob) => { if (navigator.share && blob) { try { await navigator.share({ files: [new File([blob], 'pikashot-receipt.png', { type: 'image/png' })], title: 'Your Receipt', text: 'Here is your receipt from ' + this.state.user.business, }); } catch (error) { console.error('Error sharing:', error); } } else { alert('Sharing is not supported on this browser, or there was an error creating the image.'); } }, 'image/png'); } catch (error) { console.error('Error generating receipt image:', error); alert('Could not generate receipt image.'); } },
 
         async initiatePhoneTransfer() {
             if (!navigator.onLine) {
@@ -2315,7 +2505,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const el = document.querySelector(`.sale-item[data-sale-id="${sale.id}"]`);
                     if (el) this.triggerRestrictedFeedback(el);
                 });
-                this.showToast("Some selected items have already been transferred.");
+                this.showToast("Some selected items have already been transferred and accepted.");
                 return; 
             }
             // -----------------------------------------------------------
@@ -2424,10 +2614,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 };
 
                 const logCollectionRef = window.fb.collection(window.fb.db, 'shared_logs');
-                await window.fb.addDoc(logCollectionRef, logData);
+                const logRef = await window.fb.addDoc(logCollectionRef, logData);
 
-                // Mark local sales as shared
-                await this.handleLogShared();
+                // Remember the pending transfer on each sale (it turns into "transferred" when accepted)
+                await this.handleLogShared(logRef.id, targetPhone);
                 
                 this.hideModal();
                 this.showToast("Transfer sent successfully!");
@@ -2520,7 +2710,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         },
 
-        async handleLogShared() {
+        async handleLogShared(logId, targetPhone) {
             this.hideModal();
             const allSales = await DB.getAllSales();
             const updates = [];
@@ -2528,7 +2718,7 @@ document.addEventListener('DOMContentLoaded', () => {
             for (const saleId of this.state.selectedSales) {
                 const saleToUpdate = allSales.find(s => s.id === saleId);
                 if (saleToUpdate) {
-                    saleToUpdate.sharedAsLog = true;
+                    saleToUpdate.pendingTransfer = { logId, to: targetPhone };
                     updates.push(DB.updateSale(saleToUpdate));
                 }
             }
@@ -2539,6 +2729,158 @@ document.addEventListener('DOMContentLoaded', () => {
             if (this.state.currentView === 'all-sales-view') {
                 await this.renderAllSales();
             }
+            this.watchPendingTransfers();
+        },
+
+        // Listens for the recipient accepting any transfer that is still pending.
+        async watchPendingTransfers() {
+            if (!this.state.firebaseReady || !this.state.user || !this.state.user.phone) return;
+            try {
+                const sales = await DB.getAllSales();
+                const pendingIds = new Set(sales
+                    .filter(s => s.pendingTransfer && s.pendingTransfer.logId && !s.sharedAsLog)
+                    .map(s => s.pendingTransfer.logId));
+                if (!this._pendingWatchers) this._pendingWatchers = new Map();
+
+                this._pendingWatchers.forEach((unsub, id) => {
+                    if (!pendingIds.has(id)) { unsub(); this._pendingWatchers.delete(id); }
+                });
+                pendingIds.forEach(id => {
+                    if (this._pendingWatchers.has(id)) return;
+                    const unsub = window.fb.onSnapshot(
+                        window.fb.doc(window.fb.db, 'shared_logs', id),
+                        (snap) => {
+                            if (!snap.exists()) return;
+                            const data = snap.data();
+                            if (!data.claimed) return;
+                            const stop = this._pendingWatchers.get(id);
+                            if (stop) { stop(); this._pendingWatchers.delete(id); }
+                            this.handleTransferAccepted(id, data);
+                        },
+                        (error) => console.error('Transfer watcher error:', error)
+                    );
+                    this._pendingWatchers.set(id, unsub);
+                });
+            } catch (error) {
+                console.error('Could not watch pending transfers:', error);
+            }
+        },
+
+        stopWatchingTransfers() {
+            if (this._pendingWatchers) {
+                this._pendingWatchers.forEach(unsub => unsub());
+                this._pendingWatchers.clear();
+            }
+        },
+
+        async handleTransferAccepted(logId, logData) {
+            if (!this._acceptedHandled) this._acceptedHandled = new Set();
+            if (this._acceptedHandled.has(logId)) return;
+            this._acceptedHandled.add(logId);
+
+            const allSales = await DB.getAllSales();
+            const affected = allSales.filter(s => s.pendingTransfer && s.pendingTransfer.logId === logId && !s.sharedAsLog);
+            if (affected.length === 0) return;
+
+            await Promise.all(affected.map(sale => {
+                sale.sharedAsLog = true;
+                sale.transferredTo = logData.claimedBy || sale.pendingTransfer.to;
+                return DB.updateSale(sale);
+            }));
+
+            await this.updateDashboard();
+            if (this.state.currentView === 'all-sales-view') await this.renderAllSales();
+
+            let name = logData.claimedByName;
+            let business = logData.claimedByBusiness;
+            if ((!name || !business) && logData.claimedBy) {
+                try {
+                    const snap = await window.fb.getDoc(window.fb.doc(window.fb.db, 'users', logData.claimedBy));
+                    if (snap.exists()) {
+                        const u = snap.data();
+                        name = name || u.name;
+                        business = business || u.business;
+                    }
+                } catch (e) { /* fall back to the phone number below */ }
+            }
+            this.celebrateTransferAccepted(name || logData.claimedBy || 'Your customer', business || '');
+        },
+
+        celebrateTransferAccepted(name, business) {
+            this._playTransferChime();
+
+            const banner = document.getElementById('transfer-accepted-banner');
+            if (banner) {
+                banner.innerHTML = '';
+                const title = document.createElement('div'); title.className = 'tab-title'; title.textContent = 'Transfer accepted';
+                const who = document.createElement('div'); who.className = 'tab-name'; who.textContent = name;
+                banner.appendChild(title);
+                banner.appendChild(who);
+                if (business) {
+                    const biz = document.createElement('div'); biz.className = 'tab-biz'; biz.textContent = business;
+                    banner.appendChild(biz);
+                }
+                banner.classList.add('show');
+                clearTimeout(this._bannerTimer);
+                this._bannerTimer = setTimeout(() => banner.classList.remove('show'), 6500);
+                banner.onclick = () => banner.classList.remove('show');
+            }
+            this.launchConfetti();
+        },
+
+        launchConfetti() {
+            if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+            const existing = document.getElementById('confetti-canvas');
+            if (existing) existing.remove();
+            const canvas = document.createElement('canvas');
+            canvas.id = 'confetti-canvas';
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = window.innerWidth * dpr;
+            canvas.height = window.innerHeight * dpr;
+            document.body.appendChild(canvas);
+            const ctx = canvas.getContext('2d');
+            ctx.scale(dpr, dpr);
+
+            const colors = ['#008C95', '#F5A623', '#ffffff', '#28a745', '#D0021B', '#5bc0de'];
+            const W = window.innerWidth, H = window.innerHeight;
+            const pieces = Array.from({ length: 140 }, () => {
+                const fromLeft = Math.random() < 0.5;
+                return {
+                    x: fromLeft ? -10 : W + 10,
+                    y: H * (0.25 + Math.random() * 0.25),
+                    vx: (fromLeft ? 1 : -1) * (4 + Math.random() * 9),
+                    vy: -(6 + Math.random() * 9),
+                    size: 5 + Math.random() * 6,
+                    rot: Math.random() * Math.PI,
+                    vr: (Math.random() - 0.5) * 0.4,
+                    color: colors[Math.floor(Math.random() * colors.length)],
+                    shape: Math.random() < 0.5 ? 'rect' : 'circle'
+                };
+            });
+
+            const started = performance.now();
+            const frame = (now) => {
+                const elapsed = now - started;
+                ctx.clearRect(0, 0, W, H);
+                pieces.forEach(p => {
+                    p.vy += 0.28;           // gravity
+                    p.vx *= 0.992;          // air drag
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.rot += p.vr;
+                    ctx.save();
+                    ctx.globalAlpha = Math.max(0, 1 - Math.max(0, elapsed - 2600) / 1000);
+                    ctx.translate(p.x, p.y);
+                    ctx.rotate(p.rot);
+                    ctx.fillStyle = p.color;
+                    if (p.shape === 'rect') ctx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
+                    else { ctx.beginPath(); ctx.arc(0, 0, p.size / 3, 0, Math.PI * 2); ctx.fill(); }
+                    ctx.restore();
+                });
+                if (elapsed < 3600) requestAnimationFrame(frame);
+                else canvas.remove();
+            };
+            requestAnimationFrame(frame);
         },
 
         async handlePikaLogIdScanned(logId) {
@@ -2762,7 +3104,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     await window.fb.updateDoc(logRef, {
                         claimed: true,
                         claimedAt: window.fb.serverTimestamp(),
-                        claimedBy: this.state.user.phone || this.state.user.phone
+                        claimedBy: this.state.user.phone || this.state.user.phone,
+                        claimedByName: this.state.user.name || null,
+                        claimedByBusiness: this.state.user.business || null
                     });
                 } catch (error) {
                     console.error("Error marking log as claimed:", error);

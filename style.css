@@ -581,6 +581,10 @@ button:focus { outline: none; }
 .stat-icon.sales { background-color: var(--primary-color); }
 .stat-icon.items { background-color: var(--primary-color); }
 .stat-card p { font-size: clamp(0.8rem, 2.5vw, 0.9rem); color: var(--text-light); }
+.stat-card .stat-label { display: flex; align-items: center; gap: 6px; }
+.figures-toggle { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; margin: -4px 0; border: none; background: transparent; color: var(--text-light); border-radius: 50%; cursor: pointer; transition: background-color 0.2s, color 0.2s; }
+.figures-toggle:active { background: var(--border-color); color: var(--primary-color); }
+.figures-toggle[aria-pressed="true"] { color: var(--primary-color); }
 .stat-card h3 { font-size: clamp(1.4rem, 5vw, 1.75rem); font-weight: 700; color: var(--text-color); margin-top: 4px; }
 
 /* Recent & All Sales Styles */
@@ -652,12 +656,16 @@ button:focus { outline: none; }
 .sale-edit-timer {
     position: absolute; left: 0; bottom: 0; width: 100%; height: 2px;
     background: var(--primary-color); transform-origin: left center;
-    animation: edit-window-recede 240s linear forwards; pointer-events: none;
+    animation: edit-window-recede 600s linear forwards; pointer-events: none;
 }
 @keyframes edit-window-recede { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+.sale-row { position: relative; margin-bottom: 10px; }
+.sale-row > .sale-item { margin-bottom: 0; }
 .sale-edited-tag {
-    writing-mode: vertical-rl; transform: rotate(180deg); flex-shrink: 0; margin-left: 8px;
-    font-size: 0.6rem; font-weight: 600; letter-spacing: 0.08em; color: var(--text-light); line-height: 1;
+    position: absolute; left: calc(100% + 6px); top: 50%;
+    writing-mode: vertical-rl; transform: translateY(-50%) rotate(180deg);
+    font-size: 0.6rem; font-weight: 600; letter-spacing: 0.06em; line-height: 1;
+    color: rgba(208, 2, 27, 0.5); pointer-events: none; white-space: nowrap;
 }
 .sale-item img { width: 40px; height: 40px; border-radius: 8px; margin-right: 12px; object-fit: cover; flex-shrink: 0; }
 .sale-info { flex-grow: 1; overflow: hidden; }
@@ -1059,6 +1067,9 @@ button:focus { outline: none; }
     margin: 0 -24px;
 }
 
+.quantity-stepper { display: grid; grid-template-columns: 2fr 6fr 2fr; gap: 10px; width: 100%; align-items: stretch; }
+.quantity-stepper .btn { width: 100%; padding: 0; font-size: 1.4rem; line-height: 1; }
+.quantity-stepper input { width: 100%; min-width: 0; text-align: center; font-weight: 600; }
 #confirm-sale-modal .sale-item-details { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
 #confirm-sale-modal img { width: 60px; height: 60px; border-radius: 8px; object-fit: cover; }
 #confirm-sale-modal h3 { font-size: clamp(1.1rem, 3.5vw, 1.2rem); margin: 0; }
@@ -1254,54 +1265,81 @@ button:focus { outline: none; }
 }
 
 /* Receipt & Log Modals */
-.receipt-modal { 
-    max-height: 80vh; 
-    /* This ID is on the .modal-content, which is already display: flex, flex-direction: column */
+.receipt-modal {
+    padding: 0;
+    max-height: min(90vh, 90dvh);
+    overflow: hidden;           /* only the paper area scrolls, never the buttons */
+    background: #eef1f3;
+}
+.receipt-modal-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 16px 20px 10px; flex-shrink: 0; }
+.receipt-modal-head h2 { margin: 0; text-align: left; font-size: 1.1rem; }
+.receipt-count-chip { font-size: 0.72rem; font-weight: 600; color: var(--primary-dark); background: #dcefef; border-radius: 999px; padding: 3px 10px; white-space: nowrap; }
+.receipt-scroll {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+    padding: 18px 16px 22px;
+    /* soft fades appear only while there is more to scroll */
+    background:
+        linear-gradient(#eef1f3 30%, rgba(238,241,243,0)) center top,
+        linear-gradient(rgba(238,241,243,0), #eef1f3 70%) center bottom,
+        radial-gradient(farthest-side at 50% 0, rgba(0,0,0,0.16), rgba(0,0,0,0)) center top,
+        radial-gradient(farthest-side at 50% 100%, rgba(0,0,0,0.16), rgba(0,0,0,0)) center bottom;
+    background-repeat: no-repeat;
+    background-size: 100% 28px, 100% 28px, 100% 10px, 100% 10px;
+    background-attachment: local, local, scroll, scroll;
 }
 .receipt-paper {
+    position: relative;
     background: #fff;
-    padding: clamp(15px, 4vw, 20px);
-    font-family: var(--font-family);
-    color: #000;
-    border: 1px dashed #ccc;
+    padding: 20px 18px 18px;
+    font-family: 'IBM Plex Mono', 'Courier New', Courier, monospace;
+    font-size: 0.8rem;
+    line-height: 1.45;
+    color: #1d1d1d;
     width: 100%;
-    max-width: 320px; /* Modern, portable width */
+    max-width: 320px;
     margin: 0 auto;
-
-    /* --- FIX: Make receipt content scrollable --- */
-    flex-grow: 1; /* Take up available space */
-    overflow-y: auto; /* Add scrollbar if content overflows */
-    min-height: 0; /* Allow shrinking in flex container */
-    /* --- END FIX --- */
+    box-shadow: 0 2px 10px rgba(0,0,0,0.12);
+    font-variant-numeric: tabular-nums;
 }
-.receipt-header { text-align: center; margin-bottom: 16px; }
-.receipt-header h3 { margin: 0; font-size: clamp(1.1rem, 4.5vw, 1.3rem); }
-.receipt-header p { margin: 2px 0; font-size: clamp(0.7rem, 2.5vw, 0.8rem); }
-.receipt-items table { width: 100%; border-collapse: collapse; font-size: clamp(0.8rem, 3vw, 0.9rem); }
-.receipt-items th, .receipt-items td {
-    text-align: left;
-    padding: 6px 2px;
-    vertical-align: top;
-    word-break: break-word;
+/* torn paper edges (outside the paper box, so they are not part of the shared image) */
+.receipt-paper::before, .receipt-paper::after {
+    content: ''; position: absolute; left: 0; right: 0; height: 8px;
+    background-repeat: repeat-x; background-size: 12px 8px;
 }
-.receipt-items thead tr { border-bottom: 1px solid #000; }
-.receipt-items .col-qty, .receipt-items .col-price, .receipt-items .col-total { text-align: right; white-space: nowrap; }
-.receipt-items .col-qty { width: 15%; }
-.receipt-items .col-price { width: 25%; }
-.receipt-items .col-total { width: 30%; }
+.receipt-paper::before { top: -7px; background-image: linear-gradient(135deg, transparent 50%, #fff 50%), linear-gradient(225deg, transparent 50%, #fff 50%); background-size: 6px 8px; background-position: 0 0, 6px 0; }
+.receipt-paper::after { bottom: -7px; background-image: linear-gradient(45deg, transparent 50%, #fff 50%), linear-gradient(315deg, transparent 50%, #fff 50%); background-size: 6px 8px; background-position: 0 0, 6px 0; }
 
-.receipt-total { margin-top: 16px; border-top: 2px double #000; padding-top: 10px; }
-.receipt-total .total-row { display: flex; justify-content: space-between; font-weight: bold; font-size: clamp(1rem, 4vw, 1.2rem); }
-.receipt-footer { text-align: center; margin-top: 16px; font-size: clamp(0.7rem, 2.5vw, 0.8rem); }
-.receipt-footer p { margin: 2px 0; }
+.receipt-header { text-align: center; }
+.receipt-header .rc-store { font-size: 1.05rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; line-height: 1.25; word-break: break-word; }
+.receipt-header .rc-meta { font-size: 0.7rem; color: #555; margin-top: 3px; }
+.rc-rule { border: 0; border-top: 1px dashed #9a9a9a; margin: 12px 0; }
+.rc-rule.solid { border-top: 1px solid #1d1d1d; }
+.rc-rule.double { border-top: 3px double #1d1d1d; }
+.rc-info { display: flex; justify-content: space-between; gap: 8px; font-size: 0.72rem; color: #444; }
+.rc-info + .rc-info { margin-top: 2px; }
+.rc-info strong { color: #1d1d1d; font-weight: 600; }
+.rc-cols { display: flex; justify-content: space-between; font-size: 0.66rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #555; }
+.rc-item { margin-top: 9px; }
+.rc-item-name { font-weight: 600; word-break: break-word; overflow-wrap: anywhere; }
+.rc-line { display: flex; justify-content: space-between; gap: 8px; }
+.rc-line .rc-calc { color: #555; font-size: 0.74rem; }
+.rc-line .rc-amt { font-weight: 500; white-space: nowrap; }
+.rc-sub { display: flex; justify-content: space-between; gap: 8px; font-size: 0.7rem; color: #666; padding-left: 8px; }
+.rc-sub.credit { color: #b3261e; }
+.rc-sum { display: flex; justify-content: space-between; gap: 8px; margin-top: 3px; }
+.rc-sum.muted { color: #555; font-size: 0.76rem; }
+.rc-sum.discount { color: #1c7c54; }
+.rc-total { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 1.1rem; font-weight: 700; margin-top: 2px; }
+.rc-balance { display: flex; justify-content: space-between; gap: 8px; margin-top: 6px; padding: 6px 8px; border: 1px dashed #b3261e; color: #b3261e; font-weight: 700; }
+.receipt-footer { text-align: center; margin-top: 4px; font-size: 0.72rem; color: #444; }
+.receipt-footer p { margin: 2px 0; text-align: center; color: inherit; line-height: 1.4; }
+.receipt-footer .rc-thanks { font-weight: 600; letter-spacing: 0.04em; color: #1d1d1d; }
+.receipt-footer .rc-brand { font-size: 0.62rem; color: #8a8a8a; margin-top: 8px; letter-spacing: 0.08em; text-transform: uppercase; }
 
-/* --- FIX: Make modal actions sticky --- */
-/* Selects the .modal-actions that is a direct child of .receipt-modal */
-.receipt-modal > .modal-actions {
-    flex-shrink: 0; /* Prevent shrinking */
-    margin-top: 16px; /* Add space between content and buttons */
-}
-/* --- END FIX --- */
+.receipt-modal-actions { flex-shrink: 0; display: flex; flex-direction: column; gap: 10px; padding: 12px 16px 16px; background: var(--surface-color); box-shadow: 0 -4px 12px rgba(0,0,0,0.08); }
+.receipt-modal-row { display: flex; gap: 10px; }
+.receipt-modal-row .btn { flex: 1 1 0; min-width: 0; padding-left: 8px; padding-right: 8px; }
+.receipt-modal-actions .btn-primary { width: 100%; }
 
 #qr-code-modal { text-align: center; }
 #qr-canvas { width: 90% !important; height: auto !important; max-width: 300px; margin: 0 auto; }
@@ -1340,14 +1378,22 @@ button:focus { outline: none; }
         border: none;
         padding: 0;
     }
-    .modal-actions {
+    .modal-actions, .receipt-modal-actions, .receipt-modal-head {
         display: none !important;
     }
+    .receipt-modal, .receipt-scroll {
+        overflow: visible !important;
+        max-height: none !important;
+        background: white !important;
+    }
+    .receipt-scroll { padding: 0 !important; }
+    .receipt-paper::before, .receipt-paper::after { display: none; }
     .receipt-paper {
         border: none;
         box-shadow: none;
-        font-size: 12pt;
+        font-size: 11pt;
         color: black;
+        max-width: 80mm;
     }
     .receipt-paper * {
         color: black;
@@ -1362,3 +1408,18 @@ button:focus { outline: none; }
     .page { padding-bottom: 75px; }
     .modal-content { padding: 16px; }
 }
+
+/* Transfer accepted celebration */
+.transfer-accepted-banner {
+    position: fixed; top: 14px; left: 50%; z-index: 1000; width: calc(100% - 32px); max-width: 420px;
+    transform: translate(-50%, -140%); opacity: 0; pointer-events: none;
+    background: var(--surface-color); border-radius: 14px; box-shadow: 0 10px 30px rgba(0,0,0,0.22);
+    border-left: 5px solid var(--primary-color); padding: 12px 16px;
+    transition: transform 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s;
+}
+.transfer-accepted-banner.show { transform: translate(-50%, 0); opacity: 1; pointer-events: auto; }
+.transfer-accepted-banner .tab-title { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--primary-color); }
+.transfer-accepted-banner .tab-name { font-size: 1rem; font-weight: 700; color: var(--text-color); margin-top: 2px; }
+.transfer-accepted-banner .tab-biz { font-size: 0.85rem; color: var(--text-light); }
+#confetti-canvas { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 999; }
+#torch-btn.torch-on { background: rgba(255, 214, 10, 0.9) !important; color: #222 !important; }

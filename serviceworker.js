@@ -1,4 +1,5 @@
-const CACHE_NAME = 'pika-shot-cache-v1';
+const CACHE_NAME = 'pika-shot-cache-v2';
+const LIB_CACHE_NAME = 'pika-shot-libs-v1'; // third-party scanner library, kept for offline scanning
 const ASSETS_TO_CACHE = [
     '/',
     '/index.html',
@@ -26,7 +27,7 @@ self.addEventListener('activate', event => {
         caches.keys().then(cacheNames => {
             return Promise.all(
                 cacheNames.map(cacheName => {
-                    if (cacheName !== CACHE_NAME) {
+                    if (cacheName !== CACHE_NAME && cacheName !== LIB_CACHE_NAME) {
                         console.log('Service Worker: clearing old cache');
                         return caches.delete(cacheName);
                     }
@@ -37,6 +38,22 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
+    // Scanner fallback library: serve the cached copy when there is one, refresh it in the background.
+    if (event.request.url.includes('cdn.jsdelivr.net/npm/@zxing/library')) {
+        event.respondWith(
+            caches.open(LIB_CACHE_NAME).then(cache =>
+                cache.match(event.request).then(cached => {
+                    const network = fetch(event.request).then(response => {
+                        if (response && response.status === 200) cache.put(event.request, response.clone());
+                        return response;
+                    }).catch(() => null);
+                    return cached || network.then(response => response || new Response(null, { status: 503, statusText: 'Service Unavailable' }));
+                })
+            )
+        );
+        return;
+    }
+
     // For external CDN resources, try network first, but don't cache or fail.
     if (event.request.url.includes('cdn.jsdelivr.net') || event.request.url.includes('cdnjs.cloudflare.com')) {
         event.respondWith(

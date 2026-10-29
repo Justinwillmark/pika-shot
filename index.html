@@ -7,6 +7,9 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <title>PikaShot</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="manifest.json">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -48,6 +51,7 @@
 </head>
 <body>
     <div id="toast" class="toast"></div>
+    <div id="transfer-accepted-banner" class="transfer-accepted-banner" role="status" aria-live="polite"></div>
 
     <div id="loader" class="loader-container">
         <div class="spinner"></div>
@@ -235,7 +239,12 @@
                                 <div class="stat-icon sales">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="12" x="2" y="6" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
                                 </div>
-                                <p>Today's Sales</p>
+                                <p class="stat-label">Today's Sales
+                                    <button type="button" id="toggle-figures-btn" class="figures-toggle" aria-label="Hide figures" aria-pressed="false">
+                                        <svg class="eye-open" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                                        <svg class="eye-closed" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+                                    </button>
+                                </p>
                                 <h3 id="total-sales">₦0</h3>
                             </div>
                             <div class="card stat-card" id="items-sold-card" style="cursor: pointer;">
@@ -350,7 +359,6 @@
                 <span>Edit</span>
             </button>
             <button id="generate-receipt-btn" class="btn btn-primary" disabled>Generate Receipt</button>
-            <button id="share-log-btn" class="btn btn-primary" style="display: none;">Transfer Products</button>
         </div>
 
         <div id="camera-view" class="view camera-container">
@@ -502,12 +510,10 @@
                 </div>
                 <div class="form-group">
                     <label for="sale-quantity" id="sale-quantity-label">Quantity</label>
-                    <div style="display: flex; gap: 10px; width: 100%;">
-                        <input type="text" id="sale-quantity" inputmode="numeric" value="1" min="1" style="width: 75%;">
-                        <div style="width: 25%; display: flex; gap: 5px;">
-                            <button type="button" id="decrease-quantity-btn" class="btn btn-secondary" style="flex: 1; padding: 0; font-size: 1.2rem;">-</button>
-                            <button type="button" id="increase-quantity-btn" class="btn btn-secondary" style="flex: 1; padding: 0; font-size: 1.2rem;">+</button>
-                        </div>
+                    <div class="quantity-stepper">
+                        <button type="button" id="decrease-quantity-btn" class="btn btn-secondary" aria-label="Decrease quantity">-</button>
+                        <input type="text" id="sale-quantity" inputmode="numeric" value="1" min="1">
+                        <button type="button" id="increase-quantity-btn" class="btn btn-secondary" aria-label="Increase quantity">+</button>
                     </div>
                 </div>
             </div>
@@ -519,12 +525,20 @@
         </div>
 
         <div id="receipt-modal" class="modal-content receipt-modal" style="display:none;">
-            <div id="receipt-content" class="receipt-paper">
+            <div class="receipt-modal-head">
+                <h2>Receipt</h2>
+                <span id="receipt-count-chip" class="receipt-count-chip"></span>
+            </div>
+            <div id="receipt-scroll" class="receipt-scroll">
+                <div id="receipt-content" class="receipt-paper"></div>
+            </div>
+            <div class="receipt-modal-actions">
+                <button id="share-log-btn" class="btn btn-primary" style="display: none;">Transfer Products</button>
+                <div class="receipt-modal-row">
+                    <button id="close-receipt-btn" class="btn btn-secondary">Close</button>
+                    <button id="print-receipt-btn" class="btn btn-secondary">Print Receipt</button>
+                    <button id="share-receipt-btn" class="btn btn-secondary">Share</button>
                 </div>
-            <div class="modal-actions modal-actions-inline">
-                <button id="close-receipt-btn" class="btn btn-secondary">Close</button>
-                <button id="print-receipt-btn" class="btn btn-secondary">Print Receipt</button>
-                <button id="share-receipt-btn" class="btn btn-primary">Share</button>
             </div>
         </div>
 

@@ -323,10 +323,19 @@ const DB = {
         return this._requestToPromise(store.get(id));
     },
 
-    getProductByBarcode(barcode) {
+    async getProductByBarcode(barcode) {
         const store = this._getStore('products', 'readonly');
         const index = store.index('barcode');
-        return this._requestToPromise(index.get(barcode));
+        const found = await this._requestToPromise(index.get(barcode));
+        if (found || typeof barcode !== 'string' || !/^\d+$/.test(barcode)) return found;
+
+        // The same retail code can be read as UPC-A (12 digits) or EAN-13 with a leading zero depending on the
+        // decoder, so try the equivalent form before concluding the product is unknown.
+        let alternate = null;
+        if (barcode.length === 12) alternate = '0' + barcode;
+        else if (barcode.length === 13 && barcode[0] === '0') alternate = barcode.slice(1);
+        if (!alternate) return found;
+        return this._requestToPromise(this._getStore('products', 'readonly').index('barcode').get(alternate));
     },
 
     getAllProducts() {
