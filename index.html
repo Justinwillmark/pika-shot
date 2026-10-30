@@ -109,27 +109,27 @@
 
                 <div class="reg-fields">
                     <div class="form-group">
-                        <label class="sr-only" for="first-name">First name</label>
-                        <input type="text" id="first-name" placeholder="First name" autocomplete="given-name" required>
+                        <label for="first-name">First name</label>
+                        <input type="text" id="first-name" placeholder="e.g., Chiamaka" autocomplete="given-name" required>
                     </div>
                     <div class="form-group">
-                        <label class="sr-only" for="last-name">Last name</label>
-                        <input type="text" id="last-name" placeholder="Last name" autocomplete="family-name" required>
+                        <label for="last-name">Last name</label>
+                        <input type="text" id="last-name" placeholder="e.g., Uko" autocomplete="family-name" required>
                     </div>
 
                     <div class="form-row">
                         <div class="form-group">
-                            <label class="sr-only" for="gender">Gender</label>
+                            <label for="gender">Gender</label>
                             <select id="gender" required>
-                                <option value="" disabled selected hidden>Gender</option>
+                                <option value="" disabled selected hidden>Select</option>
                                 <option value="Male">Male</option>
                                 <option value="Female">Female</option>
                             </select>
                         </div>
                         <div class="form-group">
-                            <label class="sr-only" for="business-location">Location</label>
+                            <label for="business-location">Location</label>
                             <select id="business-location" required>
-                                <option value="" disabled selected hidden>Location</option>
+                                <option value="" disabled selected hidden>Select</option>
                                 <option value="Lagos Island">Lagos Island</option>
                                 <option value="Ikeja">Ikeja</option>
                                 <option value="Yaba">Yaba</option>
@@ -143,12 +143,13 @@
                     </div>
 
                     <div class="form-group">
-                        <label class="sr-only" for="business-name">Business name</label>
-                        <input type="text" id="business-name" placeholder="Business name" required>
+                        <label for="business-name">Business name</label>
+                        <input type="text" id="business-name" placeholder="e.g., Amaka's Provisions" required>
                     </div>
 
                     <div class="form-group">
-                        <div id="business-type-options" class="reg-segment" role="radiogroup" aria-label="Business type">
+                        <span class="field-title" id="business-type-title">Business type</span>
+                        <div id="business-type-options" class="reg-segment" role="radiogroup" aria-labelledby="business-type-title">
                             <button type="button" role="radio" aria-checked="false" data-value="Retailer">Retailer</button>
                             <button type="button" role="radio" aria-checked="false" data-value="Wholesaler">Wholesaler</button>
                             <button type="button" role="radio" aria-checked="false" data-value="Salesperson">Salesperson</button>
@@ -157,9 +158,9 @@
                     </div>
 
                     <div class="form-group">
-                        <label class="sr-only" for="create-pin">Create 6-digit PIN</label>
+                        <label for="create-pin">Create 6-digit PIN</label>
                         <div class="input-wrapper">
-                            <input type="password" id="create-pin" placeholder="Create 6-digit PIN" maxlength="6" inputmode="numeric" autocomplete="new-password">
+                            <input type="password" id="create-pin" placeholder="••••••" maxlength="6" inputmode="numeric" autocomplete="new-password">
                             <div class="input-icons">
                                 <button id="toggle-create-pin" class="icon-btn" title="Show/Hide">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>

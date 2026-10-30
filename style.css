@@ -181,41 +181,60 @@ html, body {
 .form-row .form-group { flex: 1; }
 
 /* === Create Account screen: the whole form fits on one phone screen, no scrolling === */
-.onboarding-form { flex-shrink: 0; justify-content: center; align-items: stretch; text-align: left; height: auto; min-height: 100%; padding: 20px 20px max(16px, env(safe-area-inset-bottom)); }
-.reg-head { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+.onboarding-form { flex-shrink: 0; justify-content: center; align-items: stretch; text-align: left; height: auto; min-height: 100%; padding: 22px 20px max(16px, env(safe-area-inset-bottom)); }
+.reg-head { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; }
 .reg-back { flex: none; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: none; border-radius: 50%; background: #f3f5f7; color: var(--text-color); cursor: pointer; }
 .reg-back:active { background: #e6e9ec; }
 .onboarding-form h1 { margin: 0; font-size: 1.5rem; line-height: 1.2; letter-spacing: -0.02em; }
 .onboarding-form .reg-head p { max-width: none; margin: 2px 0 0; font-size: 0.85rem; line-height: 1.3; text-align: left; }
-.reg-fields { display: flex; flex-direction: column; gap: 10px; }
+.reg-fields { display: flex; flex-direction: column; gap: 16px; }
 .onboarding-form .form-row { gap: 10px; align-items: stretch; }
-.onboarding-form .form-group { margin-bottom: 0; min-width: 0; }
-/* labels are the placeholders; the real <label>s stay for screen readers */
-.sr-only, .form-group label.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
-.onboarding-form .form-group input, .onboarding-form .form-group select { height: 48px; padding: 0 14px; border: 1.5px solid transparent; border-radius: 12px; background-color: #f3f5f7; color: var(--text-color); font-size: 1rem; }
-.onboarding-form .form-group input::placeholder { color: #a3a9ae; }
-.onboarding-form .form-group input:focus, .onboarding-form .form-group select:focus { background-color: #fff; border-color: var(--primary-color); box-shadow: 0 0 0 3px rgba(0, 140, 149, 0.14); }
-.onboarding-form .form-group select { appearance: none; -webkit-appearance: none; padding-right: 32px; font-size: 0.95rem; text-overflow: ellipsis; cursor: pointer;
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'></polyline></svg>");
+.onboarding-form .form-group { position: relative; margin-bottom: 0; min-width: 0; }
+
+/* every field has a visible outline with its title sitting on the top border line */
+.onboarding-form .form-group > label, .onboarding-form .form-group > .field-title {
+    position: absolute; z-index: 1; top: -8px; left: 11px; max-width: calc(100% - 22px); margin: 0; padding: 0 5px;
+    background: #fff; color: #5b6670; font-size: 0.72rem; font-weight: 600; line-height: 1.1; letter-spacing: 0.01em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; transition: color 0.15s;
+}
+.onboarding-form .form-group:focus-within > label, .onboarding-form .form-group:focus-within > .field-title { color: var(--primary-color); }
+.onboarding-form .form-group input, .onboarding-form .form-group select { height: 48px; padding: 0 14px; border: 1.5px solid #b4bec7; border-radius: 12px; background-color: #fff; color: #1d1d1d; font-size: 1rem; }
+.onboarding-form .form-group input::placeholder { color: #a6adb4; }
+.onboarding-form .form-group input:focus, .onboarding-form .form-group select:focus { background-color: #fff; border-color: var(--primary-color); box-shadow: 0 0 0 1px var(--primary-color); }
+.onboarding-form .form-group select { appearance: none; -webkit-appearance: none; padding: 0 28px 0 12px; font-size: 0.95rem; text-overflow: ellipsis; cursor: pointer;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23556' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'></polyline></svg>");
     background-repeat: no-repeat; background-position: right 10px center; }
-.onboarding-form .form-group select:required:invalid { color: #a3a9ae; } /* the field name reads as a placeholder until something is picked */
-.onboarding-form .form-group select option { color: var(--text-color); }
+.onboarding-form .form-group select:required:invalid { color: #a6adb4; } /* "Select" reads as a placeholder until something is picked */
+.onboarding-form .form-group select option { color: #1d1d1d; }
 .onboarding-form .input-wrapper input { padding-right: 84px; letter-spacing: 0.3em; font-weight: 600; }
-.onboarding-form .input-wrapper input::placeholder { letter-spacing: normal; font-weight: 400; }
-/* business type: three buttons instead of a drop-down */
-.reg-segment { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px; border-radius: 12px; background: #f3f5f7; }
-.reg-segment button { min-width: 0; height: 40px; border: none; border-radius: 9px; background: transparent; color: #777; font: inherit; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: background-color 0.15s, color 0.15s, box-shadow 0.15s; }
-.reg-segment button.selected { background: #fff; color: var(--primary-color); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14); }
+.onboarding-form .input-wrapper input::placeholder { letter-spacing: 0.3em; font-weight: 400; }
+
+/* business type: three buttons in the same outline; until one is picked they light up in turn to show they can be tapped */
+.reg-segment { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 4px; border: 1.5px solid #b4bec7; border-radius: 12px; background: #fff; }
+.reg-segment button { min-width: 0; height: 38px; border: none; border-radius: 8px; background: #eef1f4; color: #4a555f; font: inherit; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: background-color 0.15s, color 0.15s, box-shadow 0.15s; }
+.reg-segment button:active { transform: scale(0.97); }
 .reg-segment button:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 1px; }
-.onboarding-form .reg-submit { margin-top: 18px; min-height: 50px; border-radius: 14px; font-size: 1rem; }
+.reg-segment button.selected { background: var(--primary-color); color: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2); }
+.reg-segment:not(.chosen) button { animation: reg-hint 3.4s ease-in-out infinite; }
+.reg-segment:not(.chosen) button:nth-child(2) { animation-delay: 0.3s; }
+.reg-segment:not(.chosen) button:nth-child(3) { animation-delay: 0.6s; }
+@keyframes reg-hint {
+    0%, 45%, 100% { background-color: #eef1f4; color: #4a555f; box-shadow: inset 0 0 0 0 var(--primary-color); transform: none; }
+    15%, 30% { background-color: #d8eeef; color: var(--primary-dark); box-shadow: inset 0 0 0 1.5px var(--primary-color); transform: translateY(-2px); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .reg-segment:not(.chosen) button { animation: none; }
+}
+
+.onboarding-form .reg-submit { margin-top: 22px; min-height: 50px; border-radius: 14px; font-size: 1rem; }
 .onboarding-form .privacy-policy-link { max-width: none; margin: 12px 0 0; font-size: 0.75rem; text-align: center; }
-@media (max-height: 600px) {
-    .onboarding-form { padding-top: 12px; }
-    .reg-head { margin-bottom: 12px; }
-    .reg-fields { gap: 8px; }
+@media (max-height: 640px) {
+    .onboarding-form { padding-top: 14px; }
+    .reg-head { margin-bottom: 18px; }
+    .reg-fields { gap: 14px; }
     .onboarding-form .form-group input, .onboarding-form .form-group select { height: 44px; }
-    .reg-segment button { height: 36px; }
-    .onboarding-form .reg-submit { margin-top: 12px; min-height: 46px; }
+    .reg-segment button { height: 34px; }
+    .onboarding-form .reg-submit { margin-top: 16px; min-height: 46px; }
     .onboarding-form .privacy-policy-link { margin-top: 8px; }
 }
 .source-info {

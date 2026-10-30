@@ -336,6 +336,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const typeButtons = document.querySelectorAll('#business-type-options button');
             typeButtons.forEach(btn => btn.addEventListener('click', () => {
                 this.elements.businessTypeInput.value = btn.dataset.value;
+                btn.parentElement.classList.add('chosen'); // stops the "you can tap these" animation
                 typeButtons.forEach(b => {
                     b.classList.toggle('selected', b === btn);
                     b.setAttribute('aria-checked', String(b === btn));
