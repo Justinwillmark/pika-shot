@@ -744,11 +744,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const el = (id) => document.getElementById(id);
             this.state.tempPhone = pending.phone;
             this.elements.checkPhoneInput.value = pending.phone;
-            el('phone-entry').hidden = true;
+            ['phone-entry', 'signup-intro', 'signup-privacy'].forEach((id) => { el(id).hidden = true; });
             el('wa-verify').hidden = false;
             el('wa-phone').textContent = pending.phone;
-            el('wa-code').textContent = pending.code;
-            el('wa-link').href = `https://wa.me/${this.WA_NUMBER}?text=${encodeURIComponent('VERIFY ' + pending.code)}`;
+            // The code is never shown: it travels inside the prefilled WhatsApp message
+            el('wa-link').href = `https://wa.me/${this.WA_NUMBER}?text=${encodeURIComponent(`Verify ${pending.code} for PikaShot`)}`;
             this._pending = pending;
             this._verifiedDone = false;
             this._tickVerification();
@@ -766,14 +766,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!p) return;
             const left = this.CODE_TTL_MS - (Date.now() - p.createdAt);
             const expired = left <= 0;
-            document.getElementById('wa-code').classList.toggle('expired', expired);
             document.getElementById('wa-link').classList.toggle('disabled', expired);
             document.getElementById('wa-new-code').hidden = !expired;
             const status = document.getElementById('wa-status');
             status.classList.remove('ok');
             status.textContent = expired
-                ? 'This code has expired. Get a new one and send it again.'
-                : `After sending, come back here. This screen moves on once PikaShot confirms. Code expires in ${Math.ceil(left / 60000)} min.`;
+                ? 'This request expired. Tap Try again.'
+                : `Then come back here. This screen continues by itself (${Math.ceil(left / 60000)} min left).`;
         },
 
         _phoneVerified(phone) {
@@ -785,7 +784,7 @@ document.addEventListener('DOMContentLoaded', () => {
             try { localStorage.setItem('pika_verified_phone', JSON.stringify({ phone, at: Date.now() })); } catch (e) { /* fine */ }
             this.state.tempPhone = phone;
             const status = document.getElementById('wa-status');
-            status.textContent = 'Number confirmed. Opening Create Account…';
+            status.textContent = 'Confirmed. Opening Create Account…';
             status.classList.add('ok');
             setTimeout(() => {
                 this._resetVerificationUI();
@@ -800,7 +799,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         _resetVerificationUI() {
             this._stopVerification();
-            document.getElementById('phone-entry').hidden = false;
+            ['phone-entry', 'signup-intro', 'signup-privacy'].forEach((id) => { document.getElementById(id).hidden = false; });
             document.getElementById('wa-verify').hidden = true;
         },
 
@@ -818,34 +817,15 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         // --- Install as a proper Android app ---
-        // Chrome's own install (the beforeinstallprompt event) makes a real app that shows in the app list.
-        // "Add to Home screen" from a menu, or other browsers, only make a shortcut, so they get directions instead.
+        // Chrome's own install (the beforeinstallprompt event) makes a real app that shows in the app list,
+        // so the small sign-up button only appears when Chrome offers that; a home-screen shortcut is never suggested.
         setupInstallBox() {
-            const box = document.getElementById('install-box');
-            if (!box) return;
-            const installed = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
-            if (installed) return;
-            this._updateInstallBox = () => {
-                const canPrompt = !!this.state.deferredInstallPrompt;
-                document.getElementById('signup-install-btn').hidden = !canPrompt;
-                const hint = document.getElementById('install-hint');
-                hint.hidden = canPrompt;
-                hint.textContent = canPrompt ? '' : this._installHintText();
-                box.hidden = false;
-            };
-            document.getElementById('signup-install-btn').addEventListener('click', () => this.promptInstall());
-            window.addEventListener('appinstalled', () => { box.hidden = true; });
-            // Chrome says whether it can install shortly after the page loads
-            if (this.state.deferredInstallPrompt) this._updateInstallBox();
-            else setTimeout(() => { if (this._updateInstallBox) this._updateInstallBox(); }, 3000);
-        },
-
-        _installHintText() {
-            const ua = navigator.userAgent;
-            const inAppBrowser = /; wv\)|FBAN|FBAV|Instagram|WhatsApp/i.test(ua);
-            const chrome = /Chrome\//.test(ua) && !/OPR\/|Opera|UCBrowser|SamsungBrowser|EdgA|MiuiBrowser|Firefox|YaBrowser/i.test(ua);
-            if (inAppBrowser || !chrome) return 'To install PikaShot as an app, open this page in Google Chrome, then tap ⋮ and choose "Install app".';
-            return 'Already installed? Open PikaShot from your app list. If not, tap ⋮ in Chrome and choose "Install app" (not "Add to Home screen").';
+            const btn = document.getElementById('signup-install-btn');
+            if (!btn) return;
+            this._updateInstallBox = () => { btn.hidden = !this.state.deferredInstallPrompt; };
+            btn.addEventListener('click', () => this.promptInstall());
+            window.addEventListener('appinstalled', () => { btn.hidden = true; });
+            this._updateInstallBox();
         },
 
         togglePinVisibility(inputId, btnId) {
@@ -4784,9 +4764,7 @@ document.addEventListener('DOMContentLoaded', () => {
             prompt.userChoice.then((choice) => {
                 this.state.deferredInstallPrompt = null;
                 this.elements.installBtn.style.display = 'none';
-                const box = document.getElementById('install-box');
-                if (choice && choice.outcome === 'accepted') { if (box) box.hidden = true; }
-                else if (this._updateInstallBox) this._updateInstallBox();
+                if (this._updateInstallBox) this._updateInstallBox();
             });
         },
         registerServiceWorker() { if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('/serviceworker.js').then(reg => console.log('Service Worker registered.')).catch(err => console.error('Service Worker registration failed:', err)); }); } },

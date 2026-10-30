@@ -82,9 +82,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const CODE_TTL_MS = 20 * 60 * 1000; // must match the app
     const REPLIES = {
         verified: 'Verified. Please return to PikaShot to create your account now. Thanks',
-        missing: "We couldn't find a PikaShot sign-up for this number. Please open PikaShot, enter this WhatsApp number on the sign-up screen and send the code it shows you. Thanks",
-        mismatch: 'That code doesn\'t match. Please open PikaShot and tap "Tap to verify on WhatsApp" to send the code shown on your screen. Thanks',
-        expired: 'That code has expired. Please open PikaShot, tap "Get a new code" and send the new code here. Thanks'
+        missing: 'We couldn\'t find a PikaShot sign-up for this number. Please open PikaShot, enter this WhatsApp number, tap "Verify on WhatsApp" and send the message. Thanks',
+        mismatch: 'That message doesn\'t match your sign-up. Please open PikaShot, tap "Verify on WhatsApp" and send the message without changing it. Thanks',
+        expired: 'That request has expired. Please open PikaShot, tap "Try again", then "Verify on WhatsApp" and send the message. Thanks'
     };
     // +234 803 123 4567, 2348031234567 and 08031234567 all become 08031234567, the form the app saves
     const localPhone = (v) => {
@@ -137,6 +137,11 @@ document.addEventListener('DOMContentLoaded', () => {
             $('verify-form').addEventListener('submit', (e) => this.verifySignup(e));
             $('verify').addEventListener('click', (e) => { const b = e.target.closest('[data-paste]'); if (b) this.pasteInto(b.dataset.paste); });
             $('v-copy').addEventListener('click', () => this.copyReply());
+            // Pasting the whole message ("Verify 4821 for PikaShot") keeps just the code
+            $('v-code').addEventListener('input', (e) => {
+                const m = e.target.value.match(/\d{4}/);
+                if (m && /\D/.test(e.target.value)) e.target.value = m[0];
+            });
             $('v-next').addEventListener('click', () => this.resetVerify());
             PHONE_ONLY.addEventListener('change', () => {
                 this.renderChrome();
