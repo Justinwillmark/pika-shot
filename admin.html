@@ -5,13 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Dashboard - PikaShot</title>
     <link rel="stylesheet" href="admin.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    
+
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-app.js";
         import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-auth.js";
-        import { getFirestore, collection, getDocs, query, where, Timestamp, orderBy } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore.js";
-        
+        import { getFirestore, collection, doc, getDoc, setDoc, getDocs, query, where, Timestamp } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore.js";
+
         const firebaseConfig = {
             apiKey: "AIzaSyBKu623PDECcc1gYVe4xof6AVUxDlW7B_A",
             authDomain: "pika-shot.firebaseapp.com",
@@ -31,11 +30,13 @@
             signInWithEmailAndPassword,
             signOut,
             collection,
+            doc,
+            getDoc,
+            setDoc,
             getDocs,
             query,
             where,
-            Timestamp,
-            orderBy
+            Timestamp
         };
     </script>
 </head>
@@ -44,150 +45,73 @@
     <div id="login-modal" class="modal-overlay">
         <form id="login-form" class="modal-content">
             <h2>Admin Login</h2>
-            <input type="email" id="email-input" placeholder="Email" required>
-            <input type="password" id="password-input" placeholder="Password" required>
+            <input type="email" id="email-input" placeholder="Email" autocomplete="username" required>
+            <input type="password" id="password-input" placeholder="Password" autocomplete="current-password" required>
             <button type="submit">Login</button>
             <p id="error-message" class="error"></p>
         </form>
     </div>
 
-    <div id="dashboard-container" class="dashboard-container" style="display: none;">
-        <header class="header">
-            <div class="header-content">
-                <h1>PikaShot | Admin Dashboard</h1>
-                <p>Real-time user adoption overview</p>
+    <div id="dashboard-container" class="app" style="display: none;">
+        <header class="topbar">
+            <div class="topbar-row">
+                <div class="brand">
+                    <span class="logo">P</span>
+                    <span class="brand-name">PikaShot <em>Admin</em></span>
+                </div>
+                <div class="top-actions">
+                    <button id="since-btn" class="pill-btn" type="button" title="Choose the date to count from"></button>
+                    <button id="refresh-btn" class="icon-btn" type="button" title="Refresh data" aria-label="Refresh data">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+                    </button>
+                    <button id="signout-btn" class="pill-btn quiet" type="button">Sign out</button>
+                </div>
             </div>
-            <div class="header-actions">
-                <button id="signout-btn" class="signout-btn" type="button">Sign out</button>
-                <button id="refresh-btn" class="refresh-btn" title="Refresh Data">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
-                </button>
+            <div class="controls">
+                <nav class="tabs" id="tabs" aria-label="Dashboard sections">
+                    <button type="button" data-tab="overview">Overview</button>
+                    <button type="button" data-tab="users">Users</button>
+                    <button type="button" data-tab="rewards">Rewards</button>
+                    <button type="button" data-tab="insights">Insights</button>
+                    <button type="button" data-tab="activity">Activity</button>
+                </nav>
+                <div class="seg" id="period" role="group" aria-label="Time period">
+                    <button type="button" data-period="7">7D</button>
+                    <button type="button" data-period="30">30D</button>
+                    <button type="button" data-period="90">90D</button>
+                    <button type="button" data-period="all">All</button>
+                </div>
             </div>
         </header>
 
-        <main class="main-content">
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <h4>Total Sales (All Sales)</h4>
-                    <p id="total-sales-all-time">₦0</p>
-                </div>
-                <div class="stat-card">
-                    <h4>Today's Sales</h4>
-                    <p id="total-sales-today">₦0</p>
-                </div>
-                <div class="stat-card">
-                    <h4>Total Users</h4>
-                    <p id="total-users">0</p>
-                </div>
-                <div class="stat-card">
-                    <h4>Total Scans</h4>
-                    <p id="total-scans">0</p>
-                </div>
-                <div class="stat-card">
-                    <h4>Unique Barcodes</h4>
-                    <p id="unique-barcodes">0</p>
-                </div>
-            </div>
+        <div id="notice" class="notice" hidden></div>
 
-            <div class="chart-container card">
-                 <h3>Scans Over Last 30 Days</h3>
-                 <canvas id="scans-chart"></canvas>
-            </div>
-
-            <div class="table-container card">
-                <div class="table-header">
-                    <h2>User Overview</h2>
-                    <div class="table-controls">
-                        <input type="text" id="user-search" placeholder="Search users...">
-                        <button id="export-users-btn">Export CSV</button>
-                    </div>
-                </div>
-                <div class="table-wrapper">
-                    <table id="users-table">
-                        <thead>
-                            <tr>
-                                <th>Name</th>
-                                <th>Business Name</th>
-                                <th>Location</th>
-                                <th>Category</th>
-                                <th>Phone (User ID)</th>
-                            </tr>
-                        </thead>
-                        <tbody id="users-table-body"></tbody>
-                    </table>
-                </div>
-            </div>
-            
-            <div class="table-container card">
-                <div class="table-header">
-                    <h2>Phone Call Log</h2>
-                     <div class="table-controls">
-                        <input type="text" id="calls-search" placeholder="Search calls...">
-                        <button id="export-calls-btn">Export CSV</button>
-                    </div>
-                </div>
-                <div class="table-wrapper">
-                    <table id="calls-table">
-                        <thead>
-                            <tr>
-                                <th>Wholesaler</th>
-                                <th>Retailer Called</th>
-                                <th>Date of Call</th>
-                            </tr>
-                        </thead>
-                        <tbody id="calls-table-body"></tbody>
-                    </table>
-                </div>
-            </div>
-
-            <div class="grid-container">
-                <div class="leaderboard-container card">
-                    <div class="table-header">
-                        <h3>User Leaderboard (by Scans)</h3>
-                        <div class="table-controls">
-                            <input type="text" id="leaderboard-search" placeholder="Search leaderboard...">
-                            <button id="export-leaderboard-btn">Export CSV</button>
-                        </div>
-                    </div>
-                    <div class="table-wrapper">
-                        <table id="leaderboard-table">
-                            <thead>
-                                <tr>
-                                    <th>Rank</th>
-                                    <th>User</th>
-                                    <th>Scans</th>
-                                    <th>Last Scan</th>
-                                </tr>
-                            </thead>
-                            <tbody id="leaderboard-table-body"></tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <div class="barcodes-container card">
-                     <div class="table-header">
-                        <h3>All Barcodes Scanned</h3>
-                        <div class="table-controls">
-                            <input type="text" id="barcodes-search" placeholder="Search barcodes...">
-                            <button id="export-barcodes-btn">Export CSV</button>
-                        </div>
-                    </div>
-                    <div class="table-wrapper">
-                        <table id="barcodes-table">
-                            <thead>
-                                <tr>
-                                    <th>Barcode</th>
-                                </tr>
-                            </thead>
-                            <tbody id="barcodes-table-body"></tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
+        <main id="main">
+            <section class="tab-panel" id="tab-overview"></section>
+            <section class="tab-panel" id="tab-users" hidden></section>
+            <section class="tab-panel" id="tab-rewards" hidden></section>
+            <section class="tab-panel" id="tab-insights" hidden></section>
+            <section class="tab-panel" id="tab-activity" hidden></section>
         </main>
     </div>
 
-    <script src="admin.js"></script>
+    <div id="sheet" class="sheet" hidden>
+        <div class="sheet-backdrop" data-close></div>
+        <div class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+            <div class="sheet-head">
+                <button id="sheet-back" class="icon-btn" type="button" aria-label="Back" hidden>&larr;</button>
+                <div class="sheet-titles">
+                    <h2 id="sheet-title"></h2>
+                    <p id="sheet-sub"></p>
+                </div>
+                <button class="icon-btn" type="button" data-close aria-label="Close">&times;</button>
+            </div>
+            <div id="sheet-body" class="sheet-body"></div>
+        </div>
+    </div>
 
+    <div id="toast" class="toast" role="status"></div>
+
+    <script src="admin.js"></script>
 </body>
 </html>

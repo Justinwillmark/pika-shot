@@ -478,6 +478,11 @@ document.addEventListener('DOMContentLoaded', () => {
             Camera.onTorchChange = (on) => { if (this.elements.torchBtn) this.elements.torchBtn.classList.toggle('torch-on', on); };
             // Browsers only allow sound after a user gesture, so unlock audio on the first touch/click.
             ['pointerdown', 'touchstart', 'keydown'].forEach(evt => document.addEventListener(evt, () => this._unlockAudio(), { passive: true }));
+            // Call buttons are drawn inside lists that are rebuilt often, so listen once at the top
+            document.addEventListener('click', (e) => {
+                const link = e.target.closest && e.target.closest('a.retailer-call-btn');
+                if (link) this._logCall(link);
+            });
             this.elements.seeAllSalesBtn.addEventListener('click', () => this.navigateTo('all-sales-view'));
             this.elements.seeLastSalesBtn.addEventListener('click', () => this.navigateTo('all-sales-view'));
             if(document.getElementById('add-salesperson-fab')) {
@@ -783,6 +788,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             await this.updateDashboard();
             await this.renderProducts();
+            this._backfillGeo();
         },
 
         // --- Incoming transfers -------------------------------------------------------------------
@@ -1660,23 +1666,105 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         },
 
-        async _logToFirestore(collectionName, docId, data) {
+        // `fallbackData` is the older, smaller shape: used when the database rules refuse the richer one,
+        // so adding detail to a log never costs the log itself.
+        async _logToFirestore(collectionName, docId, data, fallbackData) {
             if (!this.state.firebaseReady) return;
-            try {
+            const write = (payload) => {
                 const docRef = docId
                     ? window.fb.doc(window.fb.db, collectionName, docId)
                     : window.fb.doc(window.fb.collection(window.fb.db, collectionName));
-
-                await window.fb.setDoc(docRef, data, { merge: true });
+                return window.fb.setDoc(docRef, payload, { merge: true });
+            };
+            try {
+                await write(data);
             } catch (error) {
+                if (fallbackData && error && error.code === 'permission-denied') {
+                    try { await write(fallbackData); return; } catch (e) { error = e; }
+                }
                 console.error(`Failed to log to ${collectionName}:`, error);
             }
+        },
+
+        // What the admin dashboard learns about a sale. An edit is logged again under the same saleId,
+        // and the dashboard keeps the latest version of each sale.
+        _logSale(sale, product, edited) {
+            const value = Math.max(0, (Number(sale.quantity) || 0) * (Number(sale.price) || 0) - (Number(sale.discount) || 0));
+            const base = { userId: this.state.user.phone, total: sale.total, timestamp: window.fb.serverTimestamp() };
+            const rich = {
+                ...base,
+                saleId: sale.id,
+                productName: sale.productName || (product && product.name) || null,
+                barcode: (product && product.barcode) || null,
+                quantity: Number(sale.quantity) || 0,
+                unit: sale.unit || (product && product.unit) || null,
+                price: Number(sale.price) || 0,
+                value,
+                saleType: sale.saleType || 'default'
+            };
+            if (edited) rich.edited = true;
+            this._logToFirestore('sales_logs', null, rich, edited ? null : base);
+        },
+
+        // Where this user is, kept on their account so the admin dashboard can place them on a map.
+        // Only called after the user allowed location access.
+        async _saveGeo(position) {
+            const user = this.state.user;
+            if (!user || !user.phone || !position || !position.coords || !this.state.firebaseReady) return;
+            const geo = {
+                lat: Number(position.coords.latitude.toFixed(5)),
+                lng: Number(position.coords.longitude.toFixed(5)),
+                accuracy: Math.round(position.coords.accuracy || 0)
+            };
+            try {
+                await window.fb.setDoc(window.fb.doc(window.fb.db, 'users', user.phone), { geo }, { merge: true });
+                user.geo = geo;
+                await DB.saveUser(user, false);
+            } catch (error) {
+                console.error('Could not save location:', error);
+            }
+        },
+
+        // Users who already allowed location (it is asked for at sign-up) but were never saved: no new prompt is shown
+        async _backfillGeo() {
+            try {
+                if (!this.state.user || this.state.user.geo || !navigator.geolocation || !navigator.permissions) return;
+                const permission = await navigator.permissions.query({ name: 'geolocation' });
+                if (permission.state !== 'granted') return;
+                navigator.geolocation.getCurrentPosition(
+                    (position) => this._saveGeo(position),
+                    () => {},
+                    { enableHighAccuracy: false, timeout: 10000, maximumAge: 600000 }
+                );
+            } catch (error) { /* location is optional */ }
+        },
+
+        // A tap on a call button counts as a call to that customer
+        _logCall(link) {
+            const user = this.state.user;
+            const phone = (link.getAttribute('href') || '').replace(/^tel:/, '');
+            if (!user || !user.phone || !phone) return;
+            const name = (link.getAttribute('title') || '').replace(/^Call\s+/, '');
+            this._logToFirestore('call_logs', null, {
+                callerId: user.phone,
+                callerName: user.business || user.name || null,
+                calleeId: phone,
+                calleeName: name || null,
+                timestamp: window.fb.serverTimestamp()
+            }, {
+                wholesalerId: user.phone,
+                wholesalerName: user.business || user.name || null,
+                retailerId: phone,
+                retailerName: name || null,
+                timestamp: window.fb.serverTimestamp()
+            });
         },
 
         handleLocationPermission() {
             navigator.geolocation.getCurrentPosition(
                 (position) => {
                     console.log('Location permission granted:', position.coords);
+                    this._saveGeo(position);
                     this.showView('camera-permission-view');
                 },
                 (error) => {
@@ -2100,6 +2188,19 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         async _commitProductSave(productData) {
+            // Tell the admin dashboard what this user calls the item behind a barcode
+            const before = this.state.editingProduct;
+            if (productData.barcode && (!before || before.name !== productData.name || before.barcode !== productData.barcode)) {
+                this._logToFirestore('scan_logs', null, {
+                    userId: this.state.user.phone,
+                    type: 'name_product',
+                    status: 'success',
+                    barcode: productData.barcode,
+                    productName: productData.name,
+                    timestamp: window.fb.serverTimestamp()
+                });
+            }
+
             await DB.saveProduct(productData);
             await this._syncSupplierStock(productData); // no-op unless this product came from a supplier
 
@@ -2410,17 +2511,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (editing) {
                 await DB.updateSale(sale);
+                this._logSale(sale, product, true);
             } else {
                 await DB.addSale(sale);
-
-                // --- SALES LOGGING: START ---
-                const saleDataForAdmin = {
-                    userId: this.state.user.phone,
-                    total: sale.total,
-                    timestamp: window.fb.serverTimestamp() // Use server timestamp for accuracy
-                };
-                this._logToFirestore('sales_logs', null, saleDataForAdmin);
-                // --- SALES LOGGING: END ---
+                this._logSale(sale, product);
             }
 
             if (this.state.firebaseReady && product.supplierId && this.state.user.phone && product.stockVisible !== false) {
@@ -2517,15 +2611,7 @@ document.addEventListener('DOMContentLoaded', () => {
             await DB.saveProduct(productToSell);
             const sale = { id: Date.now() + 1, productId: productToSell.id, productName: name, quantity, price, total: price * quantity, timestamp: new Date(), image: productToSell.image, sharedAsLog: false, unit };
             await DB.addSale(sale);
-
-            // --- SALES LOGGING: START ---
-            const saleDataForAdmin = {
-                userId: this.state.user.phone,
-                total: sale.total,
-                timestamp: window.fb.serverTimestamp()
-            };
-            this._logToFirestore('sales_logs', null, saleDataForAdmin);
-            // --- SALES LOGGING: END ---
+            this._logSale(sale, productToSell);
 
             if (this.state.firebaseReady && productToSell.supplierId && this.state.user.phone && productToSell.stockVisible !== false) {
                 try {
