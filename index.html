@@ -48,6 +48,16 @@
     </script>
 </head>
 <body>
+    <div id="dialog-layer" class="dialog-layer" style="display:none;">
+        <div class="modal-content dialog-card" role="alertdialog" aria-modal="true" aria-labelledby="dialog-title" aria-describedby="dialog-text">
+            <h2 id="dialog-title"></h2>
+            <p id="dialog-text"></p>
+            <div class="modal-actions modal-actions-inline">
+                <button type="button" id="dialog-cancel" class="btn btn-secondary" hidden></button>
+                <button type="button" id="dialog-ok" class="btn btn-primary">OK</button>
+            </div>
+        </div>
+    </div>
     <div id="toast" class="toast"></div>
     <div id="celebration-overlay" class="celebration-overlay" style="display: none;" role="dialog" aria-modal="true"></div>
 
@@ -509,7 +519,7 @@
                 </div>
                 <div class="form-row">
                     <button type="button" id="add-change-picture-btn" class="btn-icon"><span>Snap Image</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg></button>
-                    <div class="form-group stock-group"><label for="product-stock">Stock</label><input type="text" id="product-stock" inputmode="numeric" placeholder="e.g., 24" enterkeyhint="done" required></div>
+                    <div class="form-group stock-group"><label for="product-stock">Stock</label><input type="text" id="product-stock" inputmode="decimal" placeholder="e.g., 24 or 2.5" enterkeyhint="done" required></div>
                 </div>
                  <div class="modal-actions modal-actions-inline">
                     <button type="button" id="cancel-product-form-btn" class="btn btn-secondary">Cancel</button>
@@ -583,7 +593,7 @@
                     <label for="sale-quantity" id="sale-quantity-label">Quantity</label>
                     <div class="quantity-stepper">
                         <button type="button" id="decrease-quantity-btn" class="btn btn-secondary" aria-label="Decrease quantity">-</button>
-                        <input type="text" id="sale-quantity" inputmode="numeric" value="1" min="1">
+                        <input type="text" id="sale-quantity" inputmode="decimal" value="1">
                         <button type="button" id="increase-quantity-btn" class="btn btn-secondary" aria-label="Increase quantity">+</button>
                     </div>
                 </div>
@@ -629,7 +639,7 @@
             <form id="manual-sale-form">
                 <div class="form-group"><label for="manual-product-name">Product name</label><input type="text" id="manual-product-name" placeholder="e.g., Peak Milk" enterkeyhint="next" required></div>
                 <div class="form-group"><label for="manual-product-price">Price (₦)</label><input type="text" id="manual-product-price" inputmode="decimal" placeholder="e.g., 200" enterkeyhint="next" required></div>
-                <div class="form-group"><label for="manual-sale-quantity">How many?</label><input type="text" id="manual-sale-quantity" value="1" inputmode="numeric" enterkeyhint="done" required></div>
+                <div class="form-group"><label for="manual-sale-quantity">How many?</label><input type="text" id="manual-sale-quantity" value="1" inputmode="decimal" enterkeyhint="done" required></div>
                 <div class="form-group"><label for="manual-product-unit">Unit</label><select id="manual-product-unit" required><option value="pieces">pieces</option><option value="sachets">sachets</option><option value="bottles">bottles</option><option value="cans">cans</option><option value="tubs">tubs</option><option value="packets">packets</option></select></div>
                 <div class="modal-actions modal-actions-inline">
                     <button type="button" id="cancel-manual-sale-btn" class="btn btn-secondary">Cancel</button>

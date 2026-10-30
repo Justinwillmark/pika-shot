@@ -1,4 +1,9 @@
 document.addEventListener('DOMContentLoaded', () => {
+    // Messages and questions use PikaShot's own pop-up (App._dialog), never the browser's alert/confirm
+    const say = (text, title) => App._say(text, title);
+    const ask = (options) => App._ask(options);
+    window.pikaSay = say;
+
     const App = {
         // --- DOM ELEMENTS ---
         elements: {
@@ -289,7 +294,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.loadCameraScannerInBackground();
             } catch (error) {
                 console.error("Critical initialization failed:", error);
-                alert("App could not start due to a storage issue. Please ensure you're not in private browsing mode.");
+                say("Turn off private browsing, then open PikaShot again.", "Cannot start");
             } finally {
                 this.hideLoader();
             }
@@ -304,7 +309,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (error) {
                 console.error("Firebase initialization failed:", error);
                 this.state.firebaseReady = false;
-                alert("Could not connect to online services. Some features may be unavailable.");
+                say("Some features need internet. Check your connection.", "No internet");
             }
         },
 
@@ -349,7 +354,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!phone) return;
                 const purpose = (this._pending && this._pending.purpose) || 'signup';
                 try { this._showVerification(await this._newSignupCode(phone, purpose)); }
-                catch (error) { console.error('Could not make a new code:', error); alert('Could not connect. Please check your internet and try again.'); }
+                catch (error) { console.error('Could not make a new code:', error); say('Check your internet and try again.', 'No internet'); }
             });
             document.getElementById('wa-change').addEventListener('click', () => {
                 this._pending = null;
@@ -506,11 +511,11 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.seeAllSalesBtn.addEventListener('click', () => this.navigateTo('all-sales-view'));
             this.elements.seeLastSalesBtn.addEventListener('click', () => this.navigateTo('all-sales-view'));
             if(document.getElementById('add-salesperson-fab')) {
-                document.getElementById('add-salesperson-fab').addEventListener('click', () => alert('Feature coming soon!'));
+                document.getElementById('add-salesperson-fab').addEventListener('click', () => say('This is coming soon.', 'Coming soon'));
             }
             this.elements.allSalesTimeFilter.addEventListener('change', () => {
                 if (this.elements.allSalesTimeFilter.value === 'expenses') {
-                    alert('Feature coming soon!');
+                    say('This is coming soon.', 'Coming soon');
                     this.elements.allSalesTimeFilter.value = 'all';
                 }
                 this.updateHeader(this.state.currentView);
@@ -569,18 +574,26 @@ document.addEventListener('DOMContentLoaded', () => {
                     this.showProductSelection();
                 });
             }
-            this._bindHoldRepeat(this.elements.decreaseQuantityBtn, () => {
-                const currentVal = Math.floor(this.unformatNumber(this.elements.saleQuantityInput.value)) || 1;
-                if (currentVal > 1) {
-                    this.elements.saleQuantityInput.value = currentVal - 1;
-                    this.elements.saleQuantityInput.dispatchEvent(new Event('input'));
+            // The - and + buttons count in halves (1, 1.5, 2, 2.5 ...) and stop at what is in stock
+            const stepSaleQuantity = (direction) => {
+                const input = this.elements.saleQuantityInput;
+                const current = Math.round(this.unformatNumber(input.value) * 2) / 2;
+                const product = this.state.sellingProduct;
+                const inStock = product ? product.stock + (this.state.editingSale ? this.state.editingSale.quantity : 0) : Infinity;
+                const next = direction < 0 ? Math.max(0.5, current - 0.5) : (current < 0.5 ? 1 : current + 0.5);
+                if (direction > 0 && next > inStock) {
+                    const box = input.closest('.quantity-stepper');
+                    if (box && !box.classList.contains('input-error-shake')) {
+                        box.classList.add('input-error-shake');
+                        setTimeout(() => box.classList.remove('input-error-shake'), 500);
+                    }
+                    return;
                 }
-            });
-            this._bindHoldRepeat(this.elements.increaseQuantityBtn, () => {
-                const currentVal = Math.floor(this.unformatNumber(this.elements.saleQuantityInput.value));
-                this.elements.saleQuantityInput.value = currentVal + 1;
-                this.elements.saleQuantityInput.dispatchEvent(new Event('input'));
-            });
+                input.value = this.formatNumber(next);
+                input.dispatchEvent(new Event('input'));
+            };
+            this._bindHoldRepeat(this.elements.decreaseQuantityBtn, () => stepSaleQuantity(-1));
+            this._bindHoldRepeat(this.elements.increaseQuantityBtn, () => stepSaleQuantity(1));
             this.elements.rejectLogBtn.addEventListener('click', () => { this.hideModal(); this.state.scannedLogData = null; });
             this.elements.acceptLogBtn.addEventListener('click', this.acceptPikaLog.bind(this));
             this.elements.declineTransferBtn.addEventListener('click', () => { this.hideModal(); this.state.scannedLogData = null; });
@@ -619,9 +632,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }));
 
             const fieldsToFormat = [
-                this.elements.productPriceInput, this.elements.productStockInput,
-                this.elements.saleQuantityInput, this.elements.manualProductPrice,
-                this.elements.manualSaleQuantity, this.elements.cartonSubunitQuantityInput,
+                this.elements.productPriceInput, this.elements.manualProductPrice,
+                this.elements.cartonSubunitQuantityInput,
                 this.elements.discountAmountInput // Added discount input
             ];
             fieldsToFormat.forEach(input => {
@@ -632,6 +644,15 @@ document.addEventListener('DOMContentLoaded', () => {
                         e.target.value = formattedValue;
                     }
                 });
+            });
+
+            // Stock and quantities can end in ".5" for "and a half" (1.5); any other decimal is ignored
+            [this.elements.productStockInput, this.elements.saleQuantityInput, this.elements.manualSaleQuantity].forEach(input => {
+                input.addEventListener('input', (e) => {
+                    const formatted = this._formatHalves(e.target.value, e.data);
+                    if (e.target.value !== formatted) e.target.value = formatted;
+                });
+                input.addEventListener('blur', (e) => { e.target.value = e.target.value.replace(/\.$/, ''); });
             });
 
             this.elements.checkPhoneInput.addEventListener('input', (e) => {
@@ -660,20 +681,36 @@ document.addEventListener('DOMContentLoaded', () => {
             return d.slice(0, 11);
         },
 
-        // Runs `action` once on press, then keeps running it 7 times a second while the button stays held down.
+        // "1234.5" -> "1,234.5". Only a half may follow the dot ("1." stays while typing, "1.3" drops the 3).
+        // `typed` is what was just typed: a comma at the end counts as the dot (some keypads show a comma instead).
+        _formatHalves(raw, typed) {
+            let text = String(raw);
+            if (typed === ',' && text.endsWith(',')) text = text.slice(0, -1) + '.';
+            text = text.replace(/,/g, '');
+            const dot = text.indexOf('.');
+            const whole = (dot < 0 ? text : text.slice(0, dot)).replace(/\D/g, '');
+            const shown = whole === '' ? '' : Number(whole).toLocaleString('en-US');
+            if (dot < 0) return shown;
+            return `${shown || '0'}.${text.slice(dot + 1).replace(/\D/g, '').startsWith('5') ? '5' : ''}`;
+        },
+
+        // Runs `action` once on press; if the button stays held down it repeats 14 times a second after a short pause.
         _bindHoldRepeat(btn, action) {
             if (!btn) return;
-            const REPEAT_MS = Math.round(1000 / 7);
-            let timer = null;
-            const stop = () => { clearInterval(timer); timer = null; };
+            const HOLD_MS = 250;
+            const REPEAT_MS = Math.round(1000 / 14);
+            let pause = null, timer = null;
+            const stop = () => { clearTimeout(pause); clearInterval(timer); pause = timer = null; };
             btn.addEventListener('pointerdown', (e) => {
                 if (e.pointerType === 'mouse' && e.button !== 0) return;
                 stop();
                 action();
-                timer = setInterval(() => {
-                    if (!btn.offsetParent) { stop(); return; } // the modal went away while the button was held
-                    action();
-                }, REPEAT_MS);
+                pause = setTimeout(() => {
+                    timer = setInterval(() => {
+                        if (!btn.offsetParent) { stop(); return; } // the modal went away while the button was held
+                        action();
+                    }, REPEAT_MS);
+                }, HOLD_MS);
             });
             ['pointerup', 'pointercancel', 'pointerleave'].forEach(evt => btn.addEventListener(evt, stop));
             btn.addEventListener('blur', stop);
@@ -687,7 +724,7 @@ document.addEventListener('DOMContentLoaded', () => {
         async handleCheckPhone() {
             const phone = this.elements.checkPhoneInput.value.trim();
             if (!/^0\d{10}$/.test(phone)) {
-                alert("Please enter your 11-digit WhatsApp number, e.g. 08012345678.");
+                say("Enter your 11-digit WhatsApp number, like 08012345678.", "Check your number");
                 return;
             }
 
@@ -709,7 +746,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } catch (error) {
                 console.error("Error checking phone:", error);
-                alert("Could not connect to server. Please check your internet connection.");
+                say("Check your internet and try again.", "No internet");
             } finally {
                 this.hideLoader();
             }
@@ -832,7 +869,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 await this.startPhoneVerification(phone, 'reset');
             } catch (error) {
                 console.error('Could not start the PIN reset:', error);
-                alert('Could not connect. Please check your internet and try again.');
+                say('Check your internet and try again.', 'No internet');
             } finally {
                 this.hideLoader();
             }
@@ -842,9 +879,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const pin = document.getElementById('new-pin').value.trim();
             const phone = this.state.tempPhone;
             const pending = this._pendingVerification();
-            if (!/^\d{6}$/.test(pin)) { alert('Please enter 6 digits for your new PIN.'); return; }
+            if (!/^\d{6}$/.test(pin)) { say('Your PIN must be 6 numbers.', 'Check your PIN'); return; }
             if (!phone || !pending || pending.phone !== phone || pending.purpose !== 'reset') {
-                alert('Please confirm your number on WhatsApp first.');
+                say('Verify your number on WhatsApp first.', 'Verify first');
                 this.showView('onboarding-step-1');
                 return;
             }
@@ -864,13 +901,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.state.user = { ...snap.data(), pin, pinChangedAt };
                 await DB.saveUser(this.state.user);
                 const synced = await DB.syncDataFromCloud(phone);
-                if (!synced) alert('PIN saved, but some data failed to sync. It will sync in the background.');
+                if (!synced) say('Your new PIN works. Some data will finish syncing soon.', 'PIN saved');
                 await this.loadMainApp();
                 this.startRealtimeSync();
                 this.showToast('New PIN saved.');
             } catch (error) {
                 console.error('Could not save the new PIN:', error);
-                alert('Could not save your new PIN. Please check your internet and try again.');
+                say('Your PIN was not saved. Check your internet and try again.', 'Not saved');
             } finally {
                 this.hideLoader();
             }
@@ -909,7 +946,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!snap.exists() || !this.state.user) return;
                 const changed = Number(snap.data().pinChangedAt) || 0;
                 if (changed > (Number(this.state.user.pinChangedAt) || 0)) {
-                    this._doLogout().then(() => alert('Your PIN was changed. Please log in again with your new PIN.'));
+                    this._doLogout().then(() => say('Your PIN was changed on another phone. Log in with your new PIN.', 'Log in again'));
                 }
             }, (error) => console.error('Could not watch for PIN changes:', error));
         },
@@ -958,7 +995,7 @@ document.addEventListener('DOMContentLoaded', () => {
         async handleLogin() {
             const pin = this.elements.loginPinInput.value.trim();
             if (pin.length !== 6) {
-                alert("Please enter your 6-digit PIN.");
+                say("Enter your 6-digit PIN.", "Check your PIN");
                 return;
             }
 
@@ -972,7 +1009,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Sync data
                 const success = await DB.syncDataFromCloud(this.state.tempPhone);
                 if (!success) {
-                    alert("Logged in, but some data failed to sync. It will sync in background.");
+                    say("You are in. Some data will finish syncing soon.", "Logged in");
                 }
 
                 this.elements.loginPinInput.value = '';
@@ -980,7 +1017,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.startRealtimeSync(); // Start listeners
                 this.hideLoader();
             } else {
-                alert("Incorrect PIN. Please try again.");
+                say("That PIN is wrong. Try again.", "Wrong PIN");
                 this.elements.loginPinInput.value = '';
             }
         },
@@ -996,7 +1033,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const pin = this.elements.createPinInput.value.trim();
 
             if (!firstName || !lastName || !gender || !business || !type || !location || pin.length !== 6) {
-                alert('Please fill in all fields and ensure PIN is 6 digits.'); return;
+                say('Fill in every box. Your PIN must be 6 numbers.', 'Check your details'); return;
             }
 
             this.showLoader();
@@ -1019,7 +1056,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.showView('location-permission-view');
             } catch (error) {
                 console.error("Registration failed:", error);
-                alert("Failed to create account. Please try again.");
+                say("Your account was not created. Please try again.", "Something went wrong");
             } finally {
                 this.hideLoader();
             }
@@ -1170,7 +1207,7 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         async handleLogout() {
-            if (confirm('Are you sure you want to log out? This will clear local data (it remains safe in the cloud).')) {
+            if (await ask({ title: 'Log out', text: 'Are you sure you want to log out?', ok: 'Log out', cancel: 'Cancel', danger: true })) {
                 await this._doLogout();
             }
         },
@@ -1220,6 +1257,43 @@ document.addEventListener('DOMContentLoaded', () => {
             if (this.toggleOnboardingTooltip) this.toggleOnboardingTooltip();
         },
         showModal(modalId) { this.elements.modalContainer.style.display = 'flex'; this.elements.modalContainer.querySelectorAll('.modal-content').forEach(m => m.style.display = 'none'); const modalToShow = document.getElementById(modalId); if (modalToShow) { modalToShow.style.display = 'flex'; } this._followKeyboard(true); },
+        // PikaShot's own pop-up for messages and questions. It sits above any open modal (that one stays as it was).
+        // Resolves true for the main button, false for cancel, Esc, back or a tap outside.
+        _dialog({ title = '', text = '', ok = 'OK', cancel = '', danger = false }) {
+            const $ = (id) => document.getElementById(id);
+            const layer = $('dialog-layer'), okBtn = $('dialog-ok'), cancelBtn = $('dialog-cancel');
+            if (this._closeDialog) this._closeDialog(false); // a newer message replaces an older one
+            $('dialog-title').textContent = title;
+            $('dialog-title').hidden = !title;
+            $('dialog-text').textContent = text;
+            okBtn.textContent = ok;
+            okBtn.className = `btn ${danger ? 'btn-danger' : 'btn-primary'}`;
+            cancelBtn.textContent = cancel;
+            cancelBtn.hidden = !cancel;
+            layer.style.display = 'flex';
+            if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); // puts the keyboard away
+            return new Promise((resolve) => {
+                const finish = (answer) => {
+                    layer.style.display = 'none';
+                    layer.onclick = okBtn.onclick = cancelBtn.onclick = null;
+                    document.removeEventListener('keydown', onKey, true);
+                    window.removeEventListener('popstate', onBack);
+                    this._closeDialog = null;
+                    resolve(answer);
+                };
+                const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); finish(false); } };
+                const onBack = () => finish(false);
+                okBtn.onclick = () => finish(true);
+                cancelBtn.onclick = () => finish(false);
+                layer.onclick = (e) => { if (e.target === layer) finish(false); };
+                document.addEventListener('keydown', onKey, true);
+                window.addEventListener('popstate', onBack);
+                this._closeDialog = finish;
+                (danger && cancel ? cancelBtn : okBtn).focus({ preventScroll: true }); // a risky question starts on "Cancel"
+            });
+        },
+        _say(text, title = 'Please check') { return this._dialog({ title, text }); },
+        _ask(options) { return this._dialog(options); },
         hideModal() { this.elements.modalContainer.style.display = 'none'; this.elements.modalContainer.querySelectorAll('.modal-content').forEach(m => m.style.display = 'none'); this._followKeyboard(false); },
 
         // While on, the modal layer is sized to the part of the screen that is not under the on-screen keyboard,
@@ -2036,13 +2110,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 },
                 (error) => {
                     console.warn('Location permission denied:', error.message);
-                    alert("Location access is optional but recommended. You can enable it later in your browser settings.");
+                    this.showToast("Location is off. You can turn it on later in your browser settings.");
                     this.showView('camera-permission-view');
                 },
                 { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
             );
         },
-        async handleCameraPermission() { try { const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }); stream.getTracks().forEach(track => track.stop()); await this.loadMainApp(); this.startRealtimeSync(); } catch (err) { console.error("Camera permission denied:", err); alert("Camera access is required for barcode scanning. Please enable it in browser settings."); } },
+        async handleCameraPermission() { try { const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }); stream.getTracks().forEach(track => track.stop()); await this.loadMainApp(); this.startRealtimeSync(); } catch (err) { console.error("Camera permission denied:", err); say("PikaShot needs your camera to scan. Allow it in your browser settings.", "Camera is off"); } },
         async loadCameraScannerInBackground() {
             try {
                 this.elements.sellItemBtnText.textContent = 'Loading...';
@@ -2066,7 +2140,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return {
                 onStatus: (text) => { this.elements.scanFeedback.textContent = text; },
                 onError: (message) => {
-                    alert(message);
+                    say(message, 'Camera problem');
                     this.state.isScanCanceled = true;
                     history.back();
                 }
@@ -2159,8 +2233,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.cancelScanBtn.style.flex = '0 0 100%';
                 this.elements.cancelScanBtn.style.maxWidth = '300px';
             }
-            if (!this.state.cameraReady) { alert("Scanner is not ready yet. Please wait or check your connection."); return; }
-            if (!Camera.isSupported()) { alert("Barcode scanning is not available on this device."); return; }
+            if (!this.state.cameraReady) { say("The scanner is still loading. Wait a moment and try again.", "Please wait"); return; }
+            if (!Camera.isSupported()) { say("This phone cannot scan barcodes.", "Cannot scan"); return; }
             this.elements.scanFeedback.textContent = 'Scan product barcode';
             this.navigateTo('camera-view');
             Camera.startScan(
@@ -2246,8 +2320,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const existing = await DB.getAllProducts();
                 if (existing.length === 0) { this.redirectToAddProducts(); return; }
             }
-            if (!this.state.cameraReady) { alert("Scanner is not ready yet. Please wait or check your connection."); return; }
-            if (!Camera.isSupported()) { alert("Barcode scanning is not available on this device."); return; }
+            if (!this.state.cameraReady) { say("The scanner is still loading. Wait a moment and try again.", "Please wait"); return; }
+            if (!Camera.isSupported()) { say("This phone cannot scan barcodes.", "Cannot scan"); return; }
             if (this.elements.scanSelectFromProductsBtn) {
                 this.elements.scanSelectFromProductsBtn.style.display = 'block';
                 this.elements.cancelScanBtn.style.flex = '0 0 30%';
@@ -2402,11 +2476,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (isEditing) productData.editedAt = Date.now(); // every edit starts the product's "recently edited" line afresh
 
             if (!productData.name || isNaN(productData.price) || isNaN(productData.stock)) {
-                alert('Please fill out all fields correctly.'); return;
+                say('Fill in the product name, price and stock.', 'Check your entry'); return;
             }
 
             if (!productData.image) {
-                alert('Please add a product image before saving.');
+                say('Add a photo of the product first.', 'Photo needed');
                 const addPicBtn = this.elements.addChangePictureBtn;
                 addPicBtn.classList.add('input-error-shake');
                 setTimeout(() => addPicBtn.classList.remove('input-error-shake'), 600);
@@ -2414,7 +2488,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             if (isEditing && this.state.editingProduct.needsSetup === 'barcode-and-price' && !productData.barcode) {
-                alert('Please scan a barcode for this product before saving.');
+                say('Scan this product\'s barcode first.', 'Barcode needed');
                 const scanBarcodeBtn = this.elements.scanNewBarcodeBtn;
                 scanBarcodeBtn.classList.add('input-error-shake');
                 setTimeout(() => scanBarcodeBtn.classList.remove('input-error-shake'), 600);
@@ -2442,7 +2516,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const subUnitQuantity = this.unformatNumber(this.elements.cartonSubunitQuantityInput.value);
 
             if (!subUnitType || isNaN(subUnitQuantity) || subUnitQuantity <= 0) {
-                alert('Please fill in the carton details correctly.');
+                say('Choose what is inside and how many.', 'Check your entry');
                 return;
             }
 
@@ -2559,7 +2633,7 @@ document.addEventListener('DOMContentLoaded', () => {
         async handleDeleteProduct() {
             if (!this.state.editingProduct) return;
             if (this.state.user && this.state.user.type === 'Salesperson' && this.state.editingProduct.stock > 0) {
-                alert("You can only delete products that are out of stock.");
+                say("You can delete a product only when its stock is 0.", "Cannot delete yet");
                 return;
             }
             // The PIN is the confirmation. Backing out (or leaving) returns to the product they were editing.
@@ -2573,7 +2647,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.state.editingProduct = null;
             await this.renderProducts();
             this.navigateTo('products-view');
-            alert('Product deleted successfully.');
+            this.showToast('Product deleted.');
         },
 
         async handleAddOrChangePicture() {
@@ -2594,7 +2668,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } catch (error) {
                 console.error("Error capturing image:", error);
-                alert("Could not capture image.");
+                say("The photo did not work. Please try again.", "Photo failed");
                 history.back();
             }
         },
@@ -2610,7 +2684,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     setTimeout(() => {
                         history.back();
                         this.showModal('product-form-modal');
-                        alert('No barcode found. Please try again.');
+                        say('No barcode found. Hold the phone steady and try again.', 'Not found');
                     }, 500);
                 },
                 this.elements.scanTimerDisplay,
@@ -2632,7 +2706,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const existingProduct = await DB.getProductByBarcode(result.data);
             if (existingProduct && existingProduct.id !== this.state.editingProduct.id) {
-                alert(`This barcode is already assigned to "${existingProduct.name}".`);
+                say(`This barcode already belongs to "${existingProduct.name}".`, "Already used");
                 this.showModal('product-form-modal');
                 return;
             }
@@ -2677,7 +2751,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 discount = this.unformatNumber(this.elements.discountAmountInput.value) || 0;
             }
 
-            const total = Math.max(0, subtotal - discount);
+            const total = Math.max(0, Math.round(subtotal - discount));
             this.elements.saleTotalPrice.textContent = `₦${this.formatNumber(total)}`;
         },
         async _processSale() {
@@ -2694,11 +2768,11 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (activeRadio && activeRadio.value === 'credit') {
                 partPayment = this.unformatNumber(this.elements.discountAmountInput.value) || 0;
                 if (!this.state.selectedContact) {
-                    alert('Please select a contact for the credit sale.');
+                    say('Pick who is buying on credit.', 'Customer needed');
                     return false;
                 }
                 if (this.elements.discountAmountInput.value.trim() === '') {
-                    alert('Please enter a part payment amount (enter 0 if none).');
+                    say('How much did they pay now? Enter 0 if nothing.', 'Amount needed');
                     return false;
                 }
                 customerName = this.state.selectedContact.name;
@@ -2709,13 +2783,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const availableStock = product ? product.stock + (editing ? editing.quantity : 0) : 0;
             const unitPrice = editing ? editing.price : (product ? product.price : 0);
 
-            if (quantity <= 0 || !product || quantity > availableStock) { alert('Invalid quantity or product not available.'); return false; }
+            if (!product) { say('This product is no longer available.', 'Not available'); return false; }
+            if (quantity <= 0) { say('Enter how many you are selling.', 'Check your entry'); return false; }
+            if (quantity > availableStock) { say(`Only ${this.formatNumber(availableStock)} ${product.unit} left in stock.`, 'Not enough stock'); return false; }
 
             product.stock = availableStock - quantity;
 
             await DB.saveProduct(product);
             
-            let total = Math.max(0, (quantity * unitPrice) - discount);
+            let total = Math.max(0, Math.round((quantity * unitPrice) - discount));
             if (activeRadio && activeRadio.value === 'credit') {
                 total = partPayment; // User requested: part payment becomes recorded total
             }
@@ -2859,24 +2935,24 @@ document.addEventListener('DOMContentLoaded', () => {
             const quantity = this.unformatNumber(this.elements.manualSaleQuantity.value);
             const unit = this.elements.manualProductUnit.value;
             if (!name || isNaN(price) || isNaN(quantity) || quantity <= 0) {
-                alert('Please fill in all fields correctly.'); return;
+                say('Fill in the product name, price and how many.', 'Check your entry'); return;
             }
 
             const allProducts = await DB.getAllProducts();
             let productToSell = allProducts.find(p => p.name.toLowerCase() === name.toLowerCase());
             if (productToSell) {
                 if (productToSell.stock < quantity) {
-                    alert(`Not enough stock for ${name}. Only ${productToSell.stock} available.`);
+                    say(`Only ${this.formatNumber(productToSell.stock)} ${productToSell.unit} of ${name} left.`, 'Not enough stock');
                     return;
                 }
                 productToSell.stock -= quantity;
             } else {
                 productToSell = { id: Date.now(), name, price, stock: 0, unit, image: null, barcode: null, createdAt: new Date(), supplierId: null };
-                alert(`${name} is a new item and will be added to your products list with 0 stock.`);
+                this.showToast(`${name} is new. It was added to your products with 0 stock.`);
             }
 
             await DB.saveProduct(productToSell);
-            const sale = { id: Date.now() + 1, productId: productToSell.id, productName: name, quantity, price, total: price * quantity, timestamp: new Date(), image: productToSell.image, sharedAsLog: false, unit };
+            const sale = { id: Date.now() + 1, productId: productToSell.id, productName: name, quantity, price, total: Math.round(price * quantity), timestamp: new Date(), image: productToSell.image, sharedAsLog: false, unit };
             await DB.addSale(sale);
             this._logSale(sale, productToSell);
 
@@ -3332,7 +3408,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     console.error('Error sharing:', error);
                 }
             } else {
-                alert('Sharing is not supported on this browser, or there was an error creating the image.');
+                say('Sharing did not work on this phone. Please try again.', 'Cannot share');
             }
         },
 
@@ -3523,7 +3599,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             } catch (error) {
                 console.error("Error processing phone transfer:", error);
-                alert("Could not complete the transfer. Please check your internet connection.");
+                say("The transfer did not go through. Check your internet and try again.", "Transfer failed");
             } finally {
                 this.hideLoader();
             }
@@ -3615,12 +3691,12 @@ document.addEventListener('DOMContentLoaded', () => {
         async handleAddSalesperson() {
             const newPhone = document.getElementById('new-salesperson-phone').value.trim();
             if(newPhone.length < 10) {
-                alert("Please enter a valid phone number.");
+                say("Enter a valid phone number.", "Check the number");
                 return;
             }
             
             if(!this.state.firebaseReady) {
-                alert("Must be online to add a salesperson.");
+                say("You need internet to add a salesperson.", "No internet");
                 return;
             }
             
@@ -3644,7 +3720,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const spQuery = window.fb.query(usersRef, window.fb.where('wholesalerPhone', '==', this.state.user.phone));
                 const spSnap = await window.fb.getDocs(spQuery);
                 if (spSnap.size >= 5) {
-                    alert("You have reached the maximum limit of 5 salespeople.");
+                    say("You can add up to 5 salespeople.", "Limit reached");
                     return;
                 }
                 
@@ -3688,7 +3764,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 
             } catch (e) {
                 console.error("Error adding salesperson", e);
-                alert("Failed to add salesperson.");
+                say("The salesperson was not added. Please try again.", "Something went wrong");
             }
         },
 
@@ -4013,7 +4089,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         async handlePikaLogIdScanned(logId) {
             if (!this.state.firebaseReady) {
-                alert("Cannot process transfer: not connected to online services.");
+                say("You need internet to accept this transfer.", "No internet");
                 return;
             }
             try {
@@ -4024,22 +4100,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     // NEW: Check if claimed
                     if (logData.claimed) {
-                        alert("Items in QR were previously scanned and accepted");
+                        say("You already accepted these items.", "Already accepted");
                         return;
                     }
                     if (logData.voided) {
-                        alert("This transfer is no longer available.");
+                        say("This transfer is no longer available.", "Not available");
                         return;
                     }
 
                     logData.id = logId; // Attach ID so we can update it later
                     this.handlePikaLogScanned(logData);
                 } else {
-                    alert("Transfer data not found. It may have been deleted.");
+                    say("This transfer was not found. It may have been cancelled.", "Not found");
                 }
             } catch (error) {
                 console.error("Error fetching shared log:", error);
-                alert("Could not fetch the transfer data. Check your internet connection");
+                say("Could not open this transfer. Check your internet and try again.", "No internet");
             }
         },
 
@@ -4143,11 +4219,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (claim === 'taken') {
                 this.hideModal();
                 this.state.scannedLogData = null;
-                alert('Sorry, this transfer was already accepted by someone else, so it is no longer available.');
+                say('Someone else already accepted this transfer.', 'Too late');
                 return;
             }
             if (claim === 'error') {
-                alert('Could not reach the server to accept this transfer. Please check your connection and try again.');
+                say('Could not accept this transfer. Check your internet and try again.', 'No internet');
                 return;
             }
 
@@ -4281,7 +4357,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     await window.fb.setDoc(retailerDocRef, payload, { merge: true });
                 } catch (error) {
                     console.error("Error updating stock to Firebase:", error);
-                    alert("Local inventory updated, but failed to sync online.");
+                    say("Saved on this phone. It will sync when you are online.", "Saved");
                 }
             }
 
@@ -4662,13 +4738,13 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             document.querySelectorAll('.btn-yes').forEach(button => {
-                button.addEventListener('click', (e) => {
+                button.addEventListener('click', async (e) => {
                     const card = e.target.closest('.card');
                     const retailerId = card.dataset.retailerId;
                     const date = e.target.dataset.date;
                     const total = e.target.dataset.total;
 
-                    if (confirm(`Are you sure you want to confirm receipt of payment (₦${this.formatNumber(total)}) for ${date}? This action cannot be undone.`)) {
+                    if (await ask({ title: 'Confirm payment', text: `Did you receive ₦${this.formatNumber(total)} for ${date}? You cannot undo this.`, ok: 'Yes, received', cancel: 'Cancel' })) {
                         this.acknowledgeSales(retailerId, date);
                     }
                 });
@@ -4759,7 +4835,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const retailerId = card.dataset.retailerId;
                     const retailerName = card.dataset.retailerName;
 
-                    if (confirm(`Are you sure you want to remove ${retailerName}? This will delete their data from your view.`)) {
+                    if (await ask({ title: 'Remove from list', text: `Remove ${retailerName}? They will be taken off your list.`, ok: 'Remove', cancel: 'Cancel', danger: true })) {
                         try {
                             const docRef = window.fb.doc(window.fb.db, `retailer_stocks/${this.state.user.phone}/supplied_retailers/${retailerId}`);
                             await window.fb.deleteDoc(docRef);

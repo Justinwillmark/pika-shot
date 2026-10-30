@@ -1665,3 +1665,13 @@ button:focus { outline: none; }
 .modal-content h2 { font-weight: 700; letter-spacing: -0.01em; line-height: 1.25; }
 .modal-content > p, .modal-scroll-content > p { font-size: 0.95rem; }
 .modal-actions-inline .btn { min-width: 0; }
+
+/* === Messages and questions: our own pop-up instead of the browser's, above any open modal === */
+.dialog-layer { position: fixed; inset: 0; z-index: 1200; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(0,0,0,0.6); user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.dialog-card { max-width: 340px; }
+.dialog-card h2[hidden], .dialog-card .btn[hidden] { display: none; }
+.dialog-card h2 { margin-bottom: 10px; }
+.dialog-card p { margin-bottom: 0; font-size: 1rem; color: var(--text-color); overflow-wrap: anywhere; }
+.dialog-card .modal-actions { margin-top: 22px; }
+.dialog-card .btn-danger { flex-basis: 66.67%; }
+.dialog-card #dialog-cancel[hidden] + #dialog-ok { flex-basis: 100%; }

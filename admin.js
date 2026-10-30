@@ -12,6 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const num = (n) => Math.round(n || 0).toLocaleString('en-NG');
     const naira = (n) => '₦' + num(n);
+    const qty = (n) => (Math.round((n || 0) * 2) / 2).toLocaleString('en-NG'); // units can be sold in halves
     const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
     const plural = (n, one, many) => `${num(n)} ${n === 1 ? one : (many || one + 's')}`;
     const initials = (name) => String(name || '?').trim().split(/\s+/).slice(0, 2).map((p) => p[0]).join('').toUpperCase() || '?';
@@ -761,7 +762,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 { id: 'returning', label: 'Returning users', icon: 'repeat', tone: 'teal', value: num(m.returning.length), delta: d(m.returning.length, m.prevReturning && m.prevReturning.length, true), sub: `${m.dauAvg.toFixed(1)} active per day`, series: 'returning', period: r.short, vs },
                 { id: 'dropped', label: 'Dropped off', icon: 'userMinus', tone: 'rose', value: num(m.dropped.length), delta: { pill: m.everActive ? `${pct(m.dropped.length, m.everActive)}%` : '', cls: m.dropped.length ? 'down' : '' }, sub: `of ${num(m.everActive)} who used the app`, meter: pct(m.dropped.length, m.everActive), period: `Silent ${DROP_DAYS}+ days`, fixed: true },
                 { id: 'volume', label: 'Sales volume', icon: 'bag', tone: 'green', value: money(m.volume), title: naira(m.volume), delta: d(m.volume, m.prevVolume, true), sub: plural(m.salesCount, 'sale'), series: 'sales', period: r.short, vs },
-                { id: 'products', label: 'Products sold', icon: 'box', tone: 'amber', value: num(m.products.size), delta: d(m.products.size, m.prevProducts && m.prevProducts.size, true), sub: `${plural(m.units, 'unit')} sold`, series: 'products', period: r.short, vs },
+                { id: 'products', label: 'Products sold', icon: 'box', tone: 'amber', value: num(m.products.size), delta: d(m.products.size, m.prevProducts && m.prevProducts.size, true), sub: `${qty(m.units)} ${m.units === 1 ? 'unit' : 'units'} sold`, series: 'products', period: r.short, vs },
                 { id: 'senders', label: 'Users transferring', icon: 'send', tone: 'blue', value: num(m.senders.length), delta: d(m.senders.length, m.prevSenders && m.prevSenders.length, true), sub: `${plural(m.sentList.length, 'transfer')} sent`, series: 'senders', period: r.short, vs },
                 { id: 'accepters', label: 'Users accepting', icon: 'check', tone: 'violet', value: num(m.accepters.length), delta: d(m.accepters.length, m.prevAccepters && m.prevAccepters.length, true), sub: m.sentList.length ? `${m.acceptRate}% of sent transfers accepted` : 'No transfers sent', series: 'accepters', period: r.short, vs }
             ];
@@ -897,10 +898,10 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (id === 'products') {
                 const list = [...m.products.values()].sort((a, b) => b.revenue - a.revenue);
                 cols = '2.2fr 1fr 1fr 1fr';
-                summary = `<strong>${plural(list.length, 'product')}</strong> sold, ${plural(m.units, 'unit')} in total.${m.unnamedSales ? ` ${plural(m.unnamedSales, 'older sale')} in this period have no product name, so they are not listed here.` : ''}`;
+                summary = `<strong>${plural(list.length, 'product')}</strong> sold, ${qty(m.units)} ${m.units === 1 ? 'unit' : 'units'} in total.${m.unnamedSales ? ` ${plural(m.unnamedSales, 'older sale')} in this period have no product name, so they are not listed here.` : ''}`;
                 head = withHead(['Product', 'Units', 'Revenue', 'Sold by']);
                 rows = list.map((p) => `<div class="tr" style="--cols:${cols}"><div class="td"><div class="who"><div><div class="n">${esc(this.productName(p))}</div><div class="s">${esc(p.barcode || 'No barcode')}</div></div></div></div>
-                    ${td('Units', num(p.units))}${td('Revenue', naira(p.revenue))}${td('Sold by', plural(p.sellers.size, 'user'))}</div>`).join('');
+                    ${td('Units', qty(p.units))}${td('Revenue', naira(p.revenue))}${td('Sold by', plural(p.sellers.size, 'user'))}</div>`).join('');
                 csv = ['products_sold.csv', ['Product', 'Barcode', 'Units', 'Revenue (NGN)', 'Sellers'], list.map((p) => [this.productName(p), p.barcode || '', p.units, p.revenue, p.sellers.size])];
             } else if (id === 'senders') {
                 const ids = m.senders;
@@ -1254,7 +1255,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const sellers = new Set(); list.forEach((p) => p.sellers.forEach((_, uid) => sellers.add(uid)));
             const topProduct = list.slice().sort((a, b) => b.revenue - a.revenue)[0];
             const mini = [
-                ['Products sold', num(list.length)], ['Units sold', num(list.reduce((a, p) => a + p.units, 0))], ['Revenue', naira(revenue)],
+                ['Products sold', num(list.length)], ['Units sold', qty(list.reduce((a, p) => a + p.units, 0))], ['Revenue', naira(revenue)],
                 ['Sellers', num(sellers.size)], ['Best seller', topProduct ? this.productName(topProduct) : '—']
             ].map(([l, v]) => `<div class="mini"><div class="v">${esc(v)}</div><div class="l">${esc(l)}</div></div>`).join('');
 
@@ -1294,7 +1295,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const q = norm(st.q);
             const rankOf = new Map(all.map((p, i) => [p.key, i + 1]));
             const rows = all.filter((p) => !q || norm([...p.names.keys()].join(' ') + ' ' + (p.barcode || '')).includes(q));
-            const fmt = (p) => st.by === 'units' ? `${num(p.units)}` : st.by === 'sellers' ? `${num(p.sellers.size)}` : naira(p.revenue);
+            const fmt = (p) => st.by === 'units' ? `${qty(p.units)}` : st.by === 'sellers' ? `${num(p.sellers.size)}` : naira(p.revenue);
             const kvs = (map, n, total2) => [...map].sort((a, b) => b[1] - a[1]).slice(0, n).map(([k, v]) => `<div class="kv"><span>${esc(k)}</span><span>${pct(v, total2)}%</span></div>`).join('') || '<span class="muted">—</span>';
             const html = rows.slice(0, st.limit).map((p) => {
                 const open = st.open.has(p.key);
@@ -1307,7 +1308,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div><h5>Sold for</h5>
                             <div class="kv"><span>Average price</span><span>${naira(avg)}</span></div>
                             <div class="kv"><span>Lowest – highest</span><span>${p.pMax ? `${naira(p.pMin)} – ${naira(p.pMax)}` : '—'}</span></div>
-                            <div class="kv"><span>Units sold</span><span>${num(p.units)} ${esc(unit)}</span></div>
+                            <div class="kv"><span>Units sold</span><span>${qty(p.units)} ${esc(unit)}</span></div>
                             <div class="kv"><span>Revenue</span><span>${naira(p.revenue)}</span></div></div>
                         <div><h5>By outlet type</h5>${kvs(p.types, 4, p.revenue)}</div>
                         <div><h5>Where</h5>${kvs(p.places, 4, p.revenue)}</div>
@@ -1317,7 +1318,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 return `<div class="bar-row">
                     <div class="bar-top" data-product="${esc(p.key)}">
                         <span class="rank ${rankOf.get(p.key) <= 3 ? 'podium' : ''}">${rankOf.get(p.key)}</span>
-                        <div class="bar-name"><div class="n">${esc(this.productName(p))}</div><div class="s">${plural(p.sellers.size, 'seller')} · avg ${naira(avg)} · ${num(p.units)} ${esc(unit)}</div></div>
+                        <div class="bar-name"><div class="n">${esc(this.productName(p))}</div><div class="s">${plural(p.sellers.size, 'seller')} · avg ${naira(avg)} · ${qty(p.units)} ${esc(unit)}</div></div>
                         <div class="bar-val">${fmt(p)}<small>${pct(valueOf(p), total)}% of all</small></div>
                     </div>
                     <div class="bar-track"><div class="bar-fill" style="width:${maxV ? (valueOf(p) / maxV) * 100 : 0}%"></div></div>
@@ -1429,7 +1430,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 : `<div class="filter-row" style="margin-bottom:8px"><input class="search" id="t-q" type="search" placeholder="Search sender, receiver or item" value="${esc(st.trQ)}"></div>
                    <p class="lead" style="margin-bottom:6px"><strong>${num(accepted)}</strong> of ${num(this.m.sentList.length)} accepted (${this.m.acceptRate}%).</p>
                    ${this.table(cols, ['From', 'Items', 'Value', 'Status'].map((l, i) => `<div class="${i === 2 ? 'num' : ''}">${l}</div>`).join(''), shown.map((x) => {
-                        const items = x.items.slice(0, 2).map((i) => `${num(i.qty)} × ${esc(i.name)}`).join(', ') + (x.items.length > 2 ? ` +${x.items.length - 2} more` : '');
+                        const items = x.items.slice(0, 2).map((i) => `${qty(i.qty)} × ${esc(i.name)}`).join(', ') + (x.items.length > 2 ? ` +${x.items.length - 2} more` : '');
                         const waited = Date.now() - x.t;
                         const status = x.claimed
                             ? `<span class="pill active">Accepted</span> <span class="muted" style="font-size:.78rem">${esc(this.userName(x.by) || x.byName)}${x.claimedAt ? ` · ${esc(ago(x.claimedAt))}` : ''}</span>`

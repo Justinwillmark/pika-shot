@@ -319,7 +319,7 @@ const Camera = {
     // --- Scanning ---
     async startScan(onResult, onTimeout, countdownElement, options = {}) {
         const fail = (message) => {
-            if (options.onError) options.onError(message); else alert(message);
+            if (options.onError) options.onError(message); else (window.pikaSay || alert)(message, 'Camera problem');
         };
 
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -597,7 +597,7 @@ const Camera = {
         if (!await this._openStream(session, 0)) {
             if (session === this._session) {
                 this.stop();
-                alert(this._friendlyCameraError(this.lastError));
+                (window.pikaSay || alert)(this._friendlyCameraError(this.lastError), 'Camera problem');
             }
             return { blob: null };
         }
