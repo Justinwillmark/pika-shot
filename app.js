@@ -280,6 +280,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (!this.state.user) {
                     this.showView('onboarding-step-1');
+                    this.setupInstallBox();
+                    this._restorePhoneVerification();
                 } else {
                     await this.loadMainApp();
                     this.startRealtimeSync(); // Start listeners for active user
@@ -336,7 +338,21 @@ document.addEventListener('DOMContentLoaded', () => {
             // Registration Screen Listeners
             this.elements.completeRegistrationBtn.addEventListener('click', this.handleRegistration.bind(this));
             this.elements.goBackRegisterBtn.addEventListener('click', () => {
+                this._resetVerificationUI();
                 this.showView('onboarding-step-1');
+            });
+            document.getElementById('wa-new-code').addEventListener('click', async () => {
+                const phone = this.state.tempPhone;
+                if (!phone) return;
+                try { this._showVerification(await this._newSignupCode(phone)); }
+                catch (error) { console.error('Could not make a new code:', error); alert('Could not connect. Please check your internet and try again.'); }
+            });
+            document.getElementById('wa-change').addEventListener('click', () => {
+                this._pending = null;
+                this._savePending(null);
+                this._resetVerificationUI();
+                this.elements.checkPhoneInput.value = '';
+                this.elements.checkPhoneInput.focus();
             });
             // Business type is picked with three buttons; the choice is kept in the hidden #business-type field
             const typeButtons = document.querySelectorAll('#business-type-options button');
@@ -651,8 +667,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         async handleCheckPhone() {
             const phone = this.elements.checkPhoneInput.value.trim();
-            if (phone.length < 11) {
-                alert("Please enter a valid 11-digit phone number.");
+            if (!/^0\d{10}$/.test(phone)) {
+                alert("Please enter your 11-digit WhatsApp number, e.g. 08012345678.");
                 return;
             }
 
@@ -667,8 +683,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (docSnap.exists()) {
                     this.state.tempUserCloudData = docSnap.data();
                     this.showView('onboarding-step-login');
-                } else {
+                } else if (this._verifiedOnThisPhone(phone)) {
                     this.showView('onboarding-step-register');
+                } else {
+                    await this.startPhoneVerification(phone);
                 }
             } catch (error) {
                 console.error("Error checking phone:", error);
@@ -676,6 +694,158 @@ document.addEventListener('DOMContentLoaded', () => {
             } finally {
                 this.hideLoader();
             }
+        },
+
+        // --- WhatsApp number check for new sign-ups ---
+        // The new user sends a 4-digit code to PikaShot on WhatsApp. The admin confirms it on the dashboard,
+        // which marks signup_verifications/{phone} as verified and opens Create Account here.
+        WA_NUMBER: '2347089319883',
+        CODE_TTL_MS: 20 * 60 * 1000,
+
+        _pendingVerification() {
+            try { return JSON.parse(localStorage.getItem('pika_signup_code')); } catch (e) { return null; }
+        },
+        _savePending(pending) {
+            try {
+                if (pending) localStorage.setItem('pika_signup_code', JSON.stringify(pending));
+                else localStorage.removeItem('pika_signup_code');
+            } catch (e) { /* private mode: the code just isn't remembered */ }
+        },
+        _verifiedOnThisPhone(phone) {
+            try {
+                const v = JSON.parse(localStorage.getItem('pika_verified_phone'));
+                return !!v && v.phone === phone && Date.now() - v.at < 24 * 3600000;
+            } catch (e) { return false; }
+        },
+        _verificationRef(phone) { return window.fb.doc(window.fb.db, 'signup_verifications', phone); },
+
+        async startPhoneVerification(phone) {
+            let pending = this._pendingVerification();
+            if (!pending || pending.phone !== phone || Date.now() - pending.createdAt > this.CODE_TTL_MS) pending = null;
+            if (pending) {
+                const snap = await window.fb.getDoc(this._verificationRef(phone));
+                const d = snap.exists() ? snap.data() : null;
+                if (d && d.verified && d.code === pending.code) return this._phoneVerified(phone);
+                if (!d || d.code !== pending.code) pending = null; // replaced since: start over
+            }
+            if (!pending) pending = await this._newSignupCode(phone);
+            this._showVerification(pending);
+        },
+
+        async _newSignupCode(phone) {
+            const code = String(1000 + (crypto.getRandomValues(new Uint32Array(1))[0] % 9000));
+            await window.fb.setDoc(this._verificationRef(phone), { phone, code, createdAt: window.fb.serverTimestamp(), verified: false });
+            const pending = { phone, code, createdAt: Date.now() };
+            this._savePending(pending);
+            return pending;
+        },
+
+        _showVerification(pending) {
+            const el = (id) => document.getElementById(id);
+            this.state.tempPhone = pending.phone;
+            this.elements.checkPhoneInput.value = pending.phone;
+            el('phone-entry').hidden = true;
+            el('wa-verify').hidden = false;
+            el('wa-phone').textContent = pending.phone;
+            el('wa-code').textContent = pending.code;
+            el('wa-link').href = `https://wa.me/${this.WA_NUMBER}?text=${encodeURIComponent('VERIFY ' + pending.code)}`;
+            this._pending = pending;
+            this._verifiedDone = false;
+            this._tickVerification();
+            clearInterval(this._waTimer);
+            this._waTimer = setInterval(() => this._tickVerification(), 15000);
+            if (this._waUnsub) this._waUnsub();
+            this._waUnsub = window.fb.onSnapshot(this._verificationRef(pending.phone), (snap) => {
+                const d = snap.exists() ? snap.data() : null;
+                if (d && d.verified && d.code === pending.code) this._phoneVerified(pending.phone);
+            }, (error) => console.error('Could not watch the number check:', error));
+        },
+
+        _tickVerification() {
+            const p = this._pending;
+            if (!p) return;
+            const left = this.CODE_TTL_MS - (Date.now() - p.createdAt);
+            const expired = left <= 0;
+            document.getElementById('wa-code').classList.toggle('expired', expired);
+            document.getElementById('wa-link').classList.toggle('disabled', expired);
+            document.getElementById('wa-new-code').hidden = !expired;
+            const status = document.getElementById('wa-status');
+            status.classList.remove('ok');
+            status.textContent = expired
+                ? 'This code has expired. Get a new one and send it again.'
+                : `After sending, come back here. This screen moves on once PikaShot confirms. Code expires in ${Math.ceil(left / 60000)} min.`;
+        },
+
+        _phoneVerified(phone) {
+            if (this._verifiedDone) return; // the listener and the startup check can both report it
+            this._verifiedDone = true;
+            this._stopVerification();
+            this._pending = null;
+            this._savePending(null);
+            try { localStorage.setItem('pika_verified_phone', JSON.stringify({ phone, at: Date.now() })); } catch (e) { /* fine */ }
+            this.state.tempPhone = phone;
+            const status = document.getElementById('wa-status');
+            status.textContent = 'Number confirmed. Opening Create Account…';
+            status.classList.add('ok');
+            setTimeout(() => {
+                this._resetVerificationUI();
+                this.showView('onboarding-step-register');
+            }, 900);
+        },
+
+        _stopVerification() {
+            clearInterval(this._waTimer);
+            if (this._waUnsub) { this._waUnsub(); this._waUnsub = null; }
+        },
+
+        _resetVerificationUI() {
+            this._stopVerification();
+            document.getElementById('phone-entry').hidden = false;
+            document.getElementById('wa-verify').hidden = true;
+        },
+
+        // A code is still waiting after the app was closed (people often switch to WhatsApp and back)
+        async _restorePhoneVerification() {
+            const p = this._pendingVerification();
+            if (!p || !p.phone) return;
+            if (Date.now() - p.createdAt > this.CODE_TTL_MS * 3) { this._savePending(null); return; }
+            try {
+                const snap = await window.fb.getDoc(this._verificationRef(p.phone));
+                const d = snap.exists() ? snap.data() : null;
+                if (d && d.verified && d.code === p.code) { this._phoneVerified(p.phone); return; }
+            } catch (e) { /* offline: show the code anyway */ }
+            this._showVerification(p);
+        },
+
+        // --- Install as a proper Android app ---
+        // Chrome's own install (the beforeinstallprompt event) makes a real app that shows in the app list.
+        // "Add to Home screen" from a menu, or other browsers, only make a shortcut, so they get directions instead.
+        setupInstallBox() {
+            const box = document.getElementById('install-box');
+            if (!box) return;
+            const installed = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+            if (installed) return;
+            this._updateInstallBox = () => {
+                const canPrompt = !!this.state.deferredInstallPrompt;
+                document.getElementById('signup-install-btn').hidden = !canPrompt;
+                const hint = document.getElementById('install-hint');
+                hint.hidden = canPrompt;
+                hint.textContent = canPrompt ? '' : this._installHintText();
+                box.hidden = false;
+            };
+            document.getElementById('signup-install-btn').addEventListener('click', () => this.promptInstall());
+            window.addEventListener('appinstalled', () => { box.hidden = true; });
+            // Chrome says whether it can install shortly after the page loads
+            if (this.state.deferredInstallPrompt) this._updateInstallBox();
+            else setTimeout(() => { if (this._updateInstallBox) this._updateInstallBox(); }, 3000);
+        },
+
+        _installHintText() {
+            const ua = navigator.userAgent;
+            const inAppBrowser = /; wv\)|FBAN|FBAV|Instagram|WhatsApp/i.test(ua);
+            const chrome = /Chrome\//.test(ua) && !/OPR\/|Opera|UCBrowser|SamsungBrowser|EdgA|MiuiBrowser|Firefox|YaBrowser/i.test(ua);
+            if (inAppBrowser || !chrome) return 'To install PikaShot as an app, open this page in Google Chrome, then tap ⋮ and choose "Install app".';
+            return 'Already installed? Open PikaShot from your app list. If not, tap ⋮ in Chrome and choose "Install app" (not "Add to Home screen").';
         },
 
         togglePinVisibility(inputId, btnId) {
@@ -766,6 +936,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Save to IndexedDB and Sync to Cloud (handled by db.js)
                 await DB.saveUser(newUser);
                 this.state.user = newUser;
+                try { localStorage.removeItem('pika_verified_phone'); } catch (e) { /* fine */ }
 
                 this.showView('location-permission-view');
             } catch (error) {
@@ -941,6 +1112,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.bottomNav.style.display = 'none';
                 this.elements.checkPhoneInput.value = '';
                 this.elements.loginPinInput.value = '';
+                this._resetVerificationUI();
 
                 this.showView('onboarding-step-1');
             }
@@ -4599,8 +4771,24 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         },
 
-        handleBeforeInstallPrompt(event) { event.preventDefault(); this.state.deferredInstallPrompt = event; this.elements.installBtn.style.display = 'block'; },
-        promptInstall() { if (this.state.deferredInstallPrompt) { this.state.deferredInstallPrompt.prompt(); this.state.deferredInstallPrompt.userChoice.then(() => { this.state.deferredInstallPrompt = null; this.elements.installBtn.style.display = 'none'; }); } },
+        handleBeforeInstallPrompt(event) {
+            event.preventDefault();
+            this.state.deferredInstallPrompt = event;
+            this.elements.installBtn.style.display = 'block';
+            if (this._updateInstallBox) this._updateInstallBox();
+        },
+        promptInstall() {
+            const prompt = this.state.deferredInstallPrompt;
+            if (!prompt) return;
+            prompt.prompt();
+            prompt.userChoice.then((choice) => {
+                this.state.deferredInstallPrompt = null;
+                this.elements.installBtn.style.display = 'none';
+                const box = document.getElementById('install-box');
+                if (choice && choice.outcome === 'accepted') { if (box) box.hidden = true; }
+                else if (this._updateInstallBox) this._updateInstallBox();
+            });
+        },
         registerServiceWorker() { if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('/serviceworker.js').then(reg => console.log('Service Worker registered.')).catch(err => console.error('Service Worker registration failed:', err)); }); } },
 
         async showProfileModal() {

@@ -101,6 +101,46 @@
             <div id="notice" class="notice" role="status" hidden></div>
 
             <main id="main">
+                <!-- Sign-up verification: top of Users on desktop, the only thing shown on phones -->
+                <section id="verify" class="verify" aria-labelledby="verify-title" hidden>
+                    <div class="panel verify-card">
+                        <div class="verify-head">
+                            <span class="verify-ico" data-icon="shield"></span>
+                            <div>
+                                <h3 id="verify-title">Sign-up verification</h3>
+                                <p>Paste the WhatsApp number and the code the new user sent.</p>
+                            </div>
+                        </div>
+                        <form id="verify-form" class="verify-form" autocomplete="off" novalidate>
+                            <label class="vfield" for="v-phone">
+                                <span class="vlabel">WhatsApp number</span>
+                                <span class="vrow">
+                                    <input id="v-phone" type="tel" inputmode="tel" placeholder="+234 803 123 4567">
+                                    <button type="button" class="btn vpaste" data-paste="v-phone">Paste</button>
+                                </span>
+                            </label>
+                            <label class="vfield" for="v-code">
+                                <span class="vlabel">Code</span>
+                                <span class="vrow">
+                                    <input id="v-code" type="text" inputmode="numeric" placeholder="4821" class="code-input">
+                                    <button type="button" class="btn vpaste" data-paste="v-code">Paste</button>
+                                </span>
+                            </label>
+                            <button type="submit" id="v-check" class="btn primary v-submit">Check and verify</button>
+                            <p id="v-error" class="v-error" role="alert"></p>
+                        </form>
+                        <div id="v-result" class="v-result" role="status" hidden>
+                            <p id="v-title" class="v-title"></p>
+                            <p class="vlabel">Reply to send</p>
+                            <p id="v-reply" class="v-reply"></p>
+                            <div class="v-actions">
+                                <button type="button" class="btn primary" id="v-copy">Copy reply</button>
+                                <a class="btn" id="v-wa" target="_blank" rel="noopener">Reply on WhatsApp</a>
+                            </div>
+                            <button type="button" class="btn v-next" id="v-next">Verify another</button>
+                        </div>
+                    </div>
+                </section>
                 <section class="tab-panel" id="tab-overview"></section>
                 <section class="tab-panel" id="tab-users" hidden></section>
                 <section class="tab-panel" id="tab-rewards" hidden></section>

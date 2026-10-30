@@ -1,11 +1,14 @@
 {
   "name": "PikaShot",
   "short_name": "PikaShot",
+  "id": "/",
   "description": "Fast sales and inventory tracking for informal retailers.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#008C95",
   "theme_color": "#008C95",
+  "prefer_related_applications": false,
   "icons": [
     {
       "src": "/icons/icon-192.png",

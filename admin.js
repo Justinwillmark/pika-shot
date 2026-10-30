@@ -73,9 +73,26 @@ document.addEventListener('DOMContentLoaded', () => {
         calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
         chevronRight: '<polyline points="9 18 15 12 9 6"/>',
         back: '<polyline points="15 18 9 12 15 6"/>',
+        shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/>',
         close: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>'
     };
     const icon = (name, size = 18) => `<svg class="ico" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ''}</svg>`;
+    // On phones the dashboard is only the sign-up verification tool
+    const PHONE_ONLY = window.matchMedia('(max-width: 699px)');
+    const CODE_TTL_MS = 20 * 60 * 1000; // must match the app
+    const REPLIES = {
+        verified: 'Verified. Please return to PikaShot to create your account now. Thanks',
+        missing: "We couldn't find a PikaShot sign-up for this number. Please open PikaShot, enter this WhatsApp number on the sign-up screen and send the code it shows you. Thanks",
+        mismatch: 'That code doesn\'t match. Please open PikaShot and tap "Tap to verify on WhatsApp" to send the code shown on your screen. Thanks',
+        expired: 'That code has expired. Please open PikaShot, tap "Get a new code" and send the new code here. Thanks'
+    };
+    // +234 803 123 4567, 2348031234567 and 08031234567 all become 08031234567, the form the app saves
+    const localPhone = (v) => {
+        let d = String(v || '').replace(/\D/g, '');
+        if (d.startsWith('234')) d = d.slice(3);
+        if (d.length === 10) d = '0' + d;
+        return d;
+    };
     const NAV = [['overview', 'Overview', 'grid'], ['users', 'Users', 'users'], ['rewards', 'Rewards', 'award'], ['insights', 'Insights', 'trend'], ['activity', 'Activity', 'pulse']];
 
     const App = {
@@ -117,6 +134,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
             $('main').addEventListener('click', (e) => this.onClick(e));
+            $('verify-form').addEventListener('submit', (e) => this.verifySignup(e));
+            $('verify').addEventListener('click', (e) => { const b = e.target.closest('[data-paste]'); if (b) this.pasteInto(b.dataset.paste); });
+            $('v-copy').addEventListener('click', () => this.copyReply());
+            $('v-next').addEventListener('click', () => this.resetVerify());
+            PHONE_ONLY.addEventListener('change', () => {
+                this.renderChrome();
+                if (!PHONE_ONLY.matches && !this.state.loaded && $('dashboard-container').style.display !== 'none') this.refresh();
+            });
             $('main').addEventListener('input', (e) => this.onInput(e));
             $('main').addEventListener('change', (e) => this.onInput(e));
             $('main').addEventListener('toggle', (e) => this.onToggle(e), true);
@@ -141,7 +166,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     $('login-modal').style.display = 'none';
                     $('dashboard-container').style.display = ''; // the stylesheet decides the layout
                     this.renderChrome();
-                    this.refresh();
+                    if (!PHONE_ONLY.matches) this.refresh(); // phones only verify sign-ups, so nothing else is downloaded
                 } else {
                     $('login-modal').style.display = 'flex';
                     $('dashboard-container').style.display = 'none';
@@ -163,6 +188,90 @@ document.addEventListener('DOMContentLoaded', () => {
                     'auth/network-request-failed': 'No connection. Check your internet.'
                 };
                 $('error-message').textContent = messages[error.code] || 'Wrong email or password.';
+            }
+        },
+
+        // ================= sign-up verification =================
+        // The app saved signup_verifications/{phone} = { code, createdAt, verified } when the user asked for a code.
+        // A match within 20 minutes marks it verified, and the app then opens Create Account by itself.
+        async verifySignup(e) {
+            e.preventDefault();
+            const fb = window.fb;
+            const err = $('v-error');
+            const phone = localPhone($('v-phone').value);
+            const code = (String($('v-code').value).match(/\d{4}/) || [])[0];
+            err.textContent = '';
+            if (!/^0\d{10}$/.test(phone)) { err.textContent = 'Enter the WhatsApp number the code came from.'; $('v-phone').focus(); return; }
+            if (!code) { err.textContent = 'Enter the 4-digit code from the message.'; $('v-code').focus(); return; }
+            const btn = $('v-check');
+            btn.disabled = true;
+            btn.textContent = 'Checking…';
+            try {
+                const ref = fb.doc(fb.db, 'signup_verifications', phone);
+                const snap = await fb.getDoc(ref);
+                const d = snap.exists() ? snap.data() : null;
+                const age = d ? Date.now() - (toMs(d.createdAt) || 0) : Infinity;
+                let result;
+                if (!d) result = { ok: false, title: `No sign-up found for ${phone}`, reply: REPLIES.missing };
+                else if (String(d.code) !== code) result = { ok: false, title: 'The code does not match', reply: REPLIES.mismatch };
+                else if (d.verified) result = { ok: true, title: 'Already verified', reply: REPLIES.verified };
+                else if (age > CODE_TTL_MS) result = { ok: false, title: `The code expired (${Math.floor(age / 60000)} min old)`, reply: REPLIES.expired };
+                else {
+                    await fb.setDoc(ref, { verified: true, verifiedAt: fb.Timestamp.fromMillis(Date.now()) }, { merge: true });
+                    result = { ok: true, title: `Verified ${phone}`, reply: REPLIES.verified };
+                }
+                this.showVerifyResult(result, phone);
+            } catch (error) {
+                console.error('Sign-up check failed:', error);
+                err.textContent = error && error.code === 'permission-denied'
+                    ? 'The Firestore rules do not let the dashboard check sign-up codes yet.'
+                    : 'Could not check. Check your connection and try again.';
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Check and verify';
+            }
+        },
+
+        showVerifyResult(result, phone) {
+            this._reply = result.reply;
+            $('verify-form').hidden = true;
+            $('v-result').hidden = false;
+            $('v-result').className = `v-result ${result.ok ? 'ok' : 'bad'}`;
+            $('v-title').textContent = result.title;
+            $('v-reply').textContent = result.reply;
+            $('v-wa').href = `https://wa.me/234${phone.slice(1)}?text=${encodeURIComponent(result.reply)}`;
+        },
+
+        resetVerify() {
+            $('v-result').hidden = true;
+            $('verify-form').hidden = false;
+            $('v-phone').value = '';
+            $('v-code').value = '';
+            $('v-error').textContent = '';
+            $('v-phone').focus();
+        },
+
+        async copyReply() {
+            try {
+                await navigator.clipboard.writeText(this._reply || '');
+                this.toast('Reply copied');
+            } catch (e) {
+                const range = document.createRange();
+                range.selectNodeContents($('v-reply'));
+                const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+                this.toast('Reply selected. Copy it from the menu.');
+            }
+        },
+
+        async pasteInto(id) {
+            const input = $(id);
+            try {
+                const text = (await navigator.clipboard.readText()).trim();
+                input.value = id === 'v-code' ? ((text.match(/\d{4}/) || [text])[0]) : text;
+                $('v-error').textContent = '';
+            } catch (e) {
+                input.focus();
+                this.toast('Long-press the box and choose Paste');
             }
         },
 
@@ -479,7 +588,8 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             document.querySelectorAll('[data-period]').forEach((b) => b.classList.toggle('active', b.dataset.period === st.period));
             document.querySelectorAll('.tab-panel').forEach((p) => { p.hidden = p.id !== `tab-${st.tab}`; });
-            $('page-title').textContent = titles[st.tab];
+            $('verify').hidden = !(PHONE_ONLY.matches || st.tab === 'users');
+            $('page-title').textContent = PHONE_ONLY.matches ? 'Verify sign-ups' : titles[st.tab];
             const r = st.loaded && this.m ? this.m.r : null;
             // On phones the period picker already says "7 days", so only the dates are shown
             $('page-sub').innerHTML = r ? (r.span ? `<span class="lead-part">${esc(r.lead)} · </span>${esc(r.span)}` : esc(r.lead)) : '';
