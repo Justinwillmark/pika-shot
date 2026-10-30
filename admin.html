@@ -2,8 +2,12 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#ffffff">
     <title>Admin Dashboard - PikaShot</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
     <link rel="stylesheet" href="admin.css">
 
     <script type="module">
@@ -43,68 +47,81 @@
 <body>
 
     <div id="login-modal" class="modal-overlay">
-        <form id="login-form" class="modal-content">
-            <h2>Admin Login</h2>
+        <form id="login-form" class="login-card">
+            <span class="logo logo-lg">P</span>
+            <h2>Admin sign in</h2>
+            <p class="login-sub">See how PikaShot is being used.</p>
             <input type="email" id="email-input" placeholder="Email" autocomplete="username" required>
             <input type="password" id="password-input" placeholder="Password" autocomplete="current-password" required>
-            <button type="submit">Login</button>
-            <p id="error-message" class="error"></p>
+            <button type="submit">Sign in</button>
+            <p id="error-message" class="error" role="alert"></p>
         </form>
     </div>
 
-    <div id="dashboard-container" class="app" style="display: none;">
-        <header class="topbar">
-            <div class="topbar-row">
-                <div class="brand">
-                    <span class="logo">P</span>
-                    <span class="brand-name">PikaShot <em>Admin</em></span>
-                </div>
-                <div class="top-actions">
-                    <button id="since-btn" class="pill-btn" type="button" title="Choose the date to count from"></button>
-                    <button id="refresh-btn" class="icon-btn" type="button" title="Refresh data" aria-label="Refresh data">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
-                    </button>
-                    <button id="signout-btn" class="pill-btn quiet" type="button">Sign out</button>
-                </div>
+    <div id="dashboard-container" class="shell" style="display: none;">
+
+        <aside class="rail" aria-label="Main">
+            <div class="brand">
+                <span class="logo">P</span>
+                <span class="brand-name">PikaShot</span>
+                <span class="brand-tag">Admin</span>
             </div>
-            <div class="controls">
-                <nav class="tabs" id="tabs" aria-label="Dashboard sections">
-                    <button type="button" data-tab="overview">Overview</button>
-                    <button type="button" data-tab="users">Users</button>
-                    <button type="button" data-tab="rewards">Rewards</button>
-                    <button type="button" data-tab="insights">Insights</button>
-                    <button type="button" data-tab="activity">Activity</button>
-                </nav>
+            <nav class="nav" id="rail-nav" aria-label="Sections"></nav>
+            <div class="rail-foot">
+                <button type="button" class="since" data-act="since" title="Choose the date to count from">
+                    <span class="since-ico" data-icon="calendar"></span>
+                    <span class="since-text"><b data-since-text>Counting all time</b><small>Change start date</small></span>
+                </button>
+                <button type="button" class="rail-link" data-act="signout"><span data-icon="logout"></span>Sign out</button>
+            </div>
+        </aside>
+
+        <div class="stage">
+            <header class="top">
+                <div class="top-row">
+                    <span class="logo logo-sm">P</span>
+                    <div class="top-title">
+                        <h1 id="page-title">Overview</h1>
+                        <p id="page-sub"></p>
+                    </div>
+                    <div class="top-actions">
+                        <button type="button" class="icon-btn only-small since-dot" data-act="since" aria-label="Choose the date to count from" data-icon="calendar"></button>
+                        <button type="button" class="icon-btn" data-act="refresh" aria-label="Refresh data" title="Refresh data" data-icon="refresh"></button>
+                        <button type="button" class="icon-btn only-small" data-act="signout" aria-label="Sign out" data-icon="logout"></button>
+                    </div>
+                </div>
                 <div class="seg" id="period" role="group" aria-label="Time period">
-                    <button type="button" data-period="7">7D</button>
-                    <button type="button" data-period="30">30D</button>
-                    <button type="button" data-period="90">90D</button>
+                    <button type="button" data-period="7">7 days</button>
+                    <button type="button" data-period="30">30 days</button>
+                    <button type="button" data-period="90">90 days</button>
                     <button type="button" data-period="all">All</button>
                 </div>
-            </div>
-        </header>
+            </header>
 
-        <div id="notice" class="notice" hidden></div>
+            <div id="notice" class="notice" role="status" hidden></div>
 
-        <main id="main">
-            <section class="tab-panel" id="tab-overview"></section>
-            <section class="tab-panel" id="tab-users" hidden></section>
-            <section class="tab-panel" id="tab-rewards" hidden></section>
-            <section class="tab-panel" id="tab-insights" hidden></section>
-            <section class="tab-panel" id="tab-activity" hidden></section>
-        </main>
+            <main id="main">
+                <section class="tab-panel" id="tab-overview"></section>
+                <section class="tab-panel" id="tab-users" hidden></section>
+                <section class="tab-panel" id="tab-rewards" hidden></section>
+                <section class="tab-panel" id="tab-insights" hidden></section>
+                <section class="tab-panel" id="tab-activity" hidden></section>
+            </main>
+        </div>
+
+        <nav class="bottom-nav nav" id="bottom-nav" aria-label="Sections"></nav>
     </div>
 
     <div id="sheet" class="sheet" hidden>
         <div class="sheet-backdrop" data-close></div>
         <div class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
             <div class="sheet-head">
-                <button id="sheet-back" class="icon-btn" type="button" aria-label="Back" hidden>&larr;</button>
+                <button id="sheet-back" class="icon-btn" type="button" aria-label="Back" data-icon="back" hidden></button>
                 <div class="sheet-titles">
                     <h2 id="sheet-title"></h2>
                     <p id="sheet-sub"></p>
                 </div>
-                <button class="icon-btn" type="button" data-close aria-label="Close">&times;</button>
+                <button class="icon-btn" type="button" data-close aria-label="Close" data-icon="close"></button>
             </div>
             <div id="sheet-body" class="sheet-body"></div>
         </div>

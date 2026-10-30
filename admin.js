@@ -55,6 +55,29 @@ document.addEventListener('DOMContentLoaded', () => {
     const readLocal = (key) => { try { return JSON.parse(localStorage.getItem(key)); } catch (e) { return null; } };
     const writeLocal = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* private mode */ } };
 
+    // Line icons (24px grid, drawn with the current text colour)
+    const ICONS = {
+        grid: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/>',
+        users: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+        award: '<circle cx="12" cy="8" r="6"/><path d="M15.48 12.89 17 22l-5-3-5 3 1.52-9.11"/>',
+        trend: '<polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>',
+        pulse: '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',
+        repeat: '<polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>',
+        userMinus: '<path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="17" y1="11" x2="23" y2="11"/>',
+        bag: '<path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/>',
+        box: '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>',
+        send: '<line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/>',
+        check: '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>',
+        refresh: '<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>',
+        logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>',
+        calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
+        chevronRight: '<polyline points="9 18 15 12 9 6"/>',
+        back: '<polyline points="15 18 9 12 15 6"/>',
+        close: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>'
+    };
+    const icon = (name, size = 18) => `<svg class="ico" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ''}</svg>`;
+    const NAV = [['overview', 'Overview', 'grid'], ['users', 'Users', 'users'], ['rewards', 'Rewards', 'award'], ['insights', 'Insights', 'trend'], ['activity', 'Activity', 'pulse']];
+
     const App = {
         D: null,           // everything loaded from Firestore, tidied
         act: new Map(),    // user id -> { days, first, last } across all counted activity
@@ -77,11 +100,22 @@ document.addEventListener('DOMContentLoaded', () => {
         // ================= sign-in =================
         init() {
             $('login-form').addEventListener('submit', (e) => this.handleLogin(e));
-            $('signout-btn').addEventListener('click', () => window.fb.signOut(window.fb.auth));
-            $('refresh-btn').addEventListener('click', () => this.refresh());
-            $('since-btn').addEventListener('click', () => this.openSinceSheet());
-            $('tabs').addEventListener('click', (e) => { const b = e.target.closest('[data-tab]'); if (b) this.setTab(b.dataset.tab); });
-            $('period').addEventListener('click', (e) => { const b = e.target.closest('[data-period]'); if (b) this.setPeriod(b.dataset.period); });
+            const navHtml = NAV.map(([key, label, ico]) => `<button type="button" data-tab="${key}">${icon(ico, 20)}<span>${label}</span></button>`).join('');
+            $('rail-nav').innerHTML = navHtml;
+            $('bottom-nav').innerHTML = navHtml;
+            document.querySelectorAll('[data-icon]').forEach((el) => { el.innerHTML = icon(el.dataset.icon); });
+            document.addEventListener('click', (e) => {
+                const hit = (sel) => e.target.closest(sel);
+                let el;
+                if ((el = hit('[data-tab]'))) return this.setTab(el.dataset.tab);
+                if ((el = hit('[data-period]'))) return this.setPeriod(el.dataset.period);
+                if ((el = hit('[data-act]'))) {
+                    const act = el.dataset.act;
+                    if (act === 'refresh') this.refresh();
+                    else if (act === 'since') this.openSinceSheet();
+                    else if (act === 'signout') window.fb.signOut(window.fb.auth);
+                }
+            });
             $('main').addEventListener('click', (e) => this.onClick(e));
             $('main').addEventListener('input', (e) => this.onInput(e));
             $('main').addEventListener('change', (e) => this.onInput(e));
@@ -105,7 +139,7 @@ document.addEventListener('DOMContentLoaded', () => {
             window.fb.onAuthStateChanged(window.fb.auth, (user) => {
                 if (user) {
                     $('login-modal').style.display = 'none';
-                    $('dashboard-container').style.display = 'block';
+                    $('dashboard-container').style.display = ''; // the stylesheet decides the layout
                     this.renderChrome();
                     this.refresh();
                 } else {
@@ -134,8 +168,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // ================= loading =================
         async refresh() {
-            const btn = $('refresh-btn');
-            btn.classList.add('loading');
+            const spinners = document.querySelectorAll('[data-act="refresh"]');
+            spinners.forEach((b) => b.classList.add('loading'));
             if (!this.state.loaded) $(`tab-${this.state.tab}`).innerHTML = '<p class="empty">Loading…</p>';
             try {
                 await this.loadAll();
@@ -146,7 +180,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.error('Error loading dashboard data:', error);
                 this.toast('Could not load the data. Check your connection and try again.');
             } finally {
-                btn.classList.remove('loading');
+                spinners.forEach((b) => b.classList.remove('loading'));
             }
         },
 
@@ -312,7 +346,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const sinceLabel = floor ? `Since ${fmtDay(floor)}` : 'All time';
             if (p === 'all') {
                 const from = floor || this.D.minT || today0;
-                return { key: 'all', from, to: now + 1, prev: null, days: Math.max(1, dayNum(now) - dayNum(from) + 1), label: sinceLabel, short: sinceLabel };
+                return { key: 'all', from, to: now + 1, prev: null, days: Math.max(1, dayNum(now) - dayNum(from) + 1), lead: sinceLabel, span: '', label: sinceLabel, short: sinceLabel };
             }
             const days = PERIODS[p];
             const dayStart = (back) => { const d = new Date(today0); d.setDate(d.getDate() - back); return d.getTime(); }; // local midnight, safe across clock changes
@@ -325,9 +359,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const covered = this.D.minT != null && this.D.minT <= prevFrom + DAY;
             const prev = !clipped && prevFrom >= floor && covered ? { from: prevFrom, to: wanted } : null;
             const shown = Math.max(1, dayNum(now) - dayNum(from) + 1);
+            const lead = clipped ? `${sinceLabel} · ${plural(shown, 'day')}` : `Last ${days} days`;
+            const tail = clipped ? '' : span;
             return {
-                key: p, from, to: now + 1, prev, days: shown,
-                label: clipped ? `${sinceLabel} · ${plural(shown, 'day')}` : `Last ${days} days · ${span}`,
+                key: p, from, to: now + 1, prev, days: shown, lead, span: tail,
+                label: tail ? `${lead} · ${tail}` : lead,
                 short: clipped ? sinceLabel : `${p}D · ${span}`
             };
         },
@@ -435,10 +471,21 @@ document.addEventListener('DOMContentLoaded', () => {
         // ================= rendering: shared =================
         renderChrome() {
             const st = this.state;
-            document.querySelectorAll('#tabs [data-tab]').forEach((b) => b.classList.toggle('active', b.dataset.tab === st.tab));
-            document.querySelectorAll('#period [data-period]').forEach((b) => b.classList.toggle('active', b.dataset.period === st.period));
+            const titles = { overview: 'Overview', users: 'Users', rewards: 'Rewards', insights: 'Insights', activity: 'Activity' };
+            document.querySelectorAll('[data-tab]').forEach((b) => {
+                const on = b.dataset.tab === st.tab;
+                b.classList.toggle('active', on);
+                if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+            });
+            document.querySelectorAll('[data-period]').forEach((b) => b.classList.toggle('active', b.dataset.period === st.period));
             document.querySelectorAll('.tab-panel').forEach((p) => { p.hidden = p.id !== `tab-${st.tab}`; });
-            $('since-btn').textContent = st.floor ? `Counting from ${fmtDay(st.floor)}` : 'Counting all time';
+            $('page-title').textContent = titles[st.tab];
+            const r = st.loaded && this.m ? this.m.r : null;
+            // On phones the period picker already says "7 days", so only the dates are shown
+            $('page-sub').innerHTML = r ? (r.span ? `<span class="lead-part">${esc(r.lead)} · </span>${esc(r.span)}` : esc(r.lead)) : '';
+            const since = st.floor ? `Counting from ${fmtDay(st.floor)}` : 'Counting all time';
+            document.querySelectorAll('[data-since-text]').forEach((el) => { el.textContent = since; });
+            document.querySelectorAll('[data-act="since"]').forEach((el) => el.classList.toggle('on', !!st.floor));
 
             const notes = [];
             if (st.problems.length) {
@@ -482,20 +529,21 @@ document.addEventListener('DOMContentLoaded', () => {
         who(uid, sub, rank) {
             const u = this.D.byId.get(uid);
             const name = u ? (u.name || u.business || u.phone) : uid;
-            const line = sub != null ? sub : (u ? [u.business && u.business !== name ? u.business : '', u.type, u.location].filter(Boolean).join(' · ') : '');
-            const badge = rank ? `<span class="rank ${rank <= 3 ? 'top' : ''}">${rank}</span>` : '';
-            return `<div class="who">${badge}<span class="avatar">${esc(initials(name))}</span><div><div class="n">${esc(name)}</div><div class="s">${esc(line)}</div></div></div>`;
+            const line = sub != null ? sub : (u ? (u.business && u.business !== name ? u.business : [u.type, u.location].filter(Boolean).join(' · ')) : '');
+            const badge = rank ? `<span class="rank ${rank <= 3 ? 'podium' : ''}">${rank}</span>` : '';
+            const tone = [...String(name)].reduce((a, c) => a + c.charCodeAt(0), 0) % 6; // the same person always gets the same colour
+            return `<div class="who">${badge}<span class="avatar av-${tone}">${esc(initials(name))}</span><div><div class="n">${esc(name)}</div><div class="s">${esc(line)}</div></div></div>`;
         },
 
         userName(uid) { const u = this.D.byId.get(uid); return u ? (u.name || u.business || u.phone) : uid; },
 
         delta(cur, prev, goodWhenUp = true) {
-            if (prev == null) return { text: '', cls: '' };
-            if (prev === 0) return cur > 0 ? { text: 'New this period', cls: goodWhenUp ? 'up' : 'down' } : { text: 'No change', cls: '' };
+            if (prev == null) return { pill: '', cls: '' };
+            if (prev === 0) return cur > 0 ? { pill: 'New', cls: goodWhenUp ? 'up' : 'down' } : { pill: '0%', cls: '' };
             const change = Math.round(((cur - prev) / prev) * 100);
-            if (change === 0) return { text: 'No change vs before', cls: '' };
+            if (change === 0) return { pill: '0%', cls: '' };
             const up = change > 0;
-            return { text: `${up ? '▲' : '▼'} ${Math.abs(change)}% vs before`, cls: up === goodWhenUp ? 'up' : 'down' };
+            return { pill: `${up ? '↑' : '↓'} ${Math.abs(change)}%`, cls: up === goodWhenUp ? 'up' : 'down' };
         },
 
         exportCsv(name, headers, rows) {
@@ -513,29 +561,92 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         // ================= Overview =================
+        buckets() {
+            const r = this.m.r;
+            const first = dayNum(r.from), last = dayNum(r.to - 1);
+            const span = last - first + 1;
+            const size = span > 45 ? 7 : 1; // weeks on long periods, days otherwise
+            return { first, size, n: Math.ceil(span / size), idx: (t) => Math.floor((dayNum(t) - first) / size) };
+        },
+
+        // One number per day (or per week) for the big chart and for the trend line on each card
+        series(kind) {
+            const m = this.m, r = m.r, D = this.D, b = this.buckets();
+            const sets = () => Array.from({ length: b.n }, () => new Set());
+            const sizes = (list) => list.map((s) => s.size);
+            const inR = (t) => t >= r.from && t < r.to;
+            if (kind === 'users' || kind === 'returning') {
+                const found = sets();
+                m.cur.forEach((s, uid) => {
+                    const a = this.act.get(uid);
+                    const firstDay = a ? dayNum(a.first) : Infinity;
+                    s.days.forEach((d) => {
+                        if (kind === 'returning' && !(firstDay < d)) return; // a first-ever day is not a return
+                        const i = Math.floor((d - b.first) / b.size);
+                        if (i >= 0 && i < b.n) found[i].add(uid);
+                    });
+                });
+                return sizes(found);
+            }
+            if (kind === 'sales') {
+                const v = new Array(b.n).fill(0);
+                D.sales.forEach((x) => { if (inR(x.t)) v[b.idx(x.t)] += x.value; });
+                return v;
+            }
+            if (kind === 'products') {
+                const found = sets();
+                D.sales.forEach((x) => { const k = this.productKey(x); if (k && inR(x.t)) found[b.idx(x.t)].add(k); });
+                return sizes(found);
+            }
+            if (kind === 'senders') { const found = sets(); m.sentList.forEach((x) => found[b.idx(x.t)].add(x.from)); return sizes(found); }
+            if (kind === 'accepters') { const found = sets(); m.acceptedList.forEach((x) => found[b.idx(x.claimedAt)].add(x.by)); return sizes(found); }
+            const v = new Array(b.n).fill(0); // transfers sent
+            m.sentList.forEach((x) => { v[b.idx(x.t)]++; });
+            return v;
+        },
+
+        spark(values, id) {
+            const pts = values.length > 1 ? values : [values[0] || 0, values[0] || 0];
+            const W = 100, H = 40, pad = 4;
+            const max = Math.max(...pts, 1);
+            const xy = pts.map((v, i) => [(i / (pts.length - 1)) * W, H - pad - (v / max) * (H - pad * 2)]);
+            const line = xy.map(([x, y], i) => {
+                if (!i) return `M${x.toFixed(2)} ${y.toFixed(2)}`;
+                const cx = ((xy[i - 1][0] + x) / 2).toFixed(2);
+                return `C${cx} ${xy[i - 1][1].toFixed(2)} ${cx} ${y.toFixed(2)} ${x.toFixed(2)} ${y.toFixed(2)}`;
+            }).join(' ');
+            return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="sg-${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="currentColor" stop-opacity="0.18"/><stop offset="1" stop-color="currentColor" stop-opacity="0"/></linearGradient></defs><path d="${line} L${W} ${H} L0 ${H} Z" fill="url(#sg-${id})"/><path d="${line}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>`;
+        },
+
         metricList() {
             const m = this.m, r = m.r;
             const d = (cur, prev, good) => this.delta(cur, prev, good);
+            const money = (n) => (n >= 1e7 ? `₦${+(n / 1e6).toFixed(1)}M` : naira(n));
+            const vs = r.prev ? `vs previous ${PERIODS[r.key]} days` : '';
             return [
-                { id: 'returning', label: 'Returning users', value: num(m.returning.length), delta: d(m.returning.length, m.prevReturning && m.prevReturning.length, true), sub: `${m.dauAvg.toFixed(1)} active per day`, period: r.short },
-                { id: 'dropped', label: 'Dropped off', value: num(m.dropped.length), delta: { text: '', cls: '' }, sub: `of ${num(m.everActive)} who used the app`, period: `Silent ${DROP_DAYS}+ days`, fixed: true },
-                { id: 'volume', label: 'Sales volume', value: naira(m.volume), delta: d(m.volume, m.prevVolume, true), sub: plural(m.salesCount, 'sale'), period: r.short },
-                { id: 'products', label: 'Products sold', value: num(m.products.size), delta: d(m.products.size, m.prevProducts && m.prevProducts.size, true), sub: plural(m.units, 'unit') + ' sold', period: r.short },
-                { id: 'senders', label: 'Users transferring', value: num(m.senders.length), delta: d(m.senders.length, m.prevSenders && m.prevSenders.length, true), sub: plural(m.sentList.length, 'transfer') + ' sent', period: r.short },
-                { id: 'accepters', label: 'Users accepting', value: num(m.accepters.length), delta: d(m.accepters.length, m.prevAccepters && m.prevAccepters.length, true), sub: m.sentList.length ? `${m.acceptRate}% of sent transfers accepted` : 'No transfers sent', period: r.short }
+                { id: 'returning', label: 'Returning users', icon: 'repeat', tone: 'teal', value: num(m.returning.length), delta: d(m.returning.length, m.prevReturning && m.prevReturning.length, true), sub: `${m.dauAvg.toFixed(1)} active per day`, series: 'returning', period: r.short, vs },
+                { id: 'dropped', label: 'Dropped off', icon: 'userMinus', tone: 'rose', value: num(m.dropped.length), delta: { pill: m.everActive ? `${pct(m.dropped.length, m.everActive)}%` : '', cls: m.dropped.length ? 'down' : '' }, sub: `of ${num(m.everActive)} who used the app`, meter: pct(m.dropped.length, m.everActive), period: `Silent ${DROP_DAYS}+ days`, fixed: true },
+                { id: 'volume', label: 'Sales volume', icon: 'bag', tone: 'green', value: money(m.volume), title: naira(m.volume), delta: d(m.volume, m.prevVolume, true), sub: plural(m.salesCount, 'sale'), series: 'sales', period: r.short, vs },
+                { id: 'products', label: 'Products sold', icon: 'box', tone: 'amber', value: num(m.products.size), delta: d(m.products.size, m.prevProducts && m.prevProducts.size, true), sub: `${plural(m.units, 'unit')} sold`, series: 'products', period: r.short, vs },
+                { id: 'senders', label: 'Users transferring', icon: 'send', tone: 'blue', value: num(m.senders.length), delta: d(m.senders.length, m.prevSenders && m.prevSenders.length, true), sub: `${plural(m.sentList.length, 'transfer')} sent`, series: 'senders', period: r.short, vs },
+                { id: 'accepters', label: 'Users accepting', icon: 'check', tone: 'violet', value: num(m.accepters.length), delta: d(m.accepters.length, m.prevAccepters && m.prevAccepters.length, true), sub: m.sentList.length ? `${m.acceptRate}% of sent transfers accepted` : 'No transfers sent', series: 'accepters', period: r.short, vs }
             ];
         },
 
         renderOverview() {
             const m = this.m, r = m.r;
-            const cards = this.metricList().map((c) => `
-                <button type="button" class="metric" data-metric="${c.id}">
-                    <span class="m-label">${esc(c.label)}</span>
-                    <span class="m-value">${esc(c.value)}</span>
-                    <span class="m-delta ${c.delta.cls}">${esc(c.delta.text) || '&nbsp;'}</span>
-                    <span class="m-sub">${esc(c.sub)}</span>
-                    <span class="m-period"><b>${esc(c.period)}</b><span>See who ›</span></span>
-                </button>`).join('');
+            const cards = this.metricList().map((c) => {
+                const size = c.value.length >= 10 ? 'v-l' : c.value.length >= 8 ? 'v-m' : '';
+                const trend = c.series ? this.spark(this.series(c.series), c.id) : `<span class="meter"><i style="width:${c.meter}%"></i></span>`;
+                return `
+                <button type="button" class="kpi tone-${c.tone}" data-metric="${c.id}" title="See the users behind this">
+                    <span class="kpi-head"><span class="kpi-icon">${icon(c.icon, 16)}</span><span class="kpi-label">${esc(c.label)}</span><span class="kpi-go">${icon('chevronRight', 16)}</span></span>
+                    <span class="kpi-figure"><span class="kpi-value ${size}" title="${esc(c.title || c.value)}">${esc(c.value)}</span>${c.delta.pill ? `<span class="delta ${c.delta.cls}">${esc(c.delta.pill)}</span>` : ''}</span>
+                    <span class="kpi-sub">${esc(c.sub)}</span>
+                    <span class="kpi-trend">${trend}</span>
+                    <span class="kpi-foot"><span>${esc(c.period)}</span>${c.vs ? `<span>${esc(c.vs)}</span>` : ''}</span>
+                </button>`;
+            }).join('');
 
             const ranked = [...m.cur].map(([uid, s]) => ({ uid, s, pts: this.points(s) })).filter((x) => x.pts > 0).sort((a, b) => b.pts - a.pts).slice(0, 5);
             const topHtml = ranked.length ? this.table('1fr', '', ranked.map((x, i) => `
@@ -548,7 +659,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 .map((u) => ({ u, a: this.act.get(u.id) })).sort((a, b) => b.a.days.size - a.a.days.size || b.a.last - a.a.last).slice(0, 5);
             const slipHtml = slipping.length ? this.table('1fr', '', slipping.map((x) => `
                 <div class="tr compact" data-user="${esc(x.u.id)}" style="--cols:1fr auto">
-                    <div class="td">${this.who(x.u.id, `Used it on ${plural(x.a.days.size, 'day')} · ${[x.u.type, x.u.location].filter(Boolean).join(' · ')}`)}</div>
+                    <div class="td">${this.who(x.u.id, `Used it on ${plural(x.a.days.size, 'day')}`)}</div>
                     <div class="td num"><span class="pill ${this.statusOf(x.u)}">${esc(ago(x.a.last))}</span></div>
                 </div>`).join('')) : '<p class="empty">Nobody is slipping away. Nice.</p>';
 
@@ -563,11 +674,11 @@ document.addEventListener('DOMContentLoaded', () => {
             ].map(([l, v]) => `<div class="mini"><div class="v">${typeof v === 'number' ? num(v) : esc(v)}</div><div class="l">${esc(l)}</div></div>`).join('');
 
             $('tab-overview').innerHTML = `
-                <div class="cards">${cards}</div>
+                <div class="kpi-grid">${cards}</div>
                 <div class="panel">
                     <div class="panel-head">
-                        <h3>Day by day</h3>
-                        <div class="seg" id="chart-by">
+                        <h3>Activity by day</h3>
+                        <div class="seg seg-sm" id="chart-by">
                             ${[['users', 'Active users'], ['sales', 'Sales'], ['transfers', 'Transfers']].map(([k, l]) => `<button type="button" data-chart="${k}" class="${this.state.chartBy === k ? 'active' : ''}">${l}</button>`).join('')}
                         </div>
                     </div>
@@ -591,33 +702,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
         chartHtml() {
             const m = this.m, r = m.r, by = this.state.chartBy;
-            const first = dayNum(r.from), last = dayNum(r.to - 1);
-            const span = last - first + 1;
-            const size = span > 45 ? 7 : 1;
-            const n = Math.ceil(span / size);
-            const idx = (t) => Math.floor((dayNum(t) - first) / size);
-            const sets = Array.from({ length: n }, () => new Set());
-            const vals = new Array(n).fill(0);
-            if (by === 'users') {
-                m.cur.forEach((s, uid) => s.days.forEach((d) => { const i = Math.floor((d - first) / size); if (i >= 0 && i < n) sets[i].add(uid); }));
-                sets.forEach((set, i) => { vals[i] = set.size; });
-            } else if (by === 'sales') {
-                this.D.sales.forEach((x) => { if (x.t >= r.from && x.t < r.to) vals[idx(x.t)] += x.value; });
-            } else {
-                m.sentList.forEach((x) => { vals[idx(x.t)]++; });
-            }
+            const b = this.buckets();
+            const vals = this.series(by);
+            const n = b.n, size = b.size;
             const max = niceMax(Math.max(...vals, 0));
             const dayMs = (i) => { const d = new Date(r.from); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + i); return d.getTime(); };
-            const W = Math.max(280, Math.min(1180, document.documentElement.clientWidth) - 80), H = 180, L = 38, B = 22, T = 8;
-            const bw = (W - L - 4) / n;
+            const host = $('tab-overview').clientWidth;
+            const W = Math.max(260, (host || 640) - 42), H = 190, L = 40, B = 26, T = 10;
+            const bw = (W - L - 2) / n;
             const y = (v) => T + (H - T - B) * (1 - v / max);
-            const label = (v) => by === 'sales' ? `${naira(v)}` : num(v);
+            const label = (v) => (by === 'sales' ? naira(v) : num(v));
             const bars = vals.map((v, i) => {
-                const x = L + i * bw + bw * 0.14, w = Math.max(1.5, bw * 0.72);
+                const w = Math.max(2, Math.min(bw * 0.68, 40)), x = L + i * bw + (bw - w) / 2; // slim bars, centred in their slot
                 const when = size === 1 ? fmtDay(dayMs(i)) : `${fmtDay(dayMs(i * size))} – ${fmtDay(Math.min(dayMs(i * size + size - 1), r.to - 1))}`;
-                return `<rect class="bar" x="${x.toFixed(1)}" y="${y(v).toFixed(1)}" width="${w.toFixed(1)}" height="${Math.max(0, H - B - y(v)).toFixed(1)}" rx="2"><title>${esc(when)}: ${esc(label(v))}</title></rect>`;
+                return `<rect class="bar" x="${x.toFixed(1)}" y="${y(v).toFixed(1)}" width="${w.toFixed(1)}" height="${Math.max(0, H - B - y(v)).toFixed(1)}" rx="${Math.min(4, w / 2).toFixed(1)}"><title>${esc(when)}: ${esc(label(v))}</title></rect>`;
             }).join('');
-            const grid = [0, 0.5, 1].map((f) => `<line class="grid" x1="${L}" x2="${W}" y1="${y(max * f).toFixed(1)}" y2="${y(max * f).toFixed(1)}"/><text x="${L - 6}" y="${(y(max * f) + 3).toFixed(1)}" text-anchor="end">${esc(by === 'sales' ? compact(max * f) : num(max * f))}</text>`).join('');
+            const grid = [0, 0.5, 1].map((f) => `<line class="grid" x1="${L}" x2="${W}" y1="${y(max * f).toFixed(1)}" y2="${y(max * f).toFixed(1)}"/><text x="${L - 8}" y="${(y(max * f) + 3.5).toFixed(1)}" text-anchor="end">${esc(by === 'sales' ? compact(max * f) : num(max * f))}</text>`).join('');
             const xl = [[0, 'start'], [Math.floor((n - 1) / 2), 'middle'], [n - 1, 'end']].filter((p, i, a) => a.findIndex((q) => q[0] === p[0]) === i)
                 .map(([i, anchor]) => `<text x="${(L + i * bw + bw / 2).toFixed(1)}" y="${H - 6}" text-anchor="${anchor}">${esc(fmtDay(dayMs(i * size)))}</text>`).join('');
             const total = by === 'users' ? `${m.dauAvg.toFixed(1)} on an average day` : by === 'sales' ? `${naira(m.volume)} in total` : `${plural(m.sentList.length, 'transfer')} sent`;
@@ -721,7 +821,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 html: `
                     <div class="actions"><span class="pill ${status}">${esc(this.statusLabel[status])}</span>${isNew ? '<span class="pill new">New</span>' : ''}${u.location ? `<span class="pill">${esc(u.location)}</span>` : ''}</div>
                     <div><p class="lead" style="margin-bottom:8px">${esc(m.r.label)}</p>
-                    <div class="kpis">${kpi(num(s.days.size), 'Days active')}${kpi(num(s.sales), 'Sales')}${kpi(naira(s.volume), 'Volume')}${kpi(num(s.sent), 'Sent')}${kpi(num(s.accepted), 'Accepted')}${kpi(num(s.scans), 'Scans')}${kpi(num(s.calls), 'Calls')}</div></div>
+                    <div class="tiles">${kpi(num(s.days.size), 'Days active')}${kpi(num(s.sales), 'Sales')}${kpi(naira(s.volume), 'Volume')}${kpi(num(s.sent), 'Sent')}${kpi(num(s.accepted), 'Accepted')}${kpi(num(s.scans), 'Scans')}${kpi(num(s.calls), 'Calls')}</div></div>
                     <div class="profile-grid">
                         <div><div class="l">Phone</div><div class="v">${u.phone ? `<a class="link-btn" href="tel:${esc(u.phone)}">${esc(u.phone)}</a>` : '—'}</div></div>
                         <div><div class="l">Joined</div><div class="v">${u.createdAt ? esc(fmtDate(u.createdAt)) : (u.joined ? '—' : 'Not yet')}</div></div>
@@ -928,17 +1028,16 @@ document.addEventListener('DOMContentLoaded', () => {
             $('u-insight').textContent = insight;
 
             const shown = rows.slice(0, f.limit);
-            const cols = '2.4fr 1fr 1fr .8fr 1fr 1.1fr';
+            const cols = 'minmax(0, 2.4fr) minmax(0, 1.3fr) minmax(124px, 1.3fr) minmax(0, 1.2fr) minmax(0, 1fr)';
             const html = shown.map((x) => `
                 <div class="tr" data-user="${esc(x.u.id)}" style="--cols:${cols}">
-                    <div class="td">${this.who(x.u.id, [x.u.type, x.u.location, x.u.geo ? 'GPS' : ''].filter(Boolean).join(' · '))}</div>
-                    <div class="td" data-label="Status"><span class="pill ${x.status}">${esc(this.statusLabel[x.status])}</span>${x.u.createdAt && Date.now() - x.u.createdAt <= 7 * DAY ? ' <span class="pill new">New</span>' : ''}</div>
-                    <div class="td" data-label="Last active">${x.a ? esc(ago(x.a.last)) : '—'}</div>
-                    <div class="td num" data-label="Days active">${num(x.s.days.size)}</div>
-                    <div class="td num" data-label="Sales">${x.s.volume ? naira(x.s.volume) : '—'}</div>
+                    <div class="td">${this.who(x.u.id, x.u.business && x.u.business !== x.u.name ? x.u.business : '')}</div>
+                    <div class="td" data-label="Type · place">${esc(x.u.type)}<div class="s">${esc(x.u.location || '—')}${x.u.geo ? ' · GPS' : ''}</div></div>
+                    <div class="td" data-label="Status"><span class="pills"><span class="pill ${x.status}">${esc(this.statusLabel[x.status])}</span>${x.u.createdAt && Date.now() - x.u.createdAt <= 7 * DAY ? '<span class="pill new">New</span>' : ''}</span><div class="s">${x.a ? esc(ago(x.a.last)) : 'Never active'}</div></div>
+                    <div class="td num" data-label="Activity">${x.s.volume ? naira(x.s.volume) : '—'}<div class="s">${x.s.days.size ? `${plural(x.s.days.size, 'day')} active` : 'Not active'}</div></div>
                     <div class="td num" data-label="Sent / accepted">${x.s.sent || x.s.accepted ? `${num(x.s.sent)} / ${num(x.s.accepted)}` : '—'}</div>
                 </div>`).join('');
-            const head = ['User', 'Status', 'Last active', 'Days', 'Sales', 'Sent / accepted'].map((l, i) => `<div class="${i > 2 ? 'num' : ''}">${esc(l)}</div>`).join('');
+            const head = ['User', 'Type & place', 'Status', 'Sales & days', 'Sent / accepted'].map((l, i) => `<div class="${i > 2 ? 'num' : ''}">${esc(l)}</div>`).join('');
             $('u-list').innerHTML = `
                 <div class="panel-head"><h3>${esc(this.m.r.short)}</h3><button class="link-btn" type="button" data-uexport>Export CSV</button></div>
                 ${shown.length ? this.table(cols, head, html) : '<p class="empty">No users match these filters.</p>'}
@@ -985,16 +1084,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const pick = { all: (x) => x.regular || x.star, regular: (x) => x.regular, star: (x) => x.star, both: (x) => x.regular && x.star, any: () => true }[st.filter];
             const rows = all.filter(pick);
             const shown = rows.slice(0, st.limit);
-            const cols = '2.4fr 1fr 1.3fr 1fr .8fr 1.3fr';
-            const head = ['User', 'Days with a sale', 'Sales', 'Sent / accepted', 'Points', 'Badges'].map((l, i) => `<div class="${i > 0 && i < 5 ? 'num' : ''}">${esc(l)}</div>`).join('');
+            const cols = 'minmax(0, 2.4fr) minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, .8fr) minmax(136px, 1.5fr)';
+            const head = ['User', 'Sales', 'Sent / accepted', 'Points', 'Badges'].map((l, i) => `<div class="${i > 0 && i < 4 ? 'num' : ''}">${esc(l)}</div>`).join('');
             const html = shown.map((x, i) => `
                 <div class="tr" data-user="${esc(x.uid)}" style="--cols:${cols}">
                     <div class="td">${this.who(x.uid, undefined, i + 1)}</div>
-                    <div class="td num" data-label="Days with a sale">${num(x.s.sellDays.size)}</div>
-                    <div class="td num" data-label="Sales">${num(x.s.sales)} · ${naira(x.s.volume)}</div>
+                    <div class="td num" data-label="Sales">${naira(x.s.volume)}<div class="s">${plural(x.s.sales, 'sale')} · ${plural(x.s.sellDays.size, 'day')}</div></div>
                     <div class="td num" data-label="Sent / accepted">${num(x.s.sent)} / ${num(x.s.accepted)}</div>
                     <div class="td num" data-label="Points"><b>${num(x.pts)}</b></div>
-                    <div class="td" data-label="Badges">${x.regular ? '<span class="pill active">Regular seller</span> ' : ''}${x.star ? '<span class="pill gold">Transfer star</span>' : ''}${!x.regular && !x.star ? '<span class="muted">—</span>' : ''}</div>
+                    <div class="td" data-label="Badges"><span class="pills">${x.regular ? '<span class="pill active">Regular seller</span>' : ''}${x.star ? '<span class="pill gold">Transfer star</span>' : ''}${!x.regular && !x.star ? '<span class="muted">—</span>' : ''}</span></div>
                 </div>`).join('');
             $('rw-list').innerHTML = `
                 <div class="panel-head"><h3>${plural(rows.length, 'user')}</h3><button class="link-btn" type="button" data-rexport>Export CSV</button></div>
@@ -1084,7 +1182,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>` : '';
                 return `<div class="bar-row">
                     <div class="bar-top" data-product="${esc(p.key)}">
-                        <span class="rank ${rankOf.get(p.key) <= 3 ? 'top' : ''}">${rankOf.get(p.key)}</span>
+                        <span class="rank ${rankOf.get(p.key) <= 3 ? 'podium' : ''}">${rankOf.get(p.key)}</span>
                         <div class="bar-name"><div class="n">${esc(this.productName(p))}</div><div class="s">${plural(p.sellers.size, 'seller')} · avg ${naira(avg)} · ${num(p.units)} ${esc(unit)}</div></div>
                         <div class="bar-val">${fmt(p)}<small>${pct(valueOf(p), total)}% of all</small></div>
                     </div>
