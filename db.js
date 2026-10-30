@@ -79,6 +79,16 @@ const DB = {
         return new Date();
     },
 
+    // Sale pictures are never uploaded, so a sale arriving from the cloud must keep the picture already saved on this phone
+    _putSalePreservingImage(store, sale) {
+        const getReq = store.get(sale.id);
+        getReq.onsuccess = () => {
+            const existing = getReq.result;
+            if (existing && existing.image && !sale.image) sale.image = existing.image;
+            store.put(sale);
+        };
+    },
+
     _syncToCloud(collectionName, docId, data) {
         if (!this.userPhone || !window.fb) return Promise.resolve(); // Need user phone to know where to save
         const path = `users/${this.userPhone}${collectionName ? '/' + collectionName : ''}`;
@@ -151,7 +161,7 @@ const DB = {
                     const s = doc.data();
                     if (typeof s.id === 'string' && !isNaN(s.id)) s.id = Number(s.id);
                     s.timestamp = this._normalizeTimestamp(s.timestamp);
-                    store.put(s);
+                    this._putSalePreservingImage(store, s);
                 });
                 saleTx.oncomplete = () => resolve();
                 saleTx.onerror = () => reject(saleTx.error);
@@ -232,7 +242,7 @@ const DB = {
                 data.timestamp = this._normalizeTimestamp(data.timestamp);
 
                 if (change.type === "added" || change.type === "modified") {
-                    store.put(data);
+                    this._putSalePreservingImage(store, data);
                 } else if (change.type === "removed") {
                     store.delete(Number(change.doc.id));
                 }
@@ -261,7 +271,7 @@ const DB = {
                     const s = doc.data();
                     if (typeof s.id === 'string' && !isNaN(s.id)) s.id = Number(s.id);
                     s.timestamp = this._normalizeTimestamp(s.timestamp);
-                    store.put(s);
+                    this._putSalePreservingImage(store, s);
                 });
                 saleTx.oncomplete = () => resolve();
                 saleTx.onerror = () => reject(saleTx.error);

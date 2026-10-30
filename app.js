@@ -157,6 +157,12 @@ document.addEventListener('DOMContentLoaded', () => {
             incomingTransferChip: document.getElementById('incoming-transfer-chip'),
             declineTransferBtn: document.getElementById('decline-transfer-btn'),
             acceptTransferBtn: document.getElementById('accept-transfer-btn'),
+            pinConfirmText: document.getElementById('pin-confirm-text'),
+            pinInputWrap: document.getElementById('pin-input-wrap'),
+            pinConfirmInput: document.getElementById('pin-confirm-input'),
+            pinConfirmError: document.getElementById('pin-confirm-error'),
+            pinConfirmOkBtn: document.getElementById('pin-confirm-ok-btn'),
+            pinConfirmCancelBtn: document.getElementById('pin-confirm-cancel-btn'),
             inviteCustomerModal: document.getElementById('invite-customer-modal'),
             cancelInviteBtn: document.getElementById('cancel-invite-btn'),
             sendInviteBtn: document.getElementById('send-invite-btn'),
@@ -513,6 +519,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.hideModal();
                 this.showToast("Download link sent!");
             });
+
+            // PIN check (used before something is removed for good)
+            this.elements.pinConfirmInput.addEventListener('input', (e) => {
+                const digits = e.target.value.replace(/\D/g, '').slice(0, 6);
+                if (e.target.value !== digits) e.target.value = digits;
+                this.elements.pinConfirmError.textContent = '';
+                this.elements.pinConfirmOkBtn.disabled = digits.length !== 6;
+            });
+            this.elements.pinConfirmInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); this._submitPin(); } });
+            this.elements.pinConfirmOkBtn.addEventListener('click', () => this._submitPin());
+            this.elements.pinConfirmCancelBtn.addEventListener('click', () => this._finishPin(false));
             this.elements.productSearchInput.addEventListener('input', (e) => this.renderProducts(e.target.value));
             this.elements.cancelEntryChoiceBtn.addEventListener('click', () => this.hideModal());
             this.elements.manualEntryBtn.addEventListener('click', () => { this.hideModal(); this.elements.manualSaleForm.reset(); this.showModal('manual-sale-modal'); });
@@ -938,7 +955,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (this.toggleOnboardingTooltip) this.toggleOnboardingTooltip();
         },
-        showModal(modalId) { this.elements.modalContainer.style.display = 'flex'; this.elements.modalContainer.querySelectorAll('.modal-content').forEach(m => m.style.display = 'none'); const modalToShow = document.getElementById(modalId); if (modalToShow) { modalToShow.style.display = 'flex'; } this._followKeyboard(modalId === 'phone-transfer-modal'); },
+        showModal(modalId) { this.elements.modalContainer.style.display = 'flex'; this.elements.modalContainer.querySelectorAll('.modal-content').forEach(m => m.style.display = 'none'); const modalToShow = document.getElementById(modalId); if (modalToShow) { modalToShow.style.display = 'flex'; } this._followKeyboard(modalId === 'phone-transfer-modal' || modalId === 'pin-confirm-modal'); },
         hideModal() { this.elements.modalContainer.style.display = 'none'; this.elements.modalContainer.querySelectorAll('.modal-content').forEach(m => m.style.display = 'none'); this._followKeyboard(false); },
 
         // While on, the modal layer is sized to the part of the screen that is not under the on-screen keyboard,
@@ -965,6 +982,67 @@ document.addEventListener('DOMContentLoaded', () => {
                 box.style.height = '';
             }
         },
+        // Asks for the account PIN. Resolves true only when it matches, false if the person backs out.
+        requestPin(message) {
+            return new Promise((resolve) => {
+                if (this._pinResolve) this._pinResolve(false); // a PIN check that was left open is dropped
+                this._pinResolve = resolve;
+                const el = this.elements;
+                el.pinConfirmText.textContent = message;
+                el.pinConfirmInput.value = '';
+                el.pinConfirmError.textContent = '';
+                el.pinConfirmOkBtn.disabled = true;
+                this.showModal('pin-confirm-modal');
+                setTimeout(() => el.pinConfirmInput.focus(), 80);
+            });
+        },
+
+        _finishPin(ok) {
+            const resolve = this._pinResolve;
+            this._pinResolve = null;
+            this.elements.pinConfirmInput.value = '';
+            this.elements.pinConfirmInput.blur();
+            this.hideModal();
+            if (resolve) resolve(ok);
+        },
+
+        async _submitPin() {
+            const el = this.elements;
+            const entered = el.pinConfirmInput.value.trim();
+            if (entered.length !== 6 || el.pinConfirmOkBtn.disabled) return;
+            el.pinConfirmOkBtn.disabled = true;
+            const real = await this._getAccountPin();
+            if (real === null) {
+                el.pinConfirmError.textContent = "Couldn't check your PIN. Try again.";
+                el.pinConfirmOkBtn.disabled = false;
+                return;
+            }
+            if (entered === real) {
+                this._finishPin(true);
+                return;
+            }
+            el.pinConfirmError.textContent = 'Wrong PIN. Try again.';
+            el.pinConfirmInput.value = '';
+            el.pinInputWrap.classList.add('input-error-shake');
+            setTimeout(() => el.pinInputWrap.classList.remove('input-error-shake'), 600);
+            el.pinConfirmInput.focus();
+        },
+
+        // The PIN saved on this phone; if this sign-in did not keep one, read it from the account
+        async _getAccountPin() {
+            const user = this.state.user || {};
+            if (user.pin !== undefined && user.pin !== null && String(user.pin) !== '') return String(user.pin);
+            try {
+                if (user.phone && window.fb) {
+                    const snap = await window.fb.getDoc(window.fb.doc(window.fb.db, 'users', user.phone));
+                    if (snap.exists() && snap.data().pin) return String(snap.data().pin);
+                }
+            } catch (error) {
+                console.error('Could not read the account PIN:', error);
+            }
+            return null;
+        },
+
         toggleOnboardingTooltip() {
             const tooltip = document.getElementById('onboarding-tooltip');
             if (!tooltip) return;
@@ -1227,9 +1305,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     saleEl.classList.add('shared-log');
                 }
                 saleEl.dataset.saleId = sale.id;
-                // Look up image from the product (survives cloud sync), fall back to sale.image, then default icon
+                // The picture the product had when it was sold; only older sales without one use the product's current picture
                 const matchedProduct = productMap[sale.productId];
-                const imageBlob = (matchedProduct && matchedProduct.image) || sale.image;
+                const imageBlob = sale.image || (matchedProduct && matchedProduct.image);
                 const imageUrl = imageBlob ? URL.createObjectURL(imageBlob) : 'icons/icon-192.png';
 
                 // Add discount marker if applicable
@@ -1320,9 +1398,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         saleEl.classList.add('shared-log');
                     }
                     saleEl.dataset.saleId = sale.id;
-                    // Look up image from the product (survives cloud sync), fall back to sale.image, then default icon
+                    // The picture the product had when it was sold; only older sales without one use the product's current picture
                     const matchedProduct = productMap[sale.productId];
-                    const imageBlob = (matchedProduct && matchedProduct.image) || sale.image;
+                    const imageBlob = sale.image || (matchedProduct && matchedProduct.image);
                     const imageUrl = imageBlob ? URL.createObjectURL(imageBlob) : 'icons/icon-192.png';
 
                     // Add discount marker
@@ -1559,7 +1637,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <h4>${this._esc(displayName)}</h4>
                         <p class="product-price">&#8358;${this.formatNumber(product.price)}</p>
                         <p class="product-stock">${product.stock > 0 ? `${this.formatNumber(product.stock)} ${product.unit} left` : ''}</p>
-                    </div>`;
+                    </div>${this._productEditMarkHtml(product)}`;
 
                 const editBtn = card.querySelector('.edit-btn-icon');
                 editBtn.addEventListener('click', (e) => {
@@ -1966,6 +2044,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 needsSetup: null,
             };
 
+            if (isEditing) productData.editedAt = Date.now(); // every edit starts the product's "recently edited" line afresh
+
             if (!productData.name || isNaN(productData.price) || isNaN(productData.stock)) {
                 alert('Please fill out all fields correctly.'); return;
             }
@@ -2114,15 +2194,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 alert("You can only delete products that are out of stock.");
                 return;
             }
-            const confirmation = confirm(`Are you sure you want to permanently delete "${this.state.editingProduct.name}"? This action cannot be undone.`);
-            if (confirmation) {
-                await DB.deleteProduct(this.state.editingProduct.id);
-                this.hideModal();
-                this.state.editingProduct = null;
-                await this.renderProducts();
-                this.navigateTo('products-view');
-                alert('Product deleted successfully.');
+            // The PIN is the confirmation. Backing out (or leaving) returns to the product they were editing.
+            const confirmed = await this.requestPin(`Delete "${this.state.editingProduct.name}" for good? This cannot be undone.`);
+            if (!confirmed) {
+                this.showModal('product-form-modal');
+                return;
             }
+            await DB.deleteProduct(this.state.editingProduct.id);
+            this.hideModal();
+            this.state.editingProduct = null;
+            await this.renderProducts();
+            this.navigateTo('products-view');
+            alert('Product deleted successfully.');
         },
 
         async handleAddOrChangePicture() {
@@ -2282,7 +2365,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 customerPhone: (this.state.selectedContact && this.state.selectedContact.phone) ? this.state.selectedContact.phone.trim().replace(/\s+/g, '') : null,
                 total: total,
                 timestamp: editing ? editing.timestamp : new Date(),
-                image: product.image,
+                image: (editing && editing.image) || product.image, // an edited sale keeps the picture it was sold with
                 sharedAsLog: false,
                 unit: product.unit
             };
@@ -2542,8 +2625,10 @@ document.addEventListener('DOMContentLoaded', () => {
             this.updateEditButton();
         },
 
-        // --- SALE EDITING (one edit, within 4 minutes of recording) ---
-        EDIT_WINDOW_MS: 10 * 60 * 1000,
+        // --- SALE EDITING (one edit, within 45 minutes of recording) ---
+        EDIT_WINDOW_MS: 45 * 60 * 1000,
+        // A product that was just edited shows the same receding line, over a longer stretch
+        PRODUCT_EDIT_MARK_MS: 45 * 60 * 1000,
 
         isSaleEditable(sale) {
             if (!sale || sale.edited || sale.sharedAsLog || sale.pendingTransfer) return false;
@@ -2569,9 +2654,18 @@ document.addEventListener('DOMContentLoaded', () => {
             btn.tabIndex = show ? 0 : -1;
         },
 
+        // The thin teal line on a product that was edited in the last 45 minutes (same line as on fresh sales)
+        _productEditMarkHtml(product) {
+            const editedAt = Number(product.editedAt);
+            if (!editedAt) return '';
+            const elapsed = Date.now() - editedAt;
+            if (elapsed >= this.PRODUCT_EDIT_MARK_MS || elapsed < -60000) return ''; // expired, or from a badly set clock
+            return `<div class="product-edit-timer" data-expires="${editedAt + this.PRODUCT_EDIT_MARK_MS}" style="animation-duration: ${this.PRODUCT_EDIT_MARK_MS / 1000}s; animation-delay: -${(Math.max(0, elapsed) / 1000).toFixed(2)}s"></div>`;
+        },
+
         tickEditWindows() {
             const now = Date.now();
-            document.querySelectorAll('.sale-edit-timer').forEach(el => {
+            document.querySelectorAll('.sale-edit-timer, .product-edit-timer').forEach(el => {
                 if (now >= Number(el.dataset.expires)) el.remove();
             });
             if (this.state.isSelectionMode) this.updateEditButton();
@@ -3919,7 +4013,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 this.state.retailerListener = window.fb.onSnapshot(q, async (querySnapshot) => {
                     const allSales = await DB.getAllSales();
-                    const creditSales = allSales.filter(s => s.saleType === 'credit');
+                    const creditSales = allSales.filter(s => s.saleType === 'credit' && !s.creditSettled);
 
                     let customersHtml = '';
                     let salespeopleHtml = '';
@@ -3994,8 +4088,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (retailer.products && Object.keys(retailer.products).length > 0) {
                     for (const productName in retailer.products) {
                         const product = retailer.products[productName];
-                        const stockClass = product.stock <= 0 ? 'out-of-stock' : (product.stock < 7 ? 'restock-now' : '');
-                        productsHtml += `<div class="retailer-product-item ${stockClass}"><span>${productName}</span><strong>${this.formatNumber(product.stock)} ${product.unit} left</strong></div>`;
+                        const stockClass = product.stock <= 0 ? 'out-of-stock' : (product.stock < 10 ? 'restock-now' : '');
+                        productsHtml += `<div class="retailer-product-item ${stockClass}"><span>${productName}</span><strong>${this._esc(this.formatStockRange(product.stock, product.unit))}</strong></div>`;
                     }
                 } else {
                     productsHtml = `<div class="retailer-product-item"><span>No product data available.</span></div>`;
@@ -4026,81 +4120,67 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
         },
 
-        buildCreditCard(sale, retailer) {
-            let stockHtml = '';
-            let callButton = '';
-            let statusHtml = '';
+        // "Today", "Yesterday", "12 Oct" (with the year once it is not this year)
+        formatCreditDate(value) {
+            const date = DB._normalizeTimestamp(value);
+            const dayStart = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+            const daysAgo = Math.round((dayStart(new Date()) - dayStart(date)) / 86400000);
+            if (daysAgo === 0) return 'Today';
+            if (daysAgo === 1) return 'Yesterday';
+            const thisYear = date.getFullYear() === new Date().getFullYear();
+            return date.toLocaleDateString('en-GB', thisYear ? { day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short', year: 'numeric' });
+        },
 
+        buildCreditCard(sale, retailer) {
+            const e = (v) => this._esc(v);
+            const money = (n) => `₦${this.formatNumber(n)}`;
             const phoneIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>`;
-            
+            const checkIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+
+            // Their tracked stock, only for suppliers whose customer is on PikaShot
+            let stockHtml = '';
+            let callPhone = sale.customerPhone;
+            let callName = sale.customerName;
             if (retailer) {
-                let productsHtml = '';
+                callPhone = retailer.retailerPhone || callPhone;
+                callName = retailer.retailerName || callName;
                 if (this.state.user.type !== 'Retailer') {
+                    let rows = '';
                     if (retailer.products && Object.keys(retailer.products).length > 0) {
                         for (const productName in retailer.products) {
                             const product = retailer.products[productName];
-                            const stockClass = product.stock <= 0 ? 'out-of-stock' : (product.stock < 7 ? 'restock-now' : '');
-                            productsHtml += `<div class="retailer-product-item ${stockClass}"><span>${productName}</span><strong>${this.formatNumber(product.stock)} ${product.unit} left</strong></div>`;
+                            const stockClass = product.stock <= 0 ? 'out-of-stock' : (product.stock < 10 ? 'restock-now' : '');
+                            rows += `<div class="retailer-product-item ${stockClass}"><span>${e(productName)}</span><strong>${e(this.formatStockRange(product.stock, product.unit))}</strong></div>`;
                         }
                     } else {
-                        productsHtml = `<div class="retailer-product-item"><span>No tracked stock.</span></div>`;
+                        rows = `<div class="retailer-product-item"><span>No stock shared yet.</span></div>`;
                     }
-                    stockHtml = `<div class="retailer-product-list" style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border-color);"><h5 style="margin: 0 0 8px 0; font-size: 0.8rem; color: var(--text-light);">Tracked Stock</h5>${productsHtml}</div>`;
-                    
                     const status = this.formatTimeAgo(retailer.lastUpdate?.toDate());
-                    statusHtml = `<p class="retailer-status ${status.className}">Stock: ${status.text}</p>`;
-                } else {
-                    statusHtml = `<p class="retailer-status offline">Stock: Not tracked</p>`;
+                    stockHtml = `<div class="credit-stock"><div class="credit-stock-head"><h5>Their stock</h5><span class="retailer-status ${status.className}">${e(status.text)}</span></div>${rows}</div>`;
                 }
-                
-                callButton = retailer.retailerPhone ? `<a href="tel:${retailer.retailerPhone}" class="retailer-call-btn" title="Call ${retailer.retailerName}">${phoneIcon}</a>` : '';
-            } else {
-                callButton = sale.customerPhone ? `<a href="tel:${sale.customerPhone}" class="retailer-call-btn" title="Call ${sale.customerName}">${phoneIcon}</a>` : '';
-                statusHtml = `<p class="retailer-status offline">Stock: Not tracked (No app)</p>`;
             }
+            const callButton = callPhone ? `<a href="tel:${e(callPhone)}" class="retailer-call-btn" title="Call ${e(callName)}" aria-label="Call ${e(callName)}">${phoneIcon}</a>` : '';
 
-            const saleDate = new Date(sale.timestamp).toLocaleDateString('en-NG');
-            const totalWorth = sale.quantity * sale.price;
-            const remaining = totalWorth - (sale.total || 0); // part payment is saved as 'total'
-            const partPayment = sale.total || 0;
+            const worth = (Number(sale.quantity) || 0) * (Number(sale.price) || 0);
+            const paid = Number(sale.total) || 0; // part payment is saved as the sale's total
+            const owed = Math.max(0, worth - paid);
+            const paidPercent = worth > 0 ? Math.min(100, Math.round(paid / worth * 100)) : 0;
 
-            const deleteIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
-            
             return `
-                <div class="card" style="border-left: 4px solid red;" data-credit-id="${sale.id}">
-                    <div class="retailer-header">
-                        <div style="flex-grow: 1;">
-                            <h4 style="color: red;">${sale.customerName} <span style="font-size:0.75rem; color: var(--text-light); font-weight: normal;">(Credit)</span></h4>
-                            ${statusHtml}
-                            <p style="font-size: 0.75rem; color: var(--text-light); margin-top: 4px;">Sale Date: ${saleDate}</p>
+                <div class="card credit-card" data-credit-id="${sale.id}" data-customer-name="${e(sale.customerName)}">
+                    <div class="credit-top">
+                        <div class="credit-who">
+                            <h4><span class="credit-name">${e(sale.customerName)}</span><span class="credit-pill">Credit</span></h4>
+                            <p class="credit-when">${this.formatCreditDate(sale.timestamp)}</p>
                         </div>
                         ${callButton}
                     </div>
-                    
-                    <div style="padding: 12px; background: rgba(255,0,0,0.03); border-radius: 8px; margin: 12px 16px;">
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
-                            <span style="font-size: 0.85rem; font-weight: 600;">${sale.productName}</span>
-                            <span style="font-size: 0.85rem;">${this.formatNumber(sale.quantity)} ${sale.unit}</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 0.8rem;">
-                            <span class="text-muted">Total Worth:</span>
-                            <span>₦${this.formatNumber(totalWorth)}</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 0.8rem;">
-                            <span class="text-muted">Part Payment:</span>
-                            <span>₦${this.formatNumber(partPayment)}</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; margin-top: 6px; padding-top: 6px; border-top: 1px dashed rgba(255,0,0,0.2); font-weight: bold; color: red;">
-                            <span>Remaining:</span>
-                            <span>₦${this.formatNumber(remaining)}</span>
-                        </div>
-                    </div>
-                    
+                    <div class="credit-item"><span class="credit-item-name">${e(sale.productName)}</span><span class="credit-item-qty">${this.formatNumber(sale.quantity)} ${e(sale.unit)}</span></div>
+                    <div class="credit-owes"><span>Owes</span><strong>${money(owed)}</strong></div>
+                    <div class="credit-bar" role="img" aria-label="${money(paid)} of ${money(worth)} paid"><span style="width: ${paidPercent}%"></span></div>
+                    <div class="credit-paid"><span>${money(paid)} paid</span><span>${money(worth)} total</span></div>
                     ${stockHtml}
-
-                    <div class="card-footer" style="display: flex; justify-content: center; padding-top: 8px;">
-                        <button class="delete-credit-btn btn btn-secondary" style="width: 100%; border-radius: 8px; font-weight: 500; font-size: 0.85rem;" data-id="${sale.id}" title="Mark as Fully Repaid">Fully repaid?</button>
-                    </div>
+                    <button type="button" class="delete-credit-btn" data-id="${sale.id}">${checkIcon}<span>Fully repaid?</span></button>
                 </div>
             `;
         },
@@ -4265,8 +4345,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (retailer.products && Object.keys(retailer.products).length > 0) {
                         for (const productName in retailer.products) {
                             const product = retailer.products[productName];
-                            const stockClass = product.stock <= 0 ? 'out-of-stock' : (product.stock < 7 ? 'restock-now' : '');
-                            productsHtml += `<div class="retailer-product-item ${stockClass}"><span>${productName}</span><strong>${this.formatNumber(product.stock)} ${product.unit} left</strong></div>`;
+                            const stockClass = product.stock <= 0 ? 'out-of-stock' : (product.stock < 10 ? 'restock-now' : '');
+                            productsHtml += `<div class="retailer-product-item ${stockClass}"><span>${productName}</span><strong>${this._esc(this.formatStockRange(product.stock, product.unit))}</strong></div>`;
                         }
                     } else {
                         productsHtml = `<p class="empty-state">No product data available.</p>`;
@@ -4340,22 +4420,32 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             document.querySelectorAll('.delete-credit-btn').forEach(btn => {
-                btn.addEventListener('click', async (e) => {
-                    const card = e.target.closest('.card');
-                    const creditId = parseInt(card.dataset.creditId, 10);
+                btn.addEventListener('click', async () => {
+                    const card = btn.closest('.card');
+                    const creditId = Number(card.dataset.creditId);
+                    const customerName = card.dataset.customerName || 'this customer';
 
-                    if (confirm(`Are you sure you want to mark this credit sale as fully repaid? This will remove the record.`)) {
-                        try {
-                            await DB.deleteSale(creditId);
-                            this.showToast(`Credit marked as fully repaid.`);
-                            this.renderRetailerStocks(); // Re-render the view
-                        } catch (error) {
-                            console.error("Error updating credit record: ", error);
-                            this.showToast(`Failed to update credit record.`);
-                        }
+                    const confirmed = await this.requestPin(`Confirm that ${customerName} has fully repaid.`);
+                    if (!confirmed) return;
+
+                    try {
+                        // The card leaves this tab; the sale itself stays in the sales history
+                        const sales = await DB.getAllSales();
+                        const sale = sales.find(s => s.id === creditId);
+                        if (!sale) throw new Error('Credit sale not found');
+                        sale.creditSettled = true;
+                        sale.creditSettledAt = Date.now();
+                        await DB.updateSale(sale);
+                        card.remove();
+                        this.showToast('Credit card removed.');
+                        this.renderRetailerStocks(); // refresh the tab
+                    } catch (error) {
+                        console.error('Error updating credit record: ', error);
+                        this.showToast('Failed to remove the credit card.');
                     }
                 });
             });
+
         },
 
 
@@ -4384,6 +4474,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const formattedDate = date.toLocaleDateString('en-NG', { day: 'numeric', month: 'short' });
             return { text: `Last online: ${formattedDate}`, className: 'offline' };
+        },
+
+        // What a supplier sees of a customer's stock: only a range of tens, never the exact count
+        // (0-9 -> "<10 packs left", 10-19 -> "<20 packs left", ...)
+        formatStockRange(stock, unit) {
+            const count = Math.max(0, Number(stock) || 0);
+            return `<${(Math.floor(count / 10) + 1) * 10} ${unit || 'units'} left`;
         },
 
         formatNumber(value) {
