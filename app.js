@@ -105,6 +105,7 @@ document.addEventListener('DOMContentLoaded', () => {
             saveProductBtn: document.getElementById('save-product-btn'),
             confirmSaleModal: document.getElementById('confirm-sale-modal'),
             saleProductImage: document.getElementById('sale-product-image'),
+            saleModalTitle: document.getElementById('sale-modal-title'),
             saleProductName: document.getElementById('sale-product-name'),
             saleProductStock: document.getElementById('sale-product-stock'),
             saleQuantityInput: document.getElementById('sale-quantity'),
@@ -240,6 +241,7 @@ document.addEventListener('DOMContentLoaded', () => {
             selectedSales: new Set(),
             selectedSaleData: new Map(),
             editingSale: null,
+            receiptModel: null, // the receipt on screen, kept as data for sharing
             figuresHidden: false,
             dashFigures: null,
             longPressTimer: null,
@@ -373,7 +375,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     
                     this.elements.labelCredit.classList.toggle('active', saleType === 'credit');
                     this.elements.labelCredit.classList.toggle('text-muted', saleType !== 'credit');
-                    this.elements.labelDiscount.parentElement.classList.toggle('is-default', saleType === 'default');
 
                     if (saleType === 'default') {
                         this.elements.discountInputContainer.style.display = 'none';
@@ -592,10 +593,10 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         },
 
-        // Runs `action` once on press, then keeps running it 4 times a second while the button stays held down.
+        // Runs `action` once on press, then keeps running it 7 times a second while the button stays held down.
         _bindHoldRepeat(btn, action) {
             if (!btn) return;
-            const REPEAT_MS = 250;
+            const REPEAT_MS = Math.round(1000 / 7);
             let timer = null;
             const stop = () => { clearInterval(timer); timer = null; };
             btn.addEventListener('pointerdown', (e) => {
@@ -2185,6 +2186,7 @@ document.addEventListener('DOMContentLoaded', () => {
         handleProductFound(product) {
             this.state.editingSale = null;
             this.state.sellingProduct = product;
+            this.elements.saleModalTitle.textContent = 'Confirm Sale';
             this.elements.saleProductImage.src = product.image ? URL.createObjectURL(product.image) : 'icons/icon-192.png';
             this.elements.saleProductName.textContent = product.name;
             this.elements.saleProductStock.textContent = `Stock: ${this.formatNumber(product.stock)} ${product.unit} left`;
@@ -2296,7 +2298,8 @@ document.addEventListener('DOMContentLoaded', () => {
                                     price: product.price,
                                     quantity: sale.quantity,
                                     unit: product.unit,
-                                    barcode: product.barcode || null
+                                    barcode: product.barcode || null,
+                                    ...this._settlementFields([sale])
                                 }]
                             };
                             await this._attachItemImages(logData.items, [sale], [product]);
@@ -2584,6 +2587,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.exitSelectionMode();
             this.handleProductFound(product); // opens the confirm sale modal with defaults
             this.state.editingSale = sale;
+            this.elements.saleModalTitle.textContent = 'Edit Sale';
 
             // Pre-fill the modal with this sale's details
             this.elements.saleProductStock.textContent = `Stock: ${this.formatNumber(product.stock + sale.quantity)} ${product.unit} left`;
@@ -2606,25 +2610,19 @@ document.addEventListener('DOMContentLoaded', () => {
             return String(value == null ? '' : value).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
         },
 
-        async generateReceipt() {
-            const allSales = await DB.getAllSales();
-            const selectedSaleObjects = allSales
-                .filter(s => this.state.selectedSales.has(s.id))
-                .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-            if (selectedSaleObjects.length === 0) return;
-
-            const money = (n) => `&#8358;${this.formatNumber(n)}`;
-            const receiptId = `PS-${Date.now().toString().slice(-6)}`;
+        // The receipt as plain data. The on-screen receipt and the shared picture are both made from it, so they always match.
+        _buildReceiptModel(sales) {
+            const money = (n) => `₦${this.formatNumber(n)}`;
             const now = new Date();
-            const dateStr = now.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+            const dateStr = now.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
             const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+            const receiptId = `PS-${Date.now().toString().slice(-6)}`;
 
             let subtotal = 0, discountTotal = 0, totalDue = 0, paidTotal = 0, balanceTotal = 0;
             let hasCredit = false;
-            let itemsHtml = '';
             const customers = new Set();
 
-            selectedSaleObjects.forEach(sale => {
+            const items = sales.map(sale => {
                 const gross = (Number(sale.quantity) || 0) * (Number(sale.price) || 0);
                 const paid = Number(sale.total) || 0;
                 const isCredit = sale.saleType === 'credit';
@@ -2634,50 +2632,72 @@ document.addEventListener('DOMContentLoaded', () => {
                 paidTotal += paid;
                 if (sale.customerName && sale.customerName !== 'Walk-in Customer') customers.add(sale.customerName);
 
-                let extra = '';
+                const subs = [];
                 if (discount > 0) {
-                    extra += `<div class="rc-sub"><span>Discount</span><span>-${money(discount)}</span></div>`;
+                    subs.push({ label: 'Discount', value: `-${money(discount)}` });
                     totalDue += paid;
                 } else if (isCredit) {
                     hasCredit = true;
                     const balance = Math.max(0, gross - paid);
                     balanceTotal += balance;
                     totalDue += gross;
-                    extra += `<div class="rc-sub credit"><span>Credit${sale.customerName ? ' &middot; ' + this._esc(sale.customerName) : ''}</span></div>`;
-                    extra += `<div class="rc-sub credit"><span>Paid</span><span>${money(paid)}</span></div>`;
-                    extra += `<div class="rc-sub credit"><span>Balance</span><span>${money(balance)}</span></div>`;
+                    subs.push({ label: `Credit${sale.customerName ? ' · ' + sale.customerName : ''}`, tone: 'credit' });
+                    subs.push({ label: 'Paid', value: money(paid), tone: 'credit' });
+                    subs.push({ label: 'Balance', value: money(balance), tone: 'credit' });
                 } else {
                     totalDue += paid;
                 }
-
-                itemsHtml += `<div class="rc-item"><div class="rc-row"><span class="rc-item-name">${this._esc(sale.productName)}</span><span class="rc-amt">${money(gross)}</span></div>` +
-                    `<div class="rc-calc">${this.formatNumber(sale.quantity)} &times; ${money(sale.price)}</div>${extra}</div>`;
+                return { name: String(sale.productName || ''), amount: money(gross), calc: `${this.formatNumber(sale.quantity)} × ${money(sale.price)}`, subs };
             });
 
-            let summaryHtml = '';
+            const sumRows = [];
             if (discountTotal > 0) {
-                summaryHtml += `<div class="rc-sum muted"><span>Subtotal</span><span>${money(subtotal)}</span></div>`;
-                summaryHtml += `<div class="rc-sum discount"><span>Discount</span><span>-${money(discountTotal)}</span></div>`;
-            }
-            summaryHtml += `<div class="rc-total"><span>Total</span><span>${money(totalDue)}</span></div>`;
-            if (hasCredit) {
-                summaryHtml += `<div class="rc-sum muted"><span>Amount paid</span><span>${money(paidTotal)}</span></div>`;
-                summaryHtml += `<div class="rc-balance"><span>Balance due</span><span>${money(balanceTotal)}</span></div>`;
+                sumRows.push({ label: 'Subtotal', value: money(subtotal), tone: 'muted' });
+                sumRows.push({ label: 'Discount', value: `-${money(discountTotal)}`, tone: 'discount' });
             }
 
             const user = this.state.user || {};
-            const metaLine = [user.location, user.phone].filter(Boolean).map(v => this._esc(v)).join(' &middot; ');
-            const customerRow = customers.size === 1 ? `<div class="rc-kv"><span>Customer</span><span>${this._esc([...customers][0])}</span></div>` : '';
+            return {
+                store: String(user.business || ''),
+                meta: [user.location, user.phone].filter(Boolean).join(' · '),
+                customer: customers.size === 1 ? [...customers][0] : '',
+                items,
+                sumRows,
+                total: money(totalDue),
+                credit: hasCredit ? { paid: money(paidTotal), balance: money(balanceTotal) } : null,
+                stamp: `${receiptId} · ${dateStr} · ${timeStr}` // receipt number and time sit at the very bottom, on one line
+            };
+        },
 
-            this.elements.receiptContent.innerHTML =
-                `<div class="receipt-header"><div class="rc-store">${this._esc(user.business)}</div>${metaLine ? `<div class="rc-meta">${metaLine}</div>` : ''}</div>` +
-                `<div class="rc-info"><div class="rc-kv"><span>Receipt</span><span>${receiptId}</span></div>` +
-                `<div class="rc-kv"><span>Date</span><span>${dateStr} &middot; ${timeStr}</span></div>${customerRow}</div>` +
+        _receiptHtml(m) {
+            const e = (v) => this._esc(v);
+            const subHtml = (s) => `<div class="rc-sub${s.tone === 'credit' ? ' credit' : ''}"><span>${e(s.label)}</span>${s.value ? `<span>${e(s.value)}</span>` : ''}</div>`;
+            const itemsHtml = m.items.map(it =>
+                `<div class="rc-item"><div class="rc-row"><span class="rc-item-name">${e(it.name)}</span><span class="rc-amt">${e(it.amount)}</span></div>` +
+                `<div class="rc-calc">${e(it.calc)}</div>${it.subs.map(subHtml).join('')}</div>`).join('');
+            const summaryHtml = m.sumRows.map(r => `<div class="rc-sum ${r.tone}"><span>${e(r.label)}</span><span>${e(r.value)}</span></div>`).join('') +
+                `<div class="rc-total"><span>Total</span><span>${e(m.total)}</span></div>` +
+                (m.credit ? `<div class="rc-sum muted"><span>Amount paid</span><span>${e(m.credit.paid)}</span></div>` +
+                    `<div class="rc-balance"><span>Balance due</span><span>${e(m.credit.balance)}</span></div>` : '');
+            return `<div class="receipt-header"><div class="rc-store">${e(m.store)}</div>${m.meta ? `<div class="rc-meta">${e(m.meta)}</div>` : ''}</div>` +
+                (m.customer ? `<div class="rc-info"><div class="rc-kv"><span>Customer</span><span>${e(m.customer)}</span></div></div>` : '') +
                 `<div class="rc-cols"><span>Item</span><span>Amount</span></div>` +
                 `<div class="receipt-items">${itemsHtml}</div>` +
                 `<div class="rc-summary">${summaryHtml}</div>` +
                 `<div class="receipt-footer"><p class="rc-thanks">Thank you for your patronage!</p>` +
+                `<p class="rc-stamp">${e(m.stamp)}</p>` +
                 `<p class="rc-brand">Powered by PikaShot</p></div>`;
+        },
+
+        async generateReceipt() {
+            const allSales = await DB.getAllSales();
+            const selectedSaleObjects = allSales
+                .filter(s => this.state.selectedSales.has(s.id))
+                .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+            if (selectedSaleObjects.length === 0) return;
+
+            this.state.receiptModel = this._buildReceiptModel(selectedSaleObjects);
+            this.elements.receiptContent.innerHTML = this._receiptHtml(this.state.receiptModel);
 
             const chip = document.getElementById('receipt-count-chip');
             if (chip) chip.textContent = `${selectedSaleObjects.length} item${selectedSaleObjects.length === 1 ? '' : 's'}`;
@@ -2686,7 +2706,178 @@ document.addEventListener('DOMContentLoaded', () => {
             if (scroller) scroller.scrollTop = 0;
         },
 
-        async shareReceipt() { const receiptElement = this.elements.receiptContent; try { const canvas = await html2canvas(receiptElement, { scale: 2, backgroundColor: '#ffffff' }); canvas.toBlob(async (blob) => { if (navigator.share && blob) { try { await navigator.share({ files: [new File([blob], 'pikashot-receipt.png', { type: 'image/png' })], title: 'Your Receipt', text: 'Here is your receipt from ' + this.state.user.business, }); } catch (error) { console.error('Error sharing:', error); } } else { alert('Sharing is not supported on this browser, or there was an error creating the image.'); } }, 'image/png'); } catch (error) { console.error('Error generating receipt image:', error); alert('Could not generate receipt image.'); } },
+        // Draws the receipt straight onto a canvas for sharing. Text is measured and drawn with the same font on the
+        // same canvas, so words can never run together the way they do when a page is photographed by a library.
+        _drawReceipt(m) {
+            const W = 360, PAD = 18, CW = W - PAD * 2, GAP = 12;
+            const fam = getComputedStyle(this.elements.receiptContent).fontFamily || 'Arial, sans-serif';
+            const meas = document.createElement('canvas').getContext('2d');
+            const fontOf = (size, weight) => `${weight} ${size}px ${fam}`;
+            const widthOf = (s, size, weight, spacing = 0) => {
+                meas.font = fontOf(size, weight);
+                return meas.measureText(s).width + spacing * Math.max(0, s.length - 1);
+            };
+            // Break between words, or inside a word that is wider than the line
+            const wrap = (s, size, weight, max) => {
+                const lines = [];
+                let cur = '';
+                String(s).split(/\s+/).filter(Boolean).forEach(word => {
+                    const attempt = cur ? `${cur} ${word}` : word;
+                    if (widthOf(attempt, size, weight) <= max) { cur = attempt; return; }
+                    if (cur) { lines.push(cur); cur = ''; }
+                    let piece = '';
+                    for (const ch of word) {
+                        if (piece && widthOf(piece + ch, size, weight) > max) { lines.push(piece); piece = ''; }
+                        piece += ch;
+                    }
+                    cur = piece;
+                });
+                if (cur) lines.push(cur);
+                return lines.length ? lines : [''];
+            };
+
+            const ops = []; // drawing steps, run once the picture's height is known
+            const baseline = (top, size, lh) => top + (lh - size) / 2 + size * 0.82;
+            const text = (s, x, top, size, weight, color, lh, align = 'left', spacing = 0) => {
+                const base = baseline(top, size, lh);
+                const w = widthOf(s, size, weight, spacing);
+                const left = align === 'right' ? x - w : align === 'center' ? x - w / 2 : x;
+                ops.push((c) => {
+                    c.font = fontOf(size, weight);
+                    c.fillStyle = color;
+                    c.textAlign = 'left';
+                    if (!spacing) { c.fillText(s, left, base); return; }
+                    let cx = left;
+                    for (const ch of s) { c.fillText(ch, cx, base); cx += c.measureText(ch).width + spacing; }
+                });
+            };
+            const rule = (at, color, thickness, dash) => ops.push((c) => {
+                c.strokeStyle = color; c.lineWidth = thickness; c.setLineDash(dash || []);
+                c.beginPath(); c.moveTo(PAD, at); c.lineTo(W - PAD, at); c.stroke();
+            });
+            // label on the left, value on the right (the label wraps if the value needs the room)
+            const pair = (label, value, top, size, labelWeight, valueWeight, labelColor, valueColor, lh) => {
+                const valueW = value ? widthOf(value, size, valueWeight) + GAP : 0;
+                const lines = wrap(label, size, labelWeight, CW - valueW);
+                lines.forEach((ln, i) => text(ln, PAD, top + i * lh, size, labelWeight, labelColor, lh));
+                if (value) text(value, W - PAD, top, size, valueWeight, valueColor, lh, 'right');
+                return lines.length * lh;
+            };
+
+            let y = 24;
+            wrap(m.store.toUpperCase(), 16.8, 700, CW).forEach(ln => { text(ln, W / 2, y, 16.8, 700, '#1d1d1d', 21, 'center', 1); y += 21; });
+            if (m.meta) {
+                y += 4;
+                wrap(m.meta, 11.5, 400, CW).forEach(ln => { text(ln, W / 2, y, 11.5, 400, '#777', 15, 'center'); y += 15; });
+            }
+            y += 14;
+
+            if (m.customer) {
+                rule(y, '#bbb', 1, [3, 3]);
+                y += 10;
+                y += pair('Customer', m.customer, y, 11.8, 400, 500, '#888', '#333', 16);
+                y += 10;
+                rule(y, '#bbb', 1, [3, 3]);
+            }
+
+            y += 14;
+            text('ITEM', PAD, y, 10.2, 600, '#888', 13, 'left', 1);
+            text('AMOUNT', W - PAD, y, 10.2, 600, '#888', 13, 'right', 1);
+            y += 13 + 5;
+            rule(y, '#1d1d1d', 1.5);
+
+            m.items.forEach((it, i) => {
+                if (i > 0) rule(y, '#ececec', 1);
+                y += 10;
+                const amountW = widthOf(it.amount, 14.7, 600) + GAP;
+                const nameLines = wrap(it.name, 14.7, 600, CW - amountW);
+                nameLines.forEach((ln, n) => text(ln, PAD, y + n * 19, 14.7, 600, '#1d1d1d', 19));
+                text(it.amount, W - PAD, y, 14.7, 600, '#1d1d1d', 19, 'right');
+                y += nameLines.length * 19 + 2;
+                text(it.calc, PAD, y, 12.2, 400, '#777', 16);
+                y += 16;
+                it.subs.forEach(s => {
+                    const color = s.tone === 'credit' ? '#b3261e' : '#777';
+                    y += 2;
+                    y += pair(s.label, s.value, y, 11.8, 400, 400, color, color, 16);
+                });
+                y += 10;
+            });
+
+            rule(y, '#1d1d1d', 1.5);
+            y += 10;
+            m.sumRows.forEach(r => {
+                const color = r.tone === 'discount' ? '#1c7c54' : '#666';
+                y += 4;
+                y += pair(r.label, r.value, y, 12.8, 400, 400, color, color, 18);
+            });
+            y += 8;
+            text('TOTAL', PAD, y, 11.2, 600, '#555', 26, 'left', 1.1);
+            text(m.total, W - PAD, y, 20, 700, '#1d1d1d', 26, 'right');
+            y += 26;
+            if (m.credit) {
+                y += 4;
+                y += pair('Amount paid', m.credit.paid, y, 12.8, 400, 400, '#666', '#666', 18);
+                y += 12;
+                const top = y, boxH = 8 + 20 + 8;
+                ops.push((c) => {
+                    const r = 6, x0 = PAD + 0.5, y0 = top + 0.5, x1 = W - PAD - 0.5, y1 = top + boxH - 0.5;
+                    c.strokeStyle = '#b3261e'; c.lineWidth = 1; c.setLineDash([3, 3]);
+                    c.beginPath(); c.moveTo(x0 + r, y0);
+                    c.arcTo(x1, y0, x1, y1, r); c.arcTo(x1, y1, x0, y1, r); c.arcTo(x0, y1, x0, y0, r); c.arcTo(x0, y0, x1, y0, r);
+                    c.closePath(); c.stroke();
+                });
+                text('BALANCE DUE', PAD + 10, top + 8, 11.2, 700, '#b3261e', 20, 'left', 1.1);
+                text(m.credit.balance, W - PAD - 10, top + 8, 14.4, 700, '#b3261e', 20, 'right');
+                y += boxH;
+            }
+
+            y += 16;
+            rule(y, '#bbb', 1, [3, 3]);
+            y += 14;
+            text('Thank you for your patronage!', W / 2, y, 13.1, 600, '#333', 19, 'center');
+            y += 19 + 6;
+            const stampSize = Math.min(10.6, 10.6 * CW / widthOf(m.stamp, 10.6, 400)); // stays on one line
+            text(m.stamp, W / 2, y, stampSize, 400, '#999', 14, 'center');
+            y += 14 + 10;
+            text('POWERED BY PIKASHOT', W / 2, y, 9.6, 400, '#aaa', 13, 'center', 1.15);
+            y += 13 + 22;
+
+            const scale = Math.min(3, 8000 / y); // sharp, but never too big for a small phone to hold
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.round(W * scale);
+            canvas.height = Math.round(y * scale);
+            const ctx = canvas.getContext('2d');
+            ctx.scale(scale, scale);
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, W, y);
+            ops.forEach(op => op(ctx));
+            return canvas;
+        },
+
+        async shareReceipt() {
+            const model = this.state.receiptModel;
+            if (!model) return;
+            let blob;
+            try {
+                blob = await new Promise(resolve => this._drawReceipt(model).toBlob(resolve, 'image/png'));
+            } catch (error) {
+                console.error('Error generating receipt image:', error);
+            }
+            if (navigator.share && blob) {
+                try {
+                    await navigator.share({
+                        files: [new File([blob], 'pikashot-receipt.png', { type: 'image/png' })],
+                        title: 'Your Receipt',
+                        text: 'Here is your receipt from ' + this.state.user.business,
+                    });
+                } catch (error) {
+                    console.error('Error sharing:', error);
+                }
+            } else {
+                alert('Sharing is not supported on this browser, or there was an error creating the image.');
+            }
+        },
 
         async initiatePhoneTransfer() {
             if (!navigator.onLine) {
@@ -2847,6 +3038,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 item.subUnitType = product.subUnitType;
                                 item.subUnitQuantity = product.subUnitQuantity;
                             }
+                            Object.assign(item, this._settlementFields(selectedSaleObjects.filter(s => s.productId === sale.productId)));
                             return item;
                         }
                     })
@@ -2880,7 +3072,28 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         },
 
-                // --- Product pictures that travel with a transfer ---------------------------------------------
+        // How the sales behind a transfer item were settled, so the receiver can see it: money taken off (discount),
+        // or what was paid up front and is still owed (credit). Only the fields that apply are returned.
+        _settlementFields(sales) {
+            let discount = 0, paid = 0, balance = 0, onCredit = false;
+            sales.forEach(sale => {
+                if (sale.saleType === 'credit') {
+                    const gross = (Number(sale.quantity) || 0) * (Number(sale.price) || 0);
+                    const part = Number(sale.total) || 0;
+                    onCredit = true;
+                    paid += part;
+                    balance += Math.max(0, gross - part);
+                } else if (sale.discount > 0) {
+                    discount += Number(sale.discount);
+                }
+            });
+            const fields = {};
+            if (discount > 0) fields.discount = discount;
+            if (onCredit) { fields.creditPaid = paid; fields.creditBalance = balance; }
+            return fields;
+        },
+
+        // --- Product pictures that travel with a transfer ---------------------------------------------
         // Each item carries a tiny thumbnail (a few KB of text) inside the transfer itself, so the receiver sees the
         // product straight away: no extra download, no extra service. A transfer holds at most IMAGE_BUDGET characters
         // of pictures, which keeps it far below the 1 MB limit of a Firestore document and quick on slow networks.
@@ -3413,6 +3626,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const timeStr = sent.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
             const anyPicture = items.some(item => this._safeImageUrl(item.image));
 
+            // Discount and credit are optional extras from the sender, shown as small print under the total
+            const amount = (v) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : 0; };
+            const discountTotal = items.reduce((sum, item) => sum + amount(item.discount), 0);
+            const balanceTotal = items.reduce((sum, item) => sum + amount(item.creditBalance), 0);
+            const hasCredit = items.some(item => item.creditPaid != null || item.creditBalance != null);
+            const totalDue = Math.max(0, totalCost - discountTotal);
+
             const itemsHtml = items.map(item => {
                 const unit = this._esc(item.unit);
                 const lineTotal = (Number(item.price) || 0) * (Number(item.quantity) || 0);
@@ -3440,7 +3660,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 `<div class="rc-info"><div class="rc-kv"><span>Sent</span><span>${dateStr} &middot; ${timeStr}</span></div></div>` +
                 `<div class="rc-cols"><span>Product</span><span>Amount</span></div>` +
                 `<div class="receipt-items">${itemsHtml}</div>` +
-                `<div class="rc-summary"><div class="rc-total"><span>Total</span><span>${money(totalCost)}</span></div></div>` +
+                `<div class="rc-summary">` +
+                (discountTotal > 0 ? `<div class="rc-sum muted"><span>Discount</span><span>-${money(discountTotal)}</span></div>` : '') +
+                `<div class="rc-total"><span>Total</span><span>${money(totalDue)}</span></div>` +
+                (hasCredit ? `<div class="rc-sum muted"><span>Paid</span><span>${money(Math.max(0, totalDue - balanceTotal))}</span></div>` +
+                    `<div class="rc-sum credit"><span>Balance</span><span>${money(balanceTotal)}</span></div>` : '') +
+                `</div>` +
                 `<p class="rc-note">${noticeText}</p>`;
             const scroller = this.elements.incomingTransferContent.parentElement;
             if (scroller) scroller.scrollTop = 0;
