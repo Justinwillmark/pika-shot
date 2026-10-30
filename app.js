@@ -127,9 +127,11 @@ document.addEventListener('DOMContentLoaded', () => {
             discountAmountInput: document.getElementById('discount-amount'),
             discountInputLabel: document.getElementById('discount-input-label'),
             discountInputWrapper: document.getElementById('discount-input-wrapper'),
+            discountInputWrapper: document.getElementById('discount-input-wrapper'),
             inputContactWrapper: document.getElementById('input-contact-wrapper'),
             selectContactBtn: document.getElementById('select-contact-btn'),
             selectedContactName: document.getElementById('selected-contact-name'),
+            amountOwing: document.getElementById('amount-owing'),
             labelDiscount: document.getElementById('label-discount'),
             labelCredit: document.getElementById('label-credit'),
 
@@ -574,13 +576,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     this.showProductSelection();
                 });
             }
-            // The - and + buttons count in halves (1, 1.5, 2, 2.5 ...) and stop at what is in stock
+            // The - and + buttons count by one (a ".5" someone typed stays) and stop at what is in stock
             const stepSaleQuantity = (direction) => {
                 const input = this.elements.saleQuantityInput;
                 const current = Math.round(this.unformatNumber(input.value) * 2) / 2;
                 const product = this.state.sellingProduct;
                 const inStock = product ? product.stock + (this.state.editingSale ? this.state.editingSale.quantity : 0) : Infinity;
-                const next = direction < 0 ? Math.max(0.5, current - 0.5) : (current < 0.5 ? 1 : current + 0.5);
+                const next = current + direction;
+                if (next < 0.5) return;
                 if (direction > 0 && next > inStock) {
                     const box = input.closest('.quantity-stepper');
                     if (box && !box.classList.contains('input-error-shake')) {
@@ -694,23 +697,20 @@ document.addEventListener('DOMContentLoaded', () => {
             return `${shown || '0'}.${text.slice(dot + 1).replace(/\D/g, '').startsWith('5') ? '5' : ''}`;
         },
 
-        // Runs `action` once on press; if the button stays held down it repeats 14 times a second after a short pause.
+        // Runs `action` once on press, then keeps running it 7 times a second while the button stays held down.
         _bindHoldRepeat(btn, action) {
             if (!btn) return;
-            const HOLD_MS = 250;
-            const REPEAT_MS = Math.round(1000 / 14);
-            let pause = null, timer = null;
-            const stop = () => { clearTimeout(pause); clearInterval(timer); pause = timer = null; };
+            const REPEAT_MS = Math.round(1000 / 7);
+            let timer = null;
+            const stop = () => { clearInterval(timer); timer = null; };
             btn.addEventListener('pointerdown', (e) => {
                 if (e.pointerType === 'mouse' && e.button !== 0) return;
                 stop();
                 action();
-                pause = setTimeout(() => {
-                    timer = setInterval(() => {
-                        if (!btn.offsetParent) { stop(); return; } // the modal went away while the button was held
-                        action();
-                    }, REPEAT_MS);
-                }, HOLD_MS);
+                timer = setInterval(() => {
+                    if (!btn.offsetParent) { stop(); return; } // the modal went away while the button was held
+                    action();
+                }, REPEAT_MS);
             });
             ['pointerup', 'pointercancel', 'pointerleave'].forEach(evt => btn.addEventListener(evt, stop));
             btn.addEventListener('blur', stop);
@@ -2753,6 +2753,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const total = Math.max(0, Math.round(subtotal - discount));
             this.elements.saleTotalPrice.textContent = `₦${this.formatNumber(total)}`;
+
+            // Credit: a part payment can never be more than the total, and what is left to pay shows as they type
+            const owing = this.elements.amountOwing;
+            const paidInput = this.elements.discountAmountInput;
+            if (activeRadio && activeRadio.value === 'credit' && paidInput.value.trim() !== '') {
+                let paid = this.unformatNumber(paidInput.value) || 0;
+                if (paid > total) {
+                    paid = total;
+                    paidInput.value = this.formatNumber(total);
+                    const wrap = this.elements.discountInputWrapper;
+                    wrap.classList.remove('input-error-shake');
+                    void wrap.offsetWidth; // lets the shake play again if it was just playing
+                    wrap.classList.add('input-error-shake');
+                    setTimeout(() => wrap.classList.remove('input-error-shake'), 500);
+                }
+                owing.innerHTML = `Owing: <strong>₦${this.formatNumber(total - paid)}</strong>`;
+                owing.style.display = 'block';
+            } else {
+                owing.style.display = 'none';
+                owing.textContent = '';
+            }
         },
         async _processSale() {
             const quantity = this.unformatNumber(this.elements.saleQuantityInput.value);
@@ -2786,6 +2807,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!product) { say('This product is no longer available.', 'Not available'); return false; }
             if (quantity <= 0) { say('Enter how many you are selling.', 'Check your entry'); return false; }
             if (quantity > availableStock) { say(`Only ${this.formatNumber(availableStock)} ${product.unit} left in stock.`, 'Not enough stock'); return false; }
+            if (partPayment !== null && partPayment > Math.round(quantity * unitPrice)) { say('The part payment cannot be more than the total.', 'Check the amount'); return false; }
 
             product.stock = availableStock - quantity;
 

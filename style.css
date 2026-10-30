@@ -329,7 +329,7 @@ html, body {
 
 /* NEW TRIPLE TOGGLE STYLES */
 .sale-type-section {
-    margin-bottom: 24px;
+    margin-bottom: 38px; /* room for the "How many?" title that sits on the box below */
     padding-top: 12px;
     border-top: 1px dashed var(--border-color);
 }
@@ -1675,3 +1675,10 @@ button:focus { outline: none; }
 .dialog-card .modal-actions { margin-top: 22px; }
 .dialog-card .btn-danger { flex-basis: 66.67%; }
 .dialog-card #dialog-cancel[hidden] + #dialog-ok { flex-basis: 100%; }
+
+/* === Credit sale: what is still owed, and the customer's name, under the part payment box === */
+.credit-notes { display: flex; align-items: baseline; justify-content: space-between; column-gap: 10px; } /* one line: the name gives way, what is owing never does */
+.credit-notes > * { margin-top: 6px; }
+.amount-owing { flex: 0 0 auto; font-size: clamp(0.72rem, 3.4vw, 0.85rem); color: var(--text-light); white-space: nowrap; }
+.amount-owing strong { color: var(--danger-color); font-weight: 700; font-variant-numeric: tabular-nums; }
+.contact-name-display { flex: 0 1 auto; min-width: 0; margin-left: auto; font-size: clamp(0.68rem, 3vw, 0.75rem); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
