@@ -341,10 +341,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 this._resetVerificationUI();
                 this.showView('onboarding-step-1');
             });
+            document.getElementById('forgot-pin-btn').addEventListener('click', () => this.handleForgotPin());
+            document.getElementById('save-new-pin-btn').addEventListener('click', () => this.handleSaveNewPin());
+            document.getElementById('toggle-new-pin').addEventListener('click', () => this.togglePinVisibility('new-pin', 'toggle-new-pin'));
             document.getElementById('wa-new-code').addEventListener('click', async () => {
                 const phone = this.state.tempPhone;
                 if (!phone) return;
-                try { this._showVerification(await this._newSignupCode(phone)); }
+                const purpose = (this._pending && this._pending.purpose) || 'signup';
+                try { this._showVerification(await this._newSignupCode(phone, purpose)); }
                 catch (error) { console.error('Could not make a new code:', error); alert('Could not connect. Please check your internet and try again.'); }
             });
             document.getElementById('wa-change').addEventListener('click', () => {
@@ -719,23 +723,24 @@ document.addEventListener('DOMContentLoaded', () => {
         },
         _verificationRef(phone) { return window.fb.doc(window.fb.db, 'signup_verifications', phone); },
 
-        async startPhoneVerification(phone) {
+        // purpose: 'signup' (new account) or 'reset' (Forgot PIN). The dashboard shows which one it is.
+        async startPhoneVerification(phone, purpose = 'signup') {
             let pending = this._pendingVerification();
-            if (!pending || pending.phone !== phone || Date.now() - pending.createdAt > this.CODE_TTL_MS) pending = null;
+            if (!pending || pending.phone !== phone || (pending.purpose || 'signup') !== purpose || Date.now() - pending.createdAt > this.CODE_TTL_MS) pending = null;
             if (pending) {
                 const snap = await window.fb.getDoc(this._verificationRef(phone));
                 const d = snap.exists() ? snap.data() : null;
-                if (d && d.verified && d.code === pending.code) return this._phoneVerified(phone);
+                if (d && d.verified && d.code === pending.code) { this._pending = pending; return this._phoneVerified(phone); }
                 if (!d || d.code !== pending.code) pending = null; // replaced since: start over
             }
-            if (!pending) pending = await this._newSignupCode(phone);
+            if (!pending) pending = await this._newSignupCode(phone, purpose);
             this._showVerification(pending);
         },
 
-        async _newSignupCode(phone) {
+        async _newSignupCode(phone, purpose = 'signup') {
             const code = String(1000 + (crypto.getRandomValues(new Uint32Array(1))[0] % 9000));
-            await window.fb.setDoc(this._verificationRef(phone), { phone, code, createdAt: window.fb.serverTimestamp(), verified: false });
-            const pending = { phone, code, createdAt: Date.now() };
+            await window.fb.setDoc(this._verificationRef(phone), { phone, code, purpose, createdAt: window.fb.serverTimestamp(), verified: false });
+            const pending = { phone, code, purpose, createdAt: Date.now() };
             this._savePending(pending);
             return pending;
         },
@@ -746,11 +751,13 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.checkPhoneInput.value = pending.phone;
             ['phone-entry', 'signup-intro', 'signup-privacy'].forEach((id) => { el(id).hidden = true; });
             el('wa-verify').hidden = false;
+            el('wa-title').textContent = pending.purpose === 'reset' ? 'Reset your PIN' : 'Confirm your number';
             el('wa-phone').textContent = pending.phone;
             // The code is never shown: it travels inside the prefilled WhatsApp message
             el('wa-link').href = `https://wa.me/${this.WA_NUMBER}?text=${encodeURIComponent(`Verify ${pending.code} for PikaShot`)}`;
             this._pending = pending;
             this._verifiedDone = false;
+            if (this.state.currentView !== 'onboarding-step-1') this.showView('onboarding-step-1');
             this._tickVerification();
             clearInterval(this._waTimer);
             this._waTimer = setInterval(() => this._tickVerification(), 15000);
@@ -779,17 +786,79 @@ document.addEventListener('DOMContentLoaded', () => {
             if (this._verifiedDone) return; // the listener and the startup check can both report it
             this._verifiedDone = true;
             this._stopVerification();
-            this._pending = null;
-            this._savePending(null);
-            try { localStorage.setItem('pika_verified_phone', JSON.stringify({ phone, at: Date.now() })); } catch (e) { /* fine */ }
+            const reset = !!this._pending && this._pending.purpose === 'reset';
             this.state.tempPhone = phone;
+            if (!reset) {
+                this._pending = null;
+                this._savePending(null);
+                try { localStorage.setItem('pika_verified_phone', JSON.stringify({ phone, at: Date.now() })); } catch (e) { /* fine */ }
+            } // a PIN reset keeps its record until the new PIN is saved, so closing the app here loses nothing
             const status = document.getElementById('wa-status');
-            status.textContent = 'Confirmed. Opening Create Account…';
+            status.textContent = reset ? 'Confirmed. Opening new PIN…' : 'Confirmed. Opening Create Account…';
             status.classList.add('ok');
             setTimeout(() => {
                 this._resetVerificationUI();
-                this.showView('onboarding-step-register');
+                if (reset) {
+                    document.getElementById('newpin-phone').textContent = phone;
+                    document.getElementById('new-pin').value = '';
+                    this.showView('onboarding-step-newpin');
+                } else {
+                    this.showView('onboarding-step-register');
+                }
             }, 900);
+        },
+
+        // Forgot PIN: the same WhatsApp check, then a new PIN replaces the old one everywhere
+        async handleForgotPin() {
+            const phone = this.state.tempPhone;
+            if (!phone) { this.showView('onboarding-step-1'); return; }
+            this.showLoader();
+            try {
+                await this.startPhoneVerification(phone, 'reset');
+            } catch (error) {
+                console.error('Could not start the PIN reset:', error);
+                alert('Could not connect. Please check your internet and try again.');
+            } finally {
+                this.hideLoader();
+            }
+        },
+
+        async handleSaveNewPin() {
+            const pin = document.getElementById('new-pin').value.trim();
+            const phone = this.state.tempPhone;
+            const pending = this._pendingVerification();
+            if (!/^\d{6}$/.test(pin)) { alert('Please enter 6 digits for your new PIN.'); return; }
+            if (!phone || !pending || pending.phone !== phone || pending.purpose !== 'reset') {
+                alert('Please confirm your number on WhatsApp first.');
+                this.showView('onboarding-step-1');
+                return;
+            }
+            this.showLoader();
+            try {
+                const userRef = window.fb.doc(window.fb.db, 'users', phone);
+                const snap = await window.fb.getDoc(userRef);
+                if (!snap.exists()) throw new Error('Account not found');
+                const pinChangedAt = Date.now(); // other phones compare this and log themselves out
+                await window.fb.updateDoc(userRef, { pin, pinChangedAt });
+                // Spend the WhatsApp confirmation so it cannot open this screen again
+                await window.fb.setDoc(this._verificationRef(phone), { phone, code: 'used', purpose: 'reset', createdAt: window.fb.serverTimestamp(), verified: false });
+                this._pending = null;
+                this._savePending(null);
+                document.getElementById('new-pin').value = '';
+
+                this.state.user = { ...snap.data(), pin, pinChangedAt };
+                await DB.saveUser(this.state.user);
+                const synced = await DB.syncDataFromCloud(phone);
+                if (!synced) alert('PIN saved, but some data failed to sync. It will sync in the background.');
+                await this.loadMainApp();
+                this.startRealtimeSync();
+                this.showToast('New PIN saved.');
+            } catch (error) {
+                console.error('Could not save the new PIN:', error);
+                alert('Could not save your new PIN. Please check your internet and try again.');
+            } finally {
+                this.hideLoader();
+            }
         },
 
         _stopVerification() {
@@ -811,9 +880,23 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const snap = await window.fb.getDoc(this._verificationRef(p.phone));
                 const d = snap.exists() ? snap.data() : null;
-                if (d && d.verified && d.code === p.code) { this._phoneVerified(p.phone); return; }
+                if (d && d.verified && d.code === p.code) { this._pending = p; this._phoneVerified(p.phone); return; }
             } catch (e) { /* offline: show the code anyway */ }
             this._showVerification(p);
+        },
+
+        // A PIN reset on another phone logs this one out (it still knows only the old PIN)
+        _watchPinChange() {
+            if (this._pinWatch) { this._pinWatch(); this._pinWatch = null; }
+            const user = this.state.user;
+            if (!user || !user.phone || !this.state.firebaseReady) return;
+            this._pinWatch = window.fb.onSnapshot(window.fb.doc(window.fb.db, 'users', user.phone), (snap) => {
+                if (!snap.exists() || !this.state.user) return;
+                const changed = Number(snap.data().pinChangedAt) || 0;
+                if (changed > (Number(this.state.user.pinChangedAt) || 0)) {
+                    this._doLogout().then(() => alert('Your PIN was changed. Please log in again with your new PIN.'));
+                }
+            }, (error) => console.error('Could not watch for PIN changes:', error));
         },
 
         // --- Install as a proper Android app ---
@@ -1048,6 +1131,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 );
 
                 this._listenForIncomingTransfers();
+                this._watchPinChange();
 
                 this.watchPendingTransfers();
 
@@ -1072,6 +1156,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         async handleLogout() {
             if (confirm('Are you sure you want to log out? This will clear local data (it remains safe in the cloud).')) {
+                await this._doLogout();
+            }
+        },
+
+        async _doLogout() {
+            {
+                if (this._pinWatch) { this._pinWatch(); this._pinWatch = null; }
                 await DB.clearUser(); // This also stops realtime listeners
                 this.stopWatchingTransfers();
                 if (this._transfersListener) { this._transfersListener(); this._transfersListener = null; }

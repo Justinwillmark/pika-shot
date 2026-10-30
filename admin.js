@@ -73,6 +73,8 @@ document.addEventListener('DOMContentLoaded', () => {
         calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
         chevronRight: '<polyline points="9 18 15 12 9 6"/>',
         back: '<polyline points="15 18 9 12 15 6"/>',
+        chevronDown: '<polyline points="6 9 12 15 18 9"/>',
+        alert: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>',
         shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/>',
         close: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>'
     };
@@ -82,6 +84,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const CODE_TTL_MS = 20 * 60 * 1000; // must match the app
     const REPLIES = {
         verified: 'Verified. Please return to PikaShot to create your account now. Thanks',
+        verifiedReset: 'Verified. Please return to PikaShot to set your new PIN now. Thanks',
         missing: 'We couldn\'t find a PikaShot sign-up for this number. Please open PikaShot, enter this WhatsApp number, tap "Verify on WhatsApp" and send the message. Thanks',
         mismatch: 'That message doesn\'t match your sign-up. Please open PikaShot, tap "Verify on WhatsApp" and send the message without changing it. Thanks',
         expired: 'That request has expired. Please open PikaShot, tap "Try again", then "Verify on WhatsApp" and send the message. Thanks'
@@ -143,6 +146,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (m && /\D/.test(e.target.value)) e.target.value = m[0];
             });
             $('v-next').addEventListener('click', () => this.resetVerify());
+            const fold = $('verify-fold');
+            if (readLocal('pika_admin_verify_open') === false && !PHONE_ONLY.matches) fold.open = false;
+            fold.addEventListener('toggle', () => {
+                if (PHONE_ONLY.matches) { if (!fold.open) fold.open = true; return; }
+                writeLocal('pika_admin_verify_open', fold.open);
+            });
             PHONE_ONLY.addEventListener('change', () => {
                 this.renderChrome();
                 if (!PHONE_ONLY.matches && !this.state.loaded && $('dashboard-container').style.display !== 'none') this.refresh();
@@ -206,8 +215,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const phone = localPhone($('v-phone').value);
             const code = (String($('v-code').value).match(/\d{4}/) || [])[0];
             err.textContent = '';
-            if (!/^0\d{10}$/.test(phone)) { err.textContent = 'Enter the WhatsApp number the code came from.'; $('v-phone').focus(); return; }
-            if (!code) { err.textContent = 'Enter the 4-digit code from the message.'; $('v-code').focus(); return; }
+            if (!/^0\d{10}$/.test(phone)) { err.textContent = 'Enter the WhatsApp number the message came from.'; $('v-phone').focus(); return; }
+            if (!code) { err.textContent = 'Enter the 4-digit code from their message.'; $('v-code').focus(); return; }
             const btn = $('v-check');
             btn.disabled = true;
             btn.textContent = 'Checking…';
@@ -215,21 +224,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 const ref = fb.doc(fb.db, 'signup_verifications', phone);
                 const snap = await fb.getDoc(ref);
                 const d = snap.exists() ? snap.data() : null;
+                const purpose = d ? (d.purpose === 'reset' ? 'reset' : 'signup') : null;
+                const done = purpose === 'reset' ? REPLIES.verifiedReset : REPLIES.verified;
                 const age = d ? Date.now() - (toMs(d.createdAt) || 0) : Infinity;
                 let result;
-                if (!d) result = { ok: false, title: `No sign-up found for ${phone}`, reply: REPLIES.missing };
+                if (!d) result = { ok: false, title: 'No request from this number', reply: REPLIES.missing };
                 else if (String(d.code) !== code) result = { ok: false, title: 'The code does not match', reply: REPLIES.mismatch };
-                else if (d.verified) result = { ok: true, title: 'Already verified', reply: REPLIES.verified };
-                else if (age > CODE_TTL_MS) result = { ok: false, title: `The code expired (${Math.floor(age / 60000)} min old)`, reply: REPLIES.expired };
+                else if (d.verified) result = { ok: true, title: 'Already verified', reply: done };
+                else if (age > CODE_TTL_MS) result = { ok: false, title: 'This code has expired', reply: REPLIES.expired };
                 else {
                     await fb.setDoc(ref, { verified: true, verifiedAt: fb.Timestamp.fromMillis(Date.now()) }, { merge: true });
-                    result = { ok: true, title: `Verified ${phone}`, reply: REPLIES.verified };
+                    result = { ok: true, title: 'Verified', reply: done };
                 }
-                this.showVerifyResult(result, phone);
+                this.showVerifyResult({ ...result, purpose }, phone);
             } catch (error) {
-                console.error('Sign-up check failed:', error);
+                console.error('Number check failed:', error);
                 err.textContent = error && error.code === 'permission-denied'
-                    ? 'The Firestore rules do not let the dashboard check sign-up codes yet.'
+                    ? 'The Firestore rules do not let the dashboard check these codes yet.'
                     : 'Could not check. Check your connection and try again.';
             } finally {
                 btn.disabled = false;
@@ -239,17 +250,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
         showVerifyResult(result, phone) {
             this._reply = result.reply;
-            $('verify-form').hidden = true;
+            $('vcard-body').classList.add('has-result');
+            $('v-steps').hidden = true;
             $('v-result').hidden = false;
             $('v-result').className = `v-result ${result.ok ? 'ok' : 'bad'}`;
+            $('v-badge').innerHTML = icon(result.ok ? 'check' : 'alert', 20);
             $('v-title').textContent = result.title;
+            const purpose = $('v-purpose');
+            purpose.className = `v-purpose ${result.purpose || ''}`;
+            purpose.textContent = result.purpose === 'reset' ? 'PIN reset' : result.purpose === 'signup' ? 'New sign-up' : '';
+            $('v-number').textContent = phone;
             $('v-reply').textContent = result.reply;
             $('v-wa').href = `https://wa.me/234${phone.slice(1)}?text=${encodeURIComponent(result.reply)}`;
         },
 
         resetVerify() {
+            $('vcard-body').classList.remove('has-result');
             $('v-result').hidden = true;
-            $('verify-form').hidden = false;
+            $('v-steps').hidden = false;
             $('v-phone').value = '';
             $('v-code').value = '';
             $('v-error').textContent = '';
@@ -594,6 +612,7 @@ document.addEventListener('DOMContentLoaded', () => {
             document.querySelectorAll('[data-period]').forEach((b) => b.classList.toggle('active', b.dataset.period === st.period));
             document.querySelectorAll('.tab-panel').forEach((p) => { p.hidden = p.id !== `tab-${st.tab}`; });
             $('verify').hidden = !(PHONE_ONLY.matches || st.tab === 'users');
+            if (PHONE_ONLY.matches) $('verify-fold').open = true;
             $('page-title').textContent = PHONE_ONLY.matches ? 'Verify sign-ups' : titles[st.tab];
             const r = st.loaded && this.m ? this.m.r : null;
             // On phones the period picker already says "7 days", so only the dates are shown

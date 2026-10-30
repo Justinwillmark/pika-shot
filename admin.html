@@ -101,45 +101,60 @@
             <div id="notice" class="notice" role="status" hidden></div>
 
             <main id="main">
-                <!-- Sign-up verification: top of Users on desktop, the only thing shown on phones -->
+                <!-- WhatsApp number check (sign-ups and PIN resets): top of Users on desktop, the only thing shown on phones -->
                 <section id="verify" class="verify" aria-labelledby="verify-title" hidden>
-                    <div class="panel verify-card">
-                        <div class="verify-head">
-                            <span class="verify-ico" data-icon="shield"></span>
-                            <div>
-                                <h3 id="verify-title">Sign-up verification</h3>
-                                <p>Paste the sender's WhatsApp number and their message (or just its 4 digits).</p>
-                            </div>
-                        </div>
-                        <form id="verify-form" class="verify-form" autocomplete="off" novalidate>
-                            <label class="vfield" for="v-phone">
-                                <span class="vlabel">WhatsApp number</span>
-                                <span class="vrow">
+                    <details id="verify-fold" class="vcard" open>
+                        <summary class="vcard-head">
+                            <span class="vcard-ico" data-icon="shield"></span>
+                            <span class="vcard-titles">
+                                <span class="vcard-eyebrow">WhatsApp check</span>
+                                <span id="verify-title" class="vcard-title">Verify a phone number</span>
+                                <span class="vcard-sub">For new sign-ups and PIN resets</span>
+                            </span>
+                            <span class="vcard-chev" data-icon="chevronDown"></span>
+                        </summary>
+                        <div id="vcard-body" class="vcard-body">
+                            <form id="verify-form" class="verify-form" autocomplete="off" novalidate>
+                                <div class="ofield">
+                                    <label for="v-phone">Sender's WhatsApp number</label>
                                     <input id="v-phone" type="tel" inputmode="tel" placeholder="+234 803 123 4567">
-                                    <button type="button" class="btn vpaste" data-paste="v-phone">Paste</button>
-                                </span>
-                            </label>
-                            <label class="vfield" for="v-code">
-                                <span class="vlabel">Code</span>
-                                <span class="vrow">
+                                    <button type="button" class="ofield-btn" data-paste="v-phone">Paste</button>
+                                </div>
+                                <div class="ofield">
+                                    <label for="v-code">Code from their message</label>
                                     <input id="v-code" type="text" inputmode="numeric" placeholder="4821" class="code-input">
-                                    <button type="button" class="btn vpaste" data-paste="v-code">Paste</button>
-                                </span>
-                            </label>
-                            <button type="submit" id="v-check" class="btn primary v-submit">Check and verify</button>
-                            <p id="v-error" class="v-error" role="alert"></p>
-                        </form>
-                        <div id="v-result" class="v-result" role="status" hidden>
-                            <p id="v-title" class="v-title"></p>
-                            <p class="vlabel">Reply to send</p>
-                            <p id="v-reply" class="v-reply"></p>
-                            <div class="v-actions">
-                                <button type="button" class="btn primary" id="v-copy">Copy reply</button>
-                                <a class="btn" id="v-wa" target="_blank" rel="noopener">Reply on WhatsApp</a>
+                                    <button type="button" class="ofield-btn" data-paste="v-code">Paste</button>
+                                </div>
+                                <p id="v-error" class="v-error" role="alert"></p>
+                                <button type="submit" id="v-check" class="btn primary v-submit">Check and verify</button>
+                            </form>
+                            <div class="v-side">
+                                <ol id="v-steps" class="v-steps">
+                                    <li><b>Copy the sender's number</b><span>From their WhatsApp chat with PikaShot</span></li>
+                                    <li><b>Paste their message</b><span>Only the 4 digits are kept</span></li>
+                                    <li><b>Send the reply</b><span>Their app moves on by itself</span></li>
+                                </ol>
+                                <div id="v-result" class="v-result" role="status" hidden>
+                                    <div class="v-result-head">
+                                        <span id="v-badge" class="v-badge"></span>
+                                        <div class="v-result-titles">
+                                            <p id="v-title" class="v-title"></p>
+                                            <p class="v-meta"><span id="v-purpose" class="v-purpose"></span><span id="v-number" class="v-number"></span></p>
+                                        </div>
+                                    </div>
+                                    <div class="v-reply-box">
+                                        <p class="v-reply-label">Reply to send</p>
+                                        <p id="v-reply" class="v-reply"></p>
+                                    </div>
+                                    <div class="v-actions">
+                                        <button type="button" class="btn primary" id="v-copy">Copy reply</button>
+                                        <a class="btn" id="v-wa" target="_blank" rel="noopener">Reply on WhatsApp</a>
+                                    </div>
+                                    <button type="button" class="link-btn v-next" id="v-next">Verify another number</button>
+                                </div>
                             </div>
-                            <button type="button" class="btn v-next" id="v-next">Verify another</button>
                         </div>
-                    </div>
+                    </details>
                 </section>
                 <section class="tab-panel" id="tab-overview"></section>
                 <section class="tab-panel" id="tab-users" hidden></section>
