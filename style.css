@@ -1602,3 +1602,66 @@ button:focus { outline: none; }
 .wa-link-btn.muted-link { color: var(--text-light); font-weight: 500; }
 .onboarding-content .newpin-note { margin: 14px 0 0; font-size: 0.82rem; }
 .onboarding-content p b { color: var(--text-color); white-space: nowrap; }
+
+/* === One look for every field (search boxes excepted): the title sits on the border line === */
+.modal-content .form-group { position: relative; margin-bottom: 22px; }
+.modal-content .form-group > label,
+.discount-input-container > label,
+.transfer-input-wrap .transfer-label,
+.pin-input-wrap label {
+    position: absolute; z-index: 1; top: -8px; left: 11px; max-width: calc(100% - 22px); margin: 0; padding: 0 5px;
+    background: #fff; color: #5b6670; font-size: 0.72rem; font-weight: 600; line-height: 1.1; letter-spacing: 0.01em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; transition: color 0.15s;
+}
+.modal-content .form-group:focus-within > label,
+.discount-input-container:focus-within > label,
+.transfer-input-wrap:focus-within .transfer-label,
+.pin-input-wrap:focus-within label { color: var(--primary-color); }
+
+.modal-content .form-group input,
+.modal-content .form-group select,
+.input-with-prefix input {
+    height: 50px; padding: 0 14px; border: 1.5px solid #b4bec7; border-radius: 12px;
+    background-color: #fff; color: #1d1d1d; font-size: 1rem;
+}
+.modal-content .form-group input::placeholder, .input-with-prefix input::placeholder { color: #a6adb4; }
+.modal-content .form-group input:focus,
+.modal-content .form-group select:focus,
+.input-with-prefix input:focus { outline: none; background-color: #fff; border-color: var(--primary-color); box-shadow: 0 0 0 1px var(--primary-color); }
+.modal-content .form-group select {
+    appearance: none; -webkit-appearance: none; padding: 0 30px 0 12px; cursor: pointer; text-overflow: ellipsis;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23556' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'></polyline></svg>");
+    background-repeat: no-repeat; background-position: right 10px center;
+}
+.modal-content .form-row { align-items: flex-start; }
+#product-form .btn-icon { min-height: 50px; margin-bottom: 22px; border-radius: 12px; }
+
+/* quantity: one box with − and + inside, title centred on its border */
+.modal-content .quantity-stepper {
+    gap: 0; height: 56px; border: 1.5px solid #b4bec7; border-radius: 12px; overflow: hidden; background: #fff;
+}
+.modal-content .quantity-stepper:focus-within { border-color: var(--primary-color); box-shadow: 0 0 0 1px var(--primary-color); }
+.modal-content .quantity-stepper .btn { height: 100%; min-height: 0; border-radius: 0; background: #f2f4f6; color: var(--text-color); }
+.modal-content .quantity-stepper .btn:active { background: #e3e7eb; }
+.modal-content .form-group .quantity-stepper input {
+    height: 100%; border: 0; border-radius: 0; box-shadow: none; font-size: 1.35rem; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.modal-content .form-group > #sale-quantity-label { left: 50%; transform: translateX(-50%); }
+
+/* discount / part payment */
+.discount-input-container { position: relative; margin-top: 18px; }
+.input-with-prefix input { padding-left: 32px !important; }
+.input-with-contact-wrapper.credit-mode #select-contact-btn { height: 50px; border-radius: 12px; }
+
+/* who a transfer goes to */
+.transfer-input-wrap { position: relative; margin-top: 8px; border-color: #b4bec7; background: #fff; }
+.transfer-input-wrap:focus-within { box-shadow: 0 0 0 1px var(--primary-color); }
+
+/* PIN check */
+.pin-input-wrap { position: relative; margin-top: 6px; }
+
+/* === Modals: one shape, and always above the keyboard (the layer is sized to the visible screen) === */
+.modal-content { max-height: 100%; }
+.modal-content h2 { font-weight: 700; letter-spacing: -0.01em; line-height: 1.25; }
+.modal-content > p, .modal-scroll-content > p { font-size: 0.95rem; }
+.modal-actions-inline .btn { min-width: 0; }

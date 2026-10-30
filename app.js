@@ -527,7 +527,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (this.elements.transferMessage.classList.contains('error')) this.findUserForTransfer();
             });
             this.elements.transferPhoneInput.addEventListener('input', (e) => {
-                const digits = e.target.value.replace(/\D/g, '').slice(0, 11);
+                const digits = this._localPhone(e.target.value);
                 if (e.target.value !== digits) e.target.value = digits;
                 this._setTransferState('idle');
 
@@ -600,7 +600,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (selectedUnit) {
                     this.elements.cartonQuantityLabel.textContent = `How many ${selectedUnit} per carton?`;
                 } else {
-                    this.elements.cartonQuantityLabel.textContent = `Quantity of items per carton`;
+                    this.elements.cartonQuantityLabel.textContent = 'How many per carton?';
                 }
             });
 
@@ -635,14 +635,29 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             this.elements.checkPhoneInput.addEventListener('input', (e) => {
-                e.target.value = e.target.value.replace(/\D/g, '').slice(0, 11);
+                const digits = this._localPhone(e.target.value);
+                if (e.target.value !== digits) e.target.value = digits;
             });
+            // Enter on the keyboard does the obvious next step
+            this.elements.checkPhoneInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); this.handleCheckPhone(); } });
+            this.elements.loginPinInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); this.handleLogin(); } });
+            const newPin = document.getElementById('new-pin');
+            newPin.addEventListener('input', (e) => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 6); });
+            newPin.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); this.handleSaveNewPin(); } });
             this.elements.loginPinInput.addEventListener('input', (e) => {
                 e.target.value = e.target.value.replace(/\D/g, '').slice(0, 6);
             });
             this.elements.createPinInput.addEventListener('input', (e) => {
                 e.target.value = e.target.value.replace(/\D/g, '').slice(0, 6);
             });
+        },
+
+        // Any way a Nigerian number gets typed or pasted (+234 803 123 4567, 2348031234567, 803...) becomes 08031234567
+        _localPhone(value) {
+            let d = String(value || '').replace(/\D/g, '');
+            if (d.startsWith('234') && d.length > 11) d = d.slice(3);
+            if (d.length === 10 && /^[789]/.test(d)) d = '0' + d;
+            return d.slice(0, 11);
         },
 
         // Runs `action` once on press, then keeps running it 7 times a second while the button stays held down.
@@ -1204,7 +1219,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (this.toggleOnboardingTooltip) this.toggleOnboardingTooltip();
         },
-        showModal(modalId) { this.elements.modalContainer.style.display = 'flex'; this.elements.modalContainer.querySelectorAll('.modal-content').forEach(m => m.style.display = 'none'); const modalToShow = document.getElementById(modalId); if (modalToShow) { modalToShow.style.display = 'flex'; } this._followKeyboard(modalId === 'phone-transfer-modal' || modalId === 'pin-confirm-modal'); },
+        showModal(modalId) { this.elements.modalContainer.style.display = 'flex'; this.elements.modalContainer.querySelectorAll('.modal-content').forEach(m => m.style.display = 'none'); const modalToShow = document.getElementById(modalId); if (modalToShow) { modalToShow.style.display = 'flex'; } this._followKeyboard(true); },
         hideModal() { this.elements.modalContainer.style.display = 'none'; this.elements.modalContainer.querySelectorAll('.modal-content').forEach(m => m.style.display = 'none'); this._followKeyboard(false); },
 
         // While on, the modal layer is sized to the part of the screen that is not under the on-screen keyboard,
@@ -1222,6 +1237,15 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             vv.removeEventListener('resize', this._keyboardFit);
             vv.removeEventListener('scroll', this._keyboardFit);
+            if (!this._keepFieldInView) {
+                // once the keyboard has opened, scroll the field being typed in to the middle of the modal
+                this._keepFieldInView = (e) => {
+                    const field = e.target;
+                    if (!field.matches || !field.matches('input:not([type=checkbox]):not([type=radio]), select, textarea')) return;
+                    setTimeout(() => field.scrollIntoView({ block: 'center', behavior: 'smooth' }), 350);
+                };
+                box.addEventListener('focusin', this._keepFieldInView);
+            }
             if (on) {
                 vv.addEventListener('resize', this._keyboardFit);
                 vv.addEventListener('scroll', this._keyboardFit);
@@ -2399,8 +2423,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (productData.unit === 'cartons' && this.state.user.type === 'Wholesaler') {
                 this.elements.cartonDetailsForm.reset();
-                this.elements.cartonProductNameLabel.textContent = `What's inside the ${productData.name} carton?`;
-                this.elements.cartonQuantityLabel.textContent = 'Quantity of items per carton';
+                this.elements.cartonProductNameLabel.textContent = "What's inside?";
+                this.elements.cartonQuantityLabel.textContent = 'How many per carton?';
                 this.state.tempProductDataForCarton = productData;
                 this.hideModal();
                 this.showModal('carton-details-modal');
@@ -2627,7 +2651,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.saleProductImage.src = product.image ? URL.createObjectURL(product.image) : 'icons/icon-192.png';
             this.elements.saleProductName.textContent = product.name;
             this.elements.saleProductStock.textContent = `Stock: ${this.formatNumber(product.stock)} ${product.unit} left`;
-            this.elements.saleQuantityLabel.textContent = `How many ${product.unit} are you selling?`;
+            this.elements.saleQuantityLabel.textContent = `How many ${product.unit}?`;
             this.elements.saleQuantityInput.value = '1';
 
             // Reset triple toggle fields

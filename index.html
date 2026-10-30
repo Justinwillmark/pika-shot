@@ -70,7 +70,7 @@
                 <div id="phone-entry">
                     <div class="form-group outlined">
                         <label for="check-phone">WhatsApp number</label>
-                        <input type="tel" id="check-phone" placeholder="e.g., 08012345678" maxlength="11" inputmode="numeric" autocomplete="tel" required>
+                        <input type="tel" id="check-phone" placeholder="e.g., 08012345678" inputmode="numeric" autocomplete="tel" enterkeyhint="go" required>
                     </div>
                     <button id="check-phone-btn" class="btn btn-primary">Continue</button>
                 </div>
@@ -99,7 +99,7 @@
                 <div class="form-group outlined">
                     <label for="login-pin">Your PIN</label>
                     <div class="input-wrapper">
-                        <input type="password" id="login-pin" placeholder="••••••" maxlength="6" inputmode="numeric" autocomplete="current-password">
+                        <input type="password" id="login-pin" placeholder="••••••" maxlength="6" inputmode="numeric" autocomplete="current-password" enterkeyhint="go">
                         <div class="input-icons">
                             <button id="toggle-login-pin" class="icon-btn" title="Show/Hide">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
@@ -171,17 +171,29 @@
                             </select>
                         </div>
                         <div class="form-group">
-                            <label for="business-location">Business Location</label>
+                            <label for="business-location">Location (LGA)</label>
                             <select id="business-location" required>
                                 <option value="" disabled selected hidden>Select</option>
-                                <option value="Lagos Island">Lagos Island</option>
-                                <option value="Ikeja">Ikeja</option>
-                                <option value="Yaba">Yaba</option>
-                                <option value="Surulere">Surulere</option>
-                                <option value="Lekki">Lekki</option>
+                                <option value="Agege">Agege</option>
+                                <option value="Ajeromi-Ifelodun">Ajeromi-Ifelodun</option>
+                                <option value="Alimosho">Alimosho</option>
+                                <option value="Amuwo-Odofin">Amuwo-Odofin</option>
                                 <option value="Apapa">Apapa</option>
-                                <option value="Ikot Ekpene">Ikot Ekpene</option>
-                                <option value="Uyo">Uyo</option>
+                                <option value="Badagry">Badagry</option>
+                                <option value="Epe">Epe</option>
+                                <option value="Eti-Osa">Eti-Osa</option>
+                                <option value="Ibeju-Lekki">Ibeju-Lekki</option>
+                                <option value="Ifako-Ijaiye">Ifako-Ijaiye</option>
+                                <option value="Ikeja">Ikeja</option>
+                                <option value="Ikorodu">Ikorodu</option>
+                                <option value="Kosofe">Kosofe</option>
+                                <option value="Lagos Island">Lagos Island</option>
+                                <option value="Lagos Mainland">Lagos Mainland</option>
+                                <option value="Mushin">Mushin</option>
+                                <option value="Ojo">Ojo</option>
+                                <option value="Oshodi-Isolo">Oshodi-Isolo</option>
+                                <option value="Shomolu">Shomolu</option>
+                                <option value="Surulere">Surulere</option>
                             </select>
                         </div>
                     </div>
@@ -488,16 +500,16 @@
                      <button type="button" id="scan-new-barcode-btn" class="btn btn-secondary scan-new-barcode-btn" style="display: none;">Scan Barcode</button>
                 </div>
                 <div class="form-group">
-                    <label for="product-name">Product Name</label>
-                    <input type="text" id="product-name" required>
+                    <label for="product-name">Product name</label>
+                    <input type="text" id="product-name" placeholder="e.g., Indomie Chicken" enterkeyhint="next" required>
                 </div>
                 <div class="form-row">
-                    <div class="form-group unit-group"><label for="product-unit">Unit Type</label><select id="product-unit" required><option value="sachets">sachets</option><option value="bottles">bottles</option><option value="cans">cans</option><option value="tubs">tubs</option><option value="pieces">pieces</option><option value="packets">packets</option><option value="cartons" class="wholesaler-only">packs/cartons</option></select></div>
-                    <div class="form-group price-group"><label for="product-price">Selling Price (₦)</label><input type="text" id="product-price" inputmode="decimal" required></div>
+                    <div class="form-group unit-group"><label for="product-unit">Unit</label><select id="product-unit" required><option value="sachets">sachets</option><option value="bottles">bottles</option><option value="cans">cans</option><option value="tubs">tubs</option><option value="pieces">pieces</option><option value="packets">packets</option><option value="cartons" class="wholesaler-only">packs/cartons</option></select></div>
+                    <div class="form-group price-group"><label for="product-price">Price (₦)</label><input type="text" id="product-price" inputmode="decimal" placeholder="e.g., 200" enterkeyhint="next" required></div>
                 </div>
                 <div class="form-row">
                     <button type="button" id="add-change-picture-btn" class="btn-icon"><span>Snap Image</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg></button>
-                    <div class="form-group stock-group"><label for="product-stock">Stock Quantity</label><input type="text" id="product-stock" inputmode="numeric" required></div>
+                    <div class="form-group stock-group"><label for="product-stock">Stock</label><input type="text" id="product-stock" inputmode="numeric" placeholder="e.g., 24" enterkeyhint="done" required></div>
                 </div>
                  <div class="modal-actions modal-actions-inline">
                     <button type="button" id="cancel-product-form-btn" class="btn btn-secondary">Cancel</button>
@@ -510,9 +522,9 @@
             <h2>Carton Details</h2>
             <form id="carton-details-form">
                 <div class="form-group">
-                    <label for="carton-subunit-type" id="carton-product-name-label">What's inside the pack/carton?</label>
+                    <label for="carton-subunit-type" id="carton-product-name-label">What's inside?</label>
                     <select id="carton-subunit-type" required>
-                         <option value="" disabled selected>Select a unit...</option>
+                         <option value="" disabled selected>Select</option>
                          <option value="sachets">sachets</option>
                          <option value="bottles">bottles</option>
                          <option value="cans">cans</option>
@@ -522,10 +534,10 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label for="carton-subunit-quantity" id="carton-quantity-label">Quantity of items per pack/carton</label>
-                    <input type="text" id="carton-subunit-quantity" inputmode="numeric" required>
+                    <label for="carton-subunit-quantity" id="carton-quantity-label">How many per carton?</label>
+                    <input type="text" id="carton-subunit-quantity" inputmode="numeric" placeholder="e.g., 12" enterkeyhint="done" required>
                 </div>
-                <div class="modal-actions">
+                <div class="modal-actions modal-actions-inline">
                      <button type="button" id="cancel-carton-details-btn" class="btn btn-secondary">Cancel</button>
                      <button type="submit" class="btn btn-primary">Confirm</button>
                 </div>
@@ -615,13 +627,13 @@
         <div id="manual-sale-modal" class="modal-content" style="display:none;">
             <h2>Manual Sale</h2>
             <form id="manual-sale-form">
-                <div class="form-group"><label for="manual-product-name">Product Name</label><input type="text" id="manual-product-name" required></div>
-                <div class="form-group"><label for="manual-product-price">Selling Price (₦)</label><input type="text" id="manual-product-price" inputmode="decimal" required></div>
-                <div class="form-group"><label for="manual-sale-quantity">Quantity</label><input type="text" id="manual-sale-quantity" value="1" inputmode="numeric" required></div>
-                <div class="form-group"><label for="manual-product-unit">Unit Type</label><select id="manual-product-unit" required><option value="pieces">pieces</option><option value="sachets">sachets</option><option value="bottles">bottles</option><option value="cans">cans</option><option value="tubs">tubs</option><option value="packets">packets</option></select></div>
-                <div class="modal-actions">
+                <div class="form-group"><label for="manual-product-name">Product name</label><input type="text" id="manual-product-name" placeholder="e.g., Peak Milk" enterkeyhint="next" required></div>
+                <div class="form-group"><label for="manual-product-price">Price (₦)</label><input type="text" id="manual-product-price" inputmode="decimal" placeholder="e.g., 200" enterkeyhint="next" required></div>
+                <div class="form-group"><label for="manual-sale-quantity">How many?</label><input type="text" id="manual-sale-quantity" value="1" inputmode="numeric" enterkeyhint="done" required></div>
+                <div class="form-group"><label for="manual-product-unit">Unit</label><select id="manual-product-unit" required><option value="pieces">pieces</option><option value="sachets">sachets</option><option value="bottles">bottles</option><option value="cans">cans</option><option value="tubs">tubs</option><option value="packets">packets</option></select></div>
+                <div class="modal-actions modal-actions-inline">
                     <button type="button" id="cancel-manual-sale-btn" class="btn btn-secondary">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Complete Sale</button>
+                    <button type="submit" class="btn btn-primary">Save sale</button>
                 </div>
             </form>
         </div>
@@ -636,10 +648,10 @@
                     <p id="transfer-summary" class="transfer-summary"></p>
                 </div>
             </div>
-            <label for="transfer-phone-input" class="transfer-label">Who is it going to?</label>
             <div id="transfer-input-wrap" class="transfer-input-wrap">
+                <label for="transfer-phone-input" class="transfer-label">Their phone number</label>
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
-                <input type="tel" id="transfer-phone-input" placeholder="08012345678" maxlength="11" inputmode="numeric" autocomplete="off" required>
+                <input type="tel" id="transfer-phone-input" placeholder="08012345678" inputmode="numeric" autocomplete="off" required>
                 <span id="transfer-digit-count" class="transfer-digit-count">0/11</span>
             </div>
 
@@ -678,7 +690,8 @@
             <h2>Enter your PIN</h2>
             <p id="pin-confirm-text"></p>
             <div id="pin-input-wrap" class="pin-input-wrap">
-                <input type="password" id="pin-confirm-input" inputmode="numeric" maxlength="6" placeholder="••••••" autocomplete="off" aria-label="Your 6-digit PIN">
+                <label for="pin-confirm-input">Your PIN</label>
+                <input type="password" id="pin-confirm-input" inputmode="numeric" maxlength="6" placeholder="••••••" autocomplete="off" enterkeyhint="done">
             </div>
             <p id="pin-confirm-error" class="pin-error" aria-live="polite"></p>
             <div class="modal-actions modal-actions-inline">
