@@ -1529,7 +1529,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else if (product.needsSetup === 'barcode-and-price') {
                     badgeHtml = '<div class="setup-badge">Add barcode & price</div>';
                 } else if (product.needsSetup === 'price') {
-                    badgeHtml = '<div class="setup-badge">Add price</div>';
+                    badgeHtml = '<div class="setup-badge">New: Add price</div>';
                 } else if (product.stock < 7) {
                     badgeHtml = '<div class="restock-badge">Low stock!</div>';
                 }
@@ -3628,8 +3628,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 title: 'Products added',
                 headline: log.senderStore ? `From ${log.senderStore}` : 'Transfer accepted',
                 messages: [
-                    'The products are now in your inventory. Open My Products to add your prices.',
-                    'You earn airtime points each time you record a sale for these products. T&C apply.'
+                    'The items have been added to your products. Add your prices now.',
+                    'Earn airtime points each time you record a sale for these products. T&C apply.'
                 ]
             });
         },
