@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
             errorMessage: document.getElementById('error-message'),
             dashboardContainer: document.getElementById('dashboard-container'),
             refreshBtn: document.getElementById('refresh-btn'),
+            signOutBtn: document.getElementById('signout-btn'),
             totalUsers: document.getElementById('total-users'),
             totalScans: document.getElementById('total-scans'),
             uniqueBarcodes: document.getElementById('unique-barcodes'),
@@ -59,6 +60,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setupEventListeners() {
             this.elements.loginForm.addEventListener('submit', this.handleLogin.bind(this));
             this.elements.refreshBtn.addEventListener('click', this.handleRefresh.bind(this));
+            this.elements.signOutBtn.addEventListener('click', () => window.fb.signOut(window.fb.auth));
             // Search Listeners
             this.elements.userSearch.addEventListener('input', (e) => this.filterTable(e.target.value, this.elements.usersTableBody));
             this.elements.callsSearch.addEventListener('input', (e) => this.filterTable(e.target.value, this.elements.callsTableBody));
@@ -80,7 +82,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.errorMessage.textContent = '';
             } catch (error) {
                 console.error("Login failed:", error);
-                this.elements.errorMessage.textContent = 'Login failed. Please check email and password.';
+                const messages = {
+                    'auth/too-many-requests': 'Too many attempts. Try again in a few minutes.',
+                    'auth/operation-not-allowed': 'Email sign-in is switched off in Firebase.',
+                    'auth/network-request-failed': 'No connection. Check your internet.'
+                };
+                this.elements.errorMessage.textContent = messages[error.code] || 'Wrong email or password.';
             }
         },
 
@@ -112,7 +119,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.renderAllComponents();
             } catch (error) {
                 console.error("Error loading dashboard data:", error);
-                alert("Could not load data from Firestore. Check console for errors.");
+                alert(error.code === 'permission-denied'
+                    ? "Signed in, but the Firestore rules do not let this account read the data yet."
+                    : "Could not load data from Firestore. Check console for errors.");
             }
         },
         

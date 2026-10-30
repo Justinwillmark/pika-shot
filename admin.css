@@ -103,6 +103,24 @@ body {
     color: var(--text-light);
     font-size: 1.1rem;
 }
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.signout-btn {
+    background-color: var(--surface-color);
+    border: 1px solid var(--border-color);
+    color: var(--text-light);
+    border-radius: 22px;
+    height: 44px;
+    padding: 0 16px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.signout-btn:hover {
+    background-color: #f1f3f5;
+}
 .refresh-btn {
     background-color: var(--surface-color);
     border: 1px solid var(--border-color);

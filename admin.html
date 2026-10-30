@@ -9,7 +9,7 @@
     
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-app.js";
-        import { getAuth, onAuthStateChanged, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-auth.js";
+        import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-auth.js";
         import { getFirestore, collection, getDocs, query, where, Timestamp, orderBy } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore.js";
         
         const firebaseConfig = {
@@ -21,12 +21,15 @@
             appId: "1:221719282655:web:fefc576166eeb115077a6a"
         };
 
-        const app = initializeApp(firebaseConfig);
+        // A named app keeps the admin sign-in separate from the anonymous session the main app
+        // creates for every visitor on this same site; otherwise that session skips the login.
+        const app = initializeApp(firebaseConfig, 'admin');
         window.fb = {
             auth: getAuth(app),
             db: getFirestore(app),
             onAuthStateChanged,
             signInWithEmailAndPassword,
+            signOut,
             collection,
             getDocs,
             query,
@@ -54,9 +57,12 @@
                 <h1>PikaShot | Admin Dashboard</h1>
                 <p>Real-time user adoption overview</p>
             </div>
-            <button id="refresh-btn" class="refresh-btn" title="Refresh Data">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
-            </button>
+            <div class="header-actions">
+                <button id="signout-btn" class="signout-btn" type="button">Sign out</button>
+                <button id="refresh-btn" class="refresh-btn" title="Refresh Data">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+                </button>
+            </div>
         </header>
 
         <main class="main-content">
