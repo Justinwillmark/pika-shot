@@ -332,6 +332,15 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.goBackRegisterBtn.addEventListener('click', () => {
                 this.showView('onboarding-step-1');
             });
+            // Business type is picked with three buttons; the choice is kept in the hidden #business-type field
+            const typeButtons = document.querySelectorAll('#business-type-options button');
+            typeButtons.forEach(btn => btn.addEventListener('click', () => {
+                this.elements.businessTypeInput.value = btn.dataset.value;
+                typeButtons.forEach(b => {
+                    b.classList.toggle('selected', b === btn);
+                    b.setAttribute('aria-checked', String(b === btn));
+                });
+            }));
             this.elements.toggleCreatePinBtn.addEventListener('click', () => this.togglePinVisibility('create-pin', 'toggle-create-pin'));
             this.elements.copyCreatePinBtn.addEventListener('click', () => this.copyPin('create-pin'));
 

@@ -98,52 +98,38 @@
         <div id="onboarding-step-register" class="view">
             <div class="onboarding-content onboarding-form">
                 <div class="reg-head">
-                    <h1>Create Account</h1>
-                    <p>Tell us a bit about your business.</p>
-                </div>
-
-                <div class="reg-section">
-                    <h2 class="reg-section-title">About you</h2>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="first-name">First name</label>
-                            <input type="text" id="first-name" placeholder="Chiamaka" autocomplete="given-name" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="last-name">Last name</label>
-                            <input type="text" id="last-name" placeholder="Uko" autocomplete="family-name" required>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label for="gender">Gender</label>
-                        <select id="gender" required>
-                            <option value="" disabled selected>Select</option>
-                            <option value="Male">Male</option>
-                            <option value="Female">Female</option>
-                        </select>
+                    <button type="button" id="go-back-register-btn" class="reg-back" aria-label="Go back">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                    </button>
+                    <div>
+                        <h1>Create Account</h1>
+                        <p>Tell us a bit about your business.</p>
                     </div>
                 </div>
 
-                <div class="reg-section">
-                    <h2 class="reg-section-title">Your business</h2>
+                <div class="reg-fields">
                     <div class="form-group">
-                        <label for="business-name">Business name</label>
-                        <input type="text" id="business-name" placeholder="Amaka's Provisions" required>
+                        <label class="sr-only" for="first-name">First name</label>
+                        <input type="text" id="first-name" placeholder="First name" autocomplete="given-name" required>
                     </div>
+                    <div class="form-group">
+                        <label class="sr-only" for="last-name">Last name</label>
+                        <input type="text" id="last-name" placeholder="Last name" autocomplete="family-name" required>
+                    </div>
+
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="business-type">Type</label>
-                            <select id="business-type" required>
-                                <option value="" disabled selected>Select</option>
-                                <option value="Retailer">Retailer</option>
-                                <option value="Wholesaler">Wholesaler</option>
-                                <option value="Salesperson">Role: Salesperson</option>
+                            <label class="sr-only" for="gender">Gender</label>
+                            <select id="gender" required>
+                                <option value="" disabled selected hidden>Gender</option>
+                                <option value="Male">Male</option>
+                                <option value="Female">Female</option>
                             </select>
                         </div>
                         <div class="form-group">
-                            <label for="business-location">Location</label>
+                            <label class="sr-only" for="business-location">Location</label>
                             <select id="business-location" required>
-                                <option value="" disabled selected>Select</option>
+                                <option value="" disabled selected hidden>Location</option>
                                 <option value="Lagos Island">Lagos Island</option>
                                 <option value="Ikeja">Ikeja</option>
                                 <option value="Yaba">Yaba</option>
@@ -155,14 +141,25 @@
                             </select>
                         </div>
                     </div>
-                </div>
 
-                <div class="reg-section">
-                    <h2 class="reg-section-title">Security</h2>
                     <div class="form-group">
-                        <label for="create-pin">Create 6-digit PIN</label>
+                        <label class="sr-only" for="business-name">Business name</label>
+                        <input type="text" id="business-name" placeholder="Business name" required>
+                    </div>
+
+                    <div class="form-group">
+                        <div id="business-type-options" class="reg-segment" role="radiogroup" aria-label="Business type">
+                            <button type="button" role="radio" aria-checked="false" data-value="Retailer">Retailer</button>
+                            <button type="button" role="radio" aria-checked="false" data-value="Wholesaler">Wholesaler</button>
+                            <button type="button" role="radio" aria-checked="false" data-value="Salesperson">Salesperson</button>
+                        </div>
+                        <input type="hidden" id="business-type">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="sr-only" for="create-pin">Create 6-digit PIN</label>
                         <div class="input-wrapper">
-                            <input type="password" id="create-pin" placeholder="••••••" maxlength="6" inputmode="numeric" autocomplete="new-password">
+                            <input type="password" id="create-pin" placeholder="Create 6-digit PIN" maxlength="6" inputmode="numeric" autocomplete="new-password">
                             <div class="input-icons">
                                 <button id="toggle-create-pin" class="icon-btn" title="Show/Hide">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
@@ -172,15 +169,10 @@
                                 </button>
                             </div>
                         </div>
-                        <p class="reg-hint">You'll use this PIN to log in.</p>
                     </div>
                 </div>
 
-                <div class="reg-actions">
-                    <button id="complete-registration-btn" class="btn btn-primary">Create Account</button>
-                    <button id="go-back-register-btn" class="btn btn-text">Go back</button>
-                </div>
-
+                <button id="complete-registration-btn" class="btn btn-primary reg-submit">Create Account</button>
                 <p class="privacy-policy-link">By using PikaShot, you agree to our <a href="#" class="privacy-link-trigger">Data &amp; Privacy Policy</a>.</p>
             </div>
         </div>
