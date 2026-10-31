@@ -678,10 +678,19 @@ button:focus { outline: none; }
 .selection-hint { font-size: 0.8rem; color: var(--text-light); }
 /* Customers & Salespeople: a half capsule on the right, its flat end against the edge of the screen. Light and small, but easy to see. */
 .stock-link-row { margin: 14px -20px 0 0; text-align: right; } /* (the page has 20px at the sides: this goes out to the edge) */
-.stock-link-btn { position: relative; display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 6px 12px 6px 16px; border: 1px solid rgba(0, 140, 149, 0.22); border-right: 0; border-radius: 999px 0 0 999px; background: rgba(0, 140, 149, 0.08); color: var(--primary-dark); font: inherit; font-size: 0.82rem; font-weight: 500; line-height: 1.2; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: background-color 0.2s; }
+.stock-link-btn { position: relative; display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 6px 16px 6px 20px; border: 1px solid rgba(0, 140, 149, 0.22); border-right: 0; border-radius: 999px 0 0 999px; background: rgba(0, 140, 149, 0.08); color: var(--primary-dark); font: inherit; font-size: 0.82rem; font-weight: 500; line-height: 1.2; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: background-color 0.2s; }
 .stock-link-btn::after { content: ''; position: absolute; inset: -5px 0 -5px -6px; } /* (a bigger area to tap) */
 .stock-link-btn:active { background: rgba(0, 140, 149, 0.17); }
 .stock-link-btn .arrow-icon { flex: none; width: 14px; height: 14px; opacity: 0.75; }
+/* The button names one thing at a time and now and then rolls over to the other. Both words sit in the same spot, so the capsule never changes size. */
+.stock-link-words { display: inline-grid; overflow: hidden; padding: 2px 0; margin: -2px 0; }
+.stock-link-word { grid-area: 1 / 1; text-align: center; white-space: nowrap; opacity: 0; }
+.stock-link-word.is-on { opacity: 1; }
+.stock-link-word.is-out { animation: stock-word-out 0.45s cubic-bezier(0.4, 0, 0.8, 0.4) both; }
+.stock-link-word.is-in { animation: stock-word-in 0.6s cubic-bezier(0.22, 0.61, 0.36, 1) 0.2s both; }
+@keyframes stock-word-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(-60%); } }
+@keyframes stock-word-in { from { opacity: 0; transform: translateY(60%); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .stock-link-word.is-out, .stock-link-word.is-in { animation-duration: 0.01s; animation-delay: 0s; } }
 .see-all-container { text-align: center; margin-top: 16px; margin-bottom: 120px; }
 .see-all-btn {
     background: none;

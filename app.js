@@ -650,7 +650,11 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.retryAddScanBtn.addEventListener('click', () => { this.hideModal(); this.startAddProduct(); });
             this.elements.cancelAddScanBtn.addEventListener('click', () => this.hideModal());
             this.elements.productExistsOkBtn.addEventListener('click', () => this.hideModal());
-            this.elements.seeStockLevelsBtn.addEventListener('click', () => this.navigateTo('stock-levels-view'));
+            this.elements.seeStockLevelsBtn.addEventListener('click', () => { // it opens the page on whichever tab its label names
+                const word = this.elements.seeStockLevelsBtn.querySelector('.is-on, .is-in');
+                this.state.stockViewFilter = word && word.textContent === 'Salespeople' && !this._isSalesperson() ? 'salespeople' : 'customers';
+                this.navigateTo('stock-levels-view');
+            });
             this.elements.refreshStocksBtn.addEventListener('click', () => { this.state.retailersAt = 0; this.renderRetailerStocks(); }); // (a salesperson's list is read again, not reused)
             this.elements.cartonDetailsForm.addEventListener('submit', this.handleSaveCartonDetails.bind(this));
             this.elements.cancelCartonDetailsBtn.addEventListener('click', () => { this.hideModal(); this.showModal('product-form-modal'); });
@@ -2384,6 +2388,26 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         },
 
+        // The home page button names one thing at a time and, now and then, rolls over to the other. Built once, so it is not reset by every refresh.
+        _setStockLink(both) {
+            const btn = this.elements.seeStockLevelsBtn, mode = both ? 'both' : 'one';
+            if (this._stockLinkMode === mode && btn.querySelector('.stock-link-words')) return;
+            this._stockLinkMode = mode;
+            clearInterval(this._stockLinkTimer);
+            btn.innerHTML = `<span class="stock-link-words"><span class="stock-link-word is-on">Customers</span>${both ? '<span class="stock-link-word">Salespeople</span>' : ''}</span><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="arrow-icon"><polyline points="9 18 15 12 9 6"></polyline></svg>`;
+            btn.setAttribute('aria-label', both ? 'Customers and salespeople' : 'Customers');
+            if (both) this._stockLinkTimer = setInterval(() => this._turnStockLink(), 8000);
+        },
+        _turnStockLink() {
+            if (document.hidden || this.state.currentView !== 'home-view') return; // only when it can be seen
+            const words = Array.from(this.elements.seeStockLevelsBtn.querySelectorAll('.stock-link-word'));
+            if (words.length < 2) return;
+            const shown = words.find(w => w.classList.contains('is-on') || w.classList.contains('is-in')) || words[0];
+            const next = words[0] === shown ? words[1] : words[0];
+            shown.classList.remove('is-on', 'is-in'); shown.classList.add('is-out');
+            next.classList.remove('is-out'); next.classList.add('is-in');
+        },
+
         // The pages that carry the offline banner (the others, like the scanner, do not)
         _syncBanner() {
             const banner = this.elements.offlineBanner;
@@ -2453,8 +2477,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.welcomeName.textContent = `Hi, ${this.state.user.name.split(' ')[0]}.`;
                 if (this.state.user.type === 'Wholesaler' || this.state.user.type === 'Salesperson' || this.state.user.type === 'Retailer') {
                     this.elements.seeStockLevelsContainer.style.display = 'block';
-                    const buttonText = this.state.user.type === 'Salesperson' ? 'Customers' : 'Customers & Salespeople';
-                    this.elements.seeStockLevelsBtn.innerHTML = `${buttonText} <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="arrow-icon"><polyline points="9 18 15 12 9 6"></polyline></svg>`;
+                    this._setStockLink(this.state.user.type !== 'Salesperson'); // (a salesperson has customers only)
                     this.elements.shareLogBtn.style.display = (this.state.user.type === 'Retailer' || this.state.user.type === 'Salesperson') ? 'none' : 'block';
                 } else {
                     this.elements.seeStockLevelsContainer.style.display = 'none';

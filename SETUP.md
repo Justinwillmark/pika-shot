@@ -3,7 +3,7 @@
 ## Publishing
 - Quick way (as before): publish the project folder as it is.
 - Faster, harder-to-copy way: `npm install` once, then `npm run deploy`. It shrinks and scrambles the scripts into `dist/` and publishes that.
-- Every release: change `CACHE_NAME` in `serviceworker.js` (v33 -> v34 ...) so phones fetch the new files.
+- Every release: change `CACHE_NAME` in `serviceworker.js` (v34 -> v35 ...) so phones fetch the new files.
 
 ## Settings in one place (`config.js`)
 | Setting | What it does |
@@ -93,7 +93,7 @@ clearing browsing data or switching phones the picture comes back from the thumb
 - When the phone has no internet, a banner over the top of the page shows (on Home, My Products, Customers & Salespeople and All Sales; not in the scanner) "You're offline. Reconnect to use PikaShot and see new records". When it comes back it says "You're back online" for 2 seconds, then goes. It follows the phone's own online/offline signal, so a Wi-Fi connection with no data behind it still counts as online.
 - The banner only floats over the page: it takes no room, so nothing moves or grows when it appears or goes. The teal part of Home scrolls away with the page; the banner stays pinned at the top while the page scrolls under it. It lives once, above all the pages (`#offline-banner` in `index.html`), and `_syncBanner` in `app.js` lists the pages that carry it.
 - On Customers & Salespeople the old yellow "connect to the internet" notice is now invisible and only keeps its room, so the Customers / Salespeople tabs do not sit under the banner.
-- "Customers & Salespeople" on the home page is a slim half capsule on the right, its flat end against the edge of the screen (`.stock-link-btn` in `style.css`).
+- "Customers" / "Salespeople" on the home page is a slim half capsule on the right, its flat end against the edge of the screen (`.stock-link-btn` in `style.css`). It names one thing at a time and every 8 seconds (only while the home page is on screen) the word rolls over to the other; both words sit in the same spot, so the capsule never changes size. Tapping it opens the page on the tab the word names. A salesperson only ever sees "Customers". The timing is in `_setStockLink` (`app.js`), the roll in `stock-word-in` / `stock-word-out` (`style.css`).
 
 ## The Profile
 - Activity card (today's scans out of 100+, and the one message), then an "Account" row that is folded away every time the Profile opens. Opening it shows Name, Business, Location, Phone, Type and Logout. Cancel and Get help sit lower while it is folded.
