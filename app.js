@@ -13,7 +13,6 @@ document.addEventListener('DOMContentLoaded', () => {
             menuBtn: document.getElementById('menu-btn'),
             backArrowBtn: document.getElementById('back-arrow-btn'),
             welcomeName: document.getElementById('welcome-name'),
-            homeView: document.getElementById('home-view'),
             offlineBanner: document.getElementById('offline-banner'),
             todaysSalesCard: document.getElementById('todays-sales-card'),
             itemsSoldCard: document.getElementById('items-sold-card'),
@@ -2073,6 +2072,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (viewToShow) {
                 viewToShow.classList.add('active');
                 this.state.currentView = viewId;
+                this._syncBanner();
                 if (!viewId.includes('onboarding') && viewId !== 'location-permission-view' && viewId !== 'camera-permission-view') {
                     this.updateHeader(viewId);
                 }
@@ -2384,10 +2384,16 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         },
 
-        // The teal part of the home page says so when there is no internet (and, for a moment, when it is back)
+        // The pages that carry the offline banner (the others, like the scanner, do not)
+        _syncBanner() {
+            const banner = this.elements.offlineBanner;
+            if (banner) banner.classList.toggle('not-here', ['home-view', 'products-view', 'stock-levels-view', 'all-sales-view'].indexOf(this.state.currentView) < 0);
+        },
+
+        // A banner over the top of the page says so when there is no internet (and, for a moment, when it is back)
         _showConnection(online, atStart) {
-            const banner = this.elements.offlineBanner, home = this.elements.homeView;
-            if (!banner || !home) return;
+            const banner = this.elements.offlineBanner;
+            if (!banner) return;
             clearTimeout(this._backTimer);
             const title = document.getElementById('offline-title'), sub = document.getElementById('offline-sub');
             if (!online) {
@@ -2396,14 +2402,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 sub.style.display = '';
                 banner.classList.remove('is-back');
                 banner.hidden = false;
-                home.classList.add('is-offline');
                 return;
             }
-            if (banner.hidden || atStart) { banner.hidden = true; home.classList.remove('is-offline'); return; } // it was never offline: nothing to say
+            if (banner.hidden || atStart) { banner.hidden = true; return; } // it was never offline: nothing to say
             title.textContent = "You're back online";
             sub.style.display = 'none';
             banner.classList.add('is-back');
-            this._backTimer = setTimeout(() => { banner.hidden = true; banner.classList.remove('is-back'); home.classList.remove('is-offline'); }, 2200);
+            this._backTimer = setTimeout(() => { banner.hidden = true; banner.classList.remove('is-back'); }, 2200);
         },
 
         handleOnlineStatusChange() {
@@ -2449,7 +2454,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (this.state.user.type === 'Wholesaler' || this.state.user.type === 'Salesperson' || this.state.user.type === 'Retailer') {
                     this.elements.seeStockLevelsContainer.style.display = 'block';
                     const buttonText = this.state.user.type === 'Salesperson' ? 'Customers' : 'Customers & Salespeople';
-                    this.elements.seeStockLevelsBtn.innerHTML = `${buttonText} <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="arrow-icon"><polyline points="9 18 15 12 9 6"></polyline></svg>`;
+                    this.elements.seeStockLevelsBtn.innerHTML = `${buttonText} <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="arrow-icon"><polyline points="9 18 15 12 9 6"></polyline></svg>`;
                     this.elements.shareLogBtn.style.display = (this.state.user.type === 'Retailer' || this.state.user.type === 'Salesperson') ? 'none' : 'block';
                 } else {
                     this.elements.seeStockLevelsContainer.style.display = 'none';
