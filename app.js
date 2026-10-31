@@ -800,6 +800,17 @@ document.addEventListener('DOMContentLoaded', () => {
         // An id for a new product or sale: the time plus a random part, so two phones never make the same one
         _newId() { return Date.now() * 1000 + Math.floor(Math.random() * 1000); },
 
+        // Runs `job` one at a time under `name`: while it is still going, another call (a second tap) does nothing.
+        // The button, if given, is switched off meanwhile so the person can see it is working.
+        async _once(name, job, button) {
+            this._busy = this._busy || {};
+            if (this._busy[name]) return undefined;
+            this._busy[name] = true;
+            if (button) button.disabled = true;
+            try { return await job(); }
+            finally { this._busy[name] = false; if (button) button.disabled = false; }
+        },
+
         // "1234.5" -> "1,234.5". Only a half may follow the dot ("1." stays while typing, "1.3" drops the 3).
         // `typed` is what was just typed: a comma at the end counts as the dot (some keypads show a comma instead).
         _formatHalves(raw, typed) {
@@ -3314,6 +3325,7 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         _openProductForm(options = {}) {
+            this.state.newProductKey = this._newId(); // this form makes ONE product
             this.elements.productForm.reset();
             this.elements.productFormTitle.textContent = 'Add New Product';
             this.elements.deleteProductBtn.style.display = 'none';
@@ -3346,6 +3358,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         async handleSaveProduct(e) {
             e.preventDefault();
+            return this._once('saveProduct', () => this._saveProduct(), this.elements.saveProductBtn);
+        },
+
+        async _saveProduct() {
             if (this._isSalesperson()) return;
 
             // NEW: Enforce internet connection for product management
@@ -3357,7 +3373,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const isEditing = !!this.state.editingProduct;
 
             let productData = {
-                id: isEditing ? this.state.editingProduct.id : this._newId(),
+                id: isEditing ? this.state.editingProduct.id : (this.state.newProductKey || (this.state.newProductKey = this._newId())), // one id for the whole form: saving twice is the same product
                 name: this.elements.productNameInput.value.trim(),
                 price: this.unformatNumber(this.elements.productPriceInput.value),
                 stock: this.unformatNumber(this.elements.productStockInput.value),
@@ -3396,7 +3412,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // New products need room; an edit counts towards the hourly limit (finishing a received product's setup does not)
             let saveOptions = null;
             if (!isEditing) {
-                if (!(await this._roomForProducts(1))) return;
+                if (!(await DB.getProduct(productData.id)) && !(await this._roomForProducts(1))) return; // (a product already saved by an earlier try needs no new room)
             } else {
                 const before = this.state.editingProduct;
                 const changed = ['name', 'price', 'stock', 'unit', 'barcode', 'stockVisible'].filter(k => JSON.stringify(productData[k] === undefined ? null : productData[k]) !== JSON.stringify(before[k] === undefined ? null : before[k]));
@@ -3428,6 +3444,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         async handleSaveCartonDetails(e) {
             e.preventDefault();
+            return this._once('saveProduct', () => this._saveCartonDetails());
+        },
+
+        async _saveCartonDetails() {
             if (!this.state.tempProductDataForCarton) return;
 
             const subUnitType = this.elements.cartonSubunitTypeInput.value;
@@ -3487,6 +3507,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.state.capturedBlob = null;
             this.state.capturedBarcode = null;
             this.state.editingProduct = null;
+            this.state.newProductKey = null;
 
             this.navigateTo('products-view');
             await this.renderProducts();
@@ -3669,6 +3690,7 @@ document.addEventListener('DOMContentLoaded', () => {
         handleProductFound(product) {
             this.state.editingSale = null;
             this.state.sellingProduct = product;
+            this.state.saleKey = this._newId(); // this box makes ONE sale: every tap on Confirm is that same sale
             this.elements.saleModalTitle.textContent = 'Confirm Sale';
             this.elements.saleProductImage.src = product.image ? URL.createObjectURL(product.image) : (this._safeImageUrl(product.thumb) || 'icons/icon-192.png');
             this.elements.saleProductName.textContent = product.name;
@@ -3757,20 +3779,18 @@ document.addEventListener('DOMContentLoaded', () => {
             if (quantity > availableStock) { await this._needs(this.elements.saleQuantityInput, `Only ${this.formatNumber(availableStock)} ${product.unit} left in stock.`, 'Not enough stock'); return false; }
             if (partPayment !== null && partPayment > Math.round(quantity * unitPrice)) { await this._needs(this.elements.discountAmountInput, 'The part payment cannot be more than the total.', 'Check the amount'); return false; }
 
-            const stockBefore = product.stock;
-            product.stock = availableStock - quantity;
-
-            // The stock moves by what was sold (never "set to"), so phones selling at the same time add up correctly
-            await DB.saveProduct(product, product.stock - stockBefore);
-            
             let total = Math.max(0, Math.round((quantity * unitPrice) - discount));
             if (activeRadio && activeRadio.value === 'credit') {
                 total = partPayment; // User requested: part payment becomes recorded total
             }
-            
+
+            // The id is made when the confirm box opens, so a second tap, or a retry after a slow connection, is the same sale and never a new one
+            const id = editing ? editing.id : this.state.saleKey;
+            if (!id) return false; // this box was already used: there is nothing left to record
+
             const sale = {
                 ...(editing || {}),
-                id: editing ? editing.id : this._newId(),
+                id,
                 productId: product.id,
                 productName: editing ? editing.productName : product.name,
                 quantity: quantity,
@@ -3791,80 +3811,93 @@ document.addEventListener('DOMContentLoaded', () => {
                 sale.recordedByName = this.state.user.name;
             }
 
-            // Auto-transfer for credit sales (not repeated when an existing sale is edited)
-            if (!editing && sale.saleType === 'credit' && this.state.selectedContact && this.state.selectedContact.phone) {
-                try {
-                    if (this.state.firebaseReady && window.fb) {
-                        const targetPhone = this.state.selectedContact.phone.trim().replace(/\s+/g, '');
-                        if (targetPhone.length >= 10) {
-                            const sender = this._sender();
-                            const logData = {
-                                pikaLogVersion: 2,
-                                senderStore: sender.store,
-                                senderId: sender.id,
-                                senderRole: sender.role,
-                                ...(this._isSalesperson() ? { sentBy: this.state.user.phone, sentByName: this.state.user.name } : {}),
-                                targetPhone: targetPhone,
-                                claimed: false,
-                                saleIds: [sale.id],
-                                timestamp: window.fb.serverTimestamp(),
-                                items: [{
-                                    name: product.name,
-                                    price: product.price,
-                                    quantity: sale.quantity,
-                                    unit: product.unit,
-                                    barcode: product.barcode || null,
-                                    ...this._settlementFields([sale])
-                                }]
-                            };
-                            await this._attachItemImages(logData.items, [sale], [product]);
-                            const logCollectionRef = window.fb.collection(window.fb.db, 'shared_logs');
-                            const logRef = await window.fb.addDoc(logCollectionRef, logData);
-                            this._nudgeAct('transfer');
-                            // The sale only counts as transferred once the recipient accepts it
-                            sale.pendingTransfer = { logId: logRef.id, to: targetPhone };
-                            sale.pendingTransfers = [{ logId: logRef.id, to: targetPhone }];
-                        }
-                    }
-                } catch (error) {
-                    console.error("Error auto-transferring credit sale:", error);
-                }
+            // A credit sale to a customer who has PikaShot is also sent to them. The copy's id comes from the sale's id,
+            // so it can only ever exist once (not repeated when an existing sale is edited)
+            const transferTo = (!editing && sale.saleType === 'credit' && this.state.selectedContact && this.state.selectedContact.phone)
+                ? this.state.selectedContact.phone.trim().replace(/\s+/g, '') : null;
+            const sendTransfer = !!transferTo && transferTo.length >= 10 && !!this.state.firebaseReady && !!window.fb;
+            if (sendTransfer) {
+                // The sale only counts as transferred once the recipient accepts it
+                sale.pendingTransfer = { logId: `xfer_${sale.id}`, to: transferTo };
+                sale.pendingTransfers = [sale.pendingTransfer];
             }
 
+            // Saved on this phone in one step: the sale and the stock it takes out (for an edit: the difference). Nothing online comes first.
+            const done = editing ? await DB.editSale(sale, product.id) : await DB.recordSale(sale, product.id, -quantity);
+            if (done.product) product.stock = done.product.stock;
+            if (!editing && !done.inserted) return true; // an earlier tap already recorded this sale: nothing more to do
+
             if (editing) {
-                await DB.updateSale(sale);
                 this._logSale(sale, product, true);
             } else {
-                await DB.addSale(sale);
                 this._logSale(sale, product);
                 this._nudgeAct('sale');
             }
-
-            if (this.state.firebaseReady && product.supplierId && this._businessPhone() && product.stockVisible !== false) {
-                try {
-                    const retailerDocRef = window.fb.doc(window.fb.db, `retailer_stocks/${product.supplierId}/supplied_retailers/${this._businessPhone()}`);
-                    const updateData = {};
-                    const firebaseProductName = product.originalName || product.name;
-                    updateData[`products.${firebaseProductName}.stock`] = product.stock;
-                    updateData[`products.${firebaseProductName}.lastSaleTimestamp`] = window.fb.serverTimestamp();
-                    updateData.lastUpdate = window.fb.serverTimestamp();
-
-                    await window.fb.updateDoc(retailerDocRef, updateData);
-
-                } catch (error) {
-                    console.error("Failed to sync sale to Firebase:", error);
-                }
-            }
-
+            // What needs the internet happens after the sale is safe, and never holds the screen
+            if (sendTransfer) this._sendCreditTransfer(sale, product, transferTo);
+            this._reportSupplierStock(product);
             return true;
         },
 
+        // The copy of a credit sale that goes to the customer's PikaShot. Its id is made from the sale's id, so it cannot be made twice.
+        async _sendCreditTransfer(sale, product, targetPhone) {
+            try {
+                const sender = this._sender();
+                const logData = {
+                    pikaLogVersion: 2,
+                    senderStore: sender.store,
+                    senderId: sender.id,
+                    senderRole: sender.role,
+                    ...(this._isSalesperson() ? { sentBy: this.state.user.phone, sentByName: this.state.user.name } : {}),
+                    targetPhone: targetPhone,
+                    claimed: false,
+                    saleIds: [sale.id],
+                    timestamp: window.fb.serverTimestamp(),
+                    items: [{
+                        name: product.name,
+                        price: product.price,
+                        quantity: sale.quantity,
+                        unit: product.unit,
+                        barcode: product.barcode || null,
+                        ...this._settlementFields([sale])
+                    }]
+                };
+                await this._attachItemImages(logData.items, [sale], [product]);
+                await window.fb.setDoc(window.fb.doc(window.fb.db, 'shared_logs', sale.pendingTransfer.logId), logData);
+                this._nudgeAct('transfer');
+            } catch (error) {
+                console.error("Error auto-transferring credit sale:", error);
+            }
+        },
+
+        // Tells the supplier how much of their product is left (in the background)
+        _reportSupplierStock(product) {
+            if (!(this.state.firebaseReady && product.supplierId && this._businessPhone() && product.stockVisible !== false)) return;
+            try {
+                const retailerDocRef = window.fb.doc(window.fb.db, `retailer_stocks/${product.supplierId}/supplied_retailers/${this._businessPhone()}`);
+                const updateData = {};
+                const firebaseProductName = product.originalName || product.name;
+                updateData[`products.${firebaseProductName}.stock`] = product.stock;
+                updateData[`products.${firebaseProductName}.lastSaleTimestamp`] = window.fb.serverTimestamp();
+                updateData.lastUpdate = window.fb.serverTimestamp();
+                window.fb.updateDoc(retailerDocRef, updateData).catch((error) => console.error("Failed to sync sale to Firebase:", error));
+            } catch (error) {
+                console.error("Failed to sync sale to Firebase:", error);
+            }
+        },
+
         async handleConfirmSale() {
+            if (this._confirmingSale) return; // a second tap while the first is still being saved does nothing
             if (!navigator.onLine) {
                 this.elements.saleOfflineNotice.style.display = 'block';
                 return; // Stop execution
             }
 
+            this._confirmingSale = true;
+            const button = this.elements.confirmSaleBtn;
+            const label = button.innerHTML;
+            button.disabled = true;
+            button.textContent = 'Saving…';
             try {
                 const wasEditing = !!this.state.editingSale;
                 const success = await this._processSale();
@@ -3872,6 +3905,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.saleOfflineNotice.style.display = 'none'; // Hide if online
                 if (success) {
                     this.state.editingSale = null;
+                    this.state.saleKey = null; // used: a late tap on this box can not record anything
                     this.hideModal();
                     this.watchPendingTransfers(); // a credit sale may have been sent to the customer automatically
                     await this.updateDashboard();
@@ -3885,7 +3919,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } catch (error) {
                 console.error("Sale processing failed, likely offline:", error);
-                this.elements.saleOfflineNotice.style.display = 'block';
+                this.elements.saleOfflineNotice.style.display = 'block'; // trying again is safe: it is the same sale
+            } finally {
+                this._confirmingSale = false;
+                button.disabled = false;
+                button.innerHTML = label;
             }
         },
 
@@ -4446,6 +4484,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this._setTransferState('idle');
             const scroller = document.getElementById('receipt-scroll');
             this._receiptScrollTop = scroller ? scroller.scrollTop : 0;
+            this.state.transferKey = this._newId(); // this box sends ONE transfer: a second tap or a retry is the same one
             this.hideModal();
             this.showModal('phone-transfer-modal');
             setTimeout(() => this.elements.transferPhoneInput.focus(), 80);
@@ -4518,6 +4557,10 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         async processPhoneTransfer() {
+            return this._once('transfer', () => this._sendTransfer());
+        },
+
+        async _sendTransfer() {
             const targetPhone = this.elements.transferPhoneInput.value.trim();
             this.showLoader();
             try {
@@ -4566,14 +4609,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 await this._attachItemImages(logData.items, aggregatedSaleObjects, allProducts);
 
-                const logCollectionRef = window.fb.collection(window.fb.db, 'shared_logs');
-                const logRef = await window.fb.addDoc(logCollectionRef, logData);
+                // The transfer's id is made when the box opens, so tapping twice, or trying again after a slow connection, is the same transfer
+                const logRef = window.fb.doc(window.fb.db, 'shared_logs', `xfer_${this.state.transferKey || (this.state.transferKey = this._newId())}`);
+                const already = await window.fb.getDoc(logRef).catch(() => null);
+                if (!(already && already.exists())) await window.fb.setDoc(logRef, logData); // one that is already there is never written over (it may be accepted by now)
 
                 // Confirm the transfer really is on the server before telling the user it was sent
                 const saved = await window.fb.getDoc(logRef);
-                if (!saved.exists() || saved.data().targetPhone !== targetPhone || saved.data().claimed !== false) {
+                if (!saved.exists() || saved.data().targetPhone !== targetPhone) {
                     throw new Error('Transfer was not saved correctly');
                 }
+                this.state.transferKey = null;
 
                 // Remember the pending transfer on each sale (it turns into "transferred" when accepted)
                 await this.handleLogShared(logRef.id, targetPhone);
@@ -4692,7 +4738,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const saleToUpdate = allSales.find(s => s.id === saleId);
                 if (saleToUpdate) {
                     saleToUpdate.pendingTransfer = { logId, to: targetPhone }; // latest transfer
-                    saleToUpdate.pendingTransfers = [...(saleToUpdate.pendingTransfers || []), { logId, to: targetPhone }];
+                    const earlier = saleToUpdate.pendingTransfers || [];
+                    saleToUpdate.pendingTransfers = earlier.some(t => t.logId === logId) ? earlier : [...earlier, { logId, to: targetPhone }]; // (the same transfer is never listed twice)
                     updates.push(DB.updateSale(saleToUpdate, ['pendingTransfer', 'pendingTransfers']));
                 }
             }
@@ -4917,11 +4964,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const saleIds = Array.isArray(log.saleIds) ? log.saleIds : [];
             const claimRefs = saleIds.map(id => window.fb.doc(window.fb.db, 'shared_logs', `claim_${log.senderId}_${id}`));
             const taken = () => { const e = new Error('transfer already claimed'); e.taken = true; return e; };
+            let outcome = 'ok';
             try {
                 await window.fb.runTransaction(window.fb.db, async (tx) => {
                     const logSnap = await tx.get(logRef);
                     if (!logSnap.exists()) throw taken();
                     const current = logSnap.data();
+                    outcome = 'ok'; // (this part can run again if two phones clash)
+                    if (current.claimed && current.claimedBy === me) { outcome = current.appliedAt ? 'applied' : 'resume'; return; } // mine from an earlier try
                     if (current.claimed || current.voided) throw taken();
                     const claimSnaps = [];
                     for (const ref of claimRefs) claimSnaps.push(await tx.get(ref));
@@ -4936,7 +4986,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         claimedByBusiness: this.state.user.business || null
                     });
                 });
-                return 'ok';
+                return outcome;
             } catch (error) {
                 if (error && error.taken) {
                     // best effort: stop this log from popping up again
@@ -5122,6 +5172,10 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         async acceptPikaLog() {
+            return this._once('accept', () => this._acceptLog());
+        },
+
+        async _acceptLog() {
             if (!this.state.scannedLogData) return;
 
             const isSalesperson = this.state.user.type === 'Salesperson';
@@ -5140,10 +5194,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
+            // Added already (this phone remembers it): nothing more to do
+            const addedBefore = async () => { this.hideModal(); this.state.scannedLogData = null; say('These items are already in your products.', 'Already added'); };
+            if (log.id && await DB.getMeta('applied:' + log.id)) { await addedBefore(); return; }
+
             // Only the first person to accept gets the products
             this.showLoader();
             let claim;
             try { claim = await this._claimTransfer(log); } finally { this.hideLoader(); }
+            if (claim === 'applied') { await addedBefore(); return; }
             if (claim === 'taken') {
                 this.hideModal();
                 this.state.scannedLogData = null;
@@ -5268,6 +5327,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             await Promise.all(productUpdates);
+            if (log.id) { // written down so this transfer can never be added a second time, even from another phone or after logging out
+                DB.setMeta('applied:' + log.id, Date.now());
+                if (this.state.firebaseReady) window.fb.updateDoc(window.fb.doc(window.fb.db, 'shared_logs', log.id), { appliedAt: window.fb.serverTimestamp() }).catch(() => { /* the phone's own note still stops it */ });
+            }
 
             for (const [previousSupplier, previousKey] of staleSupplierEntries) {
                 await this._removeFromSupplier(previousSupplier, previousKey);

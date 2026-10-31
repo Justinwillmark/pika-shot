@@ -424,10 +424,10 @@ const DB = {
     //   only:  just these fields (so a change on one phone never undoes a different change on another)
     //   thumb: the small picture changed, so send it too
     // With neither delta nor only, the whole product goes (a new product, or one the cloud has not seen yet).
-    saveProduct(product, options) {
-        if (typeof options === 'number') options = { delta: options };
+    // What goes online when a product changes: only the fields that changed (the stock as a "+/- n", never "set to"),
+    // or the whole product if the cloud has never seen it
+    _pushProduct(product, options) {
         options = options || {};
-        const store = this._getStore('products', 'readwrite');
         let cloudData;
         const partial = (options.only || typeof options.delta === 'number') && product._seenInCloud; // never leave a half-empty product behind
         if (partial) {
@@ -438,7 +438,13 @@ const DB = {
         } else {
             cloudData = product;
         }
-        this._syncToCloud('products', product.id, cloudData, { thumb: !!options.thumb || !partial && !!product.thumb && !product._seenInCloud });
+        return this._syncToCloud('products', product.id, cloudData, { thumb: !!options.thumb || !partial && !!product.thumb && !product._seenInCloud });
+    },
+    saveProduct(product, options) {
+        if (typeof options === 'number') options = { delta: options };
+        options = options || {};
+        const store = this._getStore('products', 'readwrite');
+        this._pushProduct(product, options);
         return this._requestToPromise(store.put(product));
     },
 
@@ -483,6 +489,72 @@ const DB = {
     },
 
     // `fields` (a list of names) sends only those to the cloud, so a change on one phone never undoes another phone's
+    // Records a NEW sale and takes its quantity out of stock in one step on this phone. The sale's id is what makes it one sale:
+    // if that id is already here (a second tap, a retry after a slow connection) nothing changes and { inserted: false } comes back.
+    // The stock is changed by what was sold, read from what is stored now (not from a screen that may be out of date).
+    recordSale(sale, productId, delta) {
+        return new Promise((resolve, reject) => {
+            const tx = this.db.transaction(['sales', 'products'], 'readwrite');
+            const sales = tx.objectStore('sales'), products = tx.objectStore('products');
+            const result = { inserted: false, product: null, sale: null };
+            const existing = sales.get(sale.id);
+            existing.onsuccess = () => {
+                if (existing.result) return; // already recorded
+                const record = { ...sale, sharedAsLog: false };
+                sales.put(record);
+                result.inserted = true;
+                result.sale = record;
+                const found = products.get(productId);
+                found.onsuccess = () => {
+                    const product = found.result;
+                    if (!product) return;
+                    product.stock = (Number(product.stock) || 0) + delta;
+                    products.put(product);
+                    result.product = product;
+                };
+            };
+            tx.oncomplete = () => {
+                if (result.inserted) { // online only after it is safe here; the same id means the cloud copy can never be a second sale
+                    this._syncToCloud('sales', sale.id, result.sale);
+                    if (result.product) this._pushProduct(result.product, { delta });
+                }
+                resolve(result);
+            };
+            tx.onerror = tx.onabort = () => reject(tx.error || new Error('Could not save the sale'));
+        });
+    },
+
+    // Saves a change to a sale already recorded, and moves the stock by the DIFFERENCE between the quantity stored and the new one.
+    // Doing the same edit again changes nothing (the difference is then zero).
+    editSale(sale, productId) {
+        return new Promise((resolve, reject) => {
+            const tx = this.db.transaction(['sales', 'products'], 'readwrite');
+            const sales = tx.objectStore('sales'), products = tx.objectStore('products');
+            const result = { delta: 0, product: null };
+            const before = sales.get(sale.id);
+            before.onsuccess = () => {
+                const was = before.result ? Number(before.result.quantity) || 0 : Number(sale.quantity) || 0;
+                result.delta = was - (Number(sale.quantity) || 0);
+                sales.put(sale);
+                if (!result.delta) return;
+                const found = products.get(productId);
+                found.onsuccess = () => {
+                    const product = found.result;
+                    if (!product) return;
+                    product.stock = (Number(product.stock) || 0) + result.delta;
+                    products.put(product);
+                    result.product = product;
+                };
+            };
+            tx.oncomplete = () => {
+                this._syncToCloud('sales', sale.id, sale);
+                if (result.product) this._pushProduct(result.product, { delta: result.delta });
+                resolve(result);
+            };
+            tx.onerror = tx.onabort = () => reject(tx.error || new Error('Could not save the sale'));
+        });
+    },
+
     updateSale(sale, fields) {
         const store = this._getStore('sales', 'readwrite');
         let cloudData = sale;

@@ -3,7 +3,7 @@
 ## Publishing
 - Quick way (as before): publish the project folder as it is.
 - Faster, harder-to-copy way: `npm install` once, then `npm run deploy`. It shrinks and scrambles the scripts into `dist/` and publishes that.
-- Every release: change `CACHE_NAME` in `serviceworker.js` (v26 -> v27 ...) so phones fetch the new files.
+- Every release: change `CACHE_NAME` in `serviceworker.js` (v27 -> v28 ...) so phones fetch the new files.
 
 ## Settings in one place (`config.js`)
 | Setting | What it does |
@@ -44,6 +44,13 @@
 ## Product pictures
 The full photo lives on the phone. A small thumbnail (a few KB) is saved with the product in Firestore, so after logging out,
 clearing browsing data or switching phones the picture comes back from the thumbnail. No Storage bucket is used.
+
+## Things are recorded once
+- A sale gets its id when the confirm box opens, and the sale plus the stock it takes out are saved together on the phone (`DB.recordSale`). A second tap, a retry or a slow connection is the same sale: if that id is already saved, nothing changes. Editing a sale moves the stock by the difference only (`DB.editSale`).
+- Nothing that needs the internet (the copy of a credit sale sent to the customer, telling a supplier the stock left) holds the screen or runs before the sale is safe. The credit copy has the id `xfer_<sale id>`, so it can only exist once.
+- New products keep one id for as long as the form is open. A transfer being sent keeps one id (`xfer_<key>`) for as long as its box is open and is never written over once it exists.
+- Accepting a transfer adds the items once: the phone notes it (`applied:<id>`) and the transfer in the cloud gets `appliedAt`. If an earlier try claimed it but stopped before adding the items, trying again finishes the job.
+- Buttons that save go through `_once(name, job, button)` in `app.js`: while one is running a second tap does nothing and the button is off.
 
 ## Profile messages (`nudges.js`)
 - The one message in the Profile card comes from `nudges.js`. All the words, and when each one applies, are in the `CATALOG` list at the top of that file.
