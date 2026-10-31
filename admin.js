@@ -343,6 +343,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const since = (name, field) => floor
                 ? fb.query(fb.collection(fb.db, name), fb.where(field || 'timestamp', '>=', fb.Timestamp.fromMillis(floor)))
                 : fb.query(fb.collection(fb.db, name));
+            // Locations hardly ever change: they are read again only every half hour
+            const geoFresh = !!this.state.geoDocs && Date.now() - this.state.geoAt < 30 * 60000;
             const jobs = [
                 ['users', 'users', fb.getDocs(fb.query(fb.collection(fb.db, 'users')))],
                 ['sales_logs', 'sales', fb.getDocs(since('sales_logs'))],
@@ -352,6 +354,7 @@ document.addEventListener('DOMContentLoaded', () => {
             ];
             // A transfer sent before the date but accepted after it still counts as an acceptance
             if (floor) jobs.push(['shared_logs', 'accepted', fb.getDocs(since('shared_logs', 'claimedAt'))]);
+            if (!geoFresh) jobs.push(['user_geo', 'geo', fb.getDocs(fb.query(fb.collection(fb.db, 'user_geo')))]);
             const results = await Promise.allSettled(jobs.map((j) => j[2]));
             const raw = {};
             const problems = [];
@@ -364,6 +367,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (!problems.some((p) => p.name === collectionName)) problems.push({ name: collectionName, code: r.reason && r.reason.code });
                 }
             });
+            if (geoFresh) raw.geo = this.state.geoDocs;
+            else if (!problems.some((p) => p.name === 'user_geo')) { this.state.geoDocs = raw.geo; this.state.geoAt = Date.now(); }
             this.state.problems = problems;
             this.prepare(raw);
         },
@@ -374,14 +379,16 @@ document.addEventListener('DOMContentLoaded', () => {
             const keep = (t) => t != null && t >= floor;
             const D = { users: [], byId: new Map(), sales: [], scans: [], names: [], calls: [], transfers: [], barcodeNames: new Map(), minT: null };
 
+            const places = new Map((raw.geo || []).map((g) => [g.id, g.data()]));
             raw.users.forEach((doc) => {
                 const u = doc.data();
-                const geo = u.geo && Number.isFinite(u.geo.lat) && Number.isFinite(u.geo.lng) ? { lat: u.geo.lat, lng: u.geo.lng, accuracy: u.geo.accuracy || null } : null;
+                const g = places.get(doc.id) || u.geo; // older accounts may still hold it on the profile
+                const geo = g && Number.isFinite(g.lat) && Number.isFinite(g.lng) ? { lat: g.lat, lng: g.lng, accuracy: g.accuracy || null } : null;
                 const user = {
                     id: doc.id, phone: u.phone || doc.id, name: u.name || '', business: u.business || '',
                     type: u.type || 'Unknown', location: u.location || '', gender: u.gender || '',
                     createdAt: toMs(u.createdAt), geo,
-                    joined: u.pin !== undefined && u.pin !== null && String(u.pin) !== '' // salespeople added by a wholesaler have no PIN until they sign up
+                    joined: !!u.pinHash || (u.pin !== undefined && u.pin !== null && String(u.pin) !== '') // salespeople added by a wholesaler have no PIN until they sign up
                 };
                 D.users.push(user);
                 D.byId.set(user.id, user);
@@ -942,7 +949,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const isNew = u.createdAt && Date.now() - u.createdAt <= 7 * DAY;
             const kpi = (v, l) => `<div class="mini"><div class="v">${v}</div><div class="l">${esc(l)}</div></div>`;
             const geo = u.geo
-                ? `${u.geo.lat.toFixed(4)}, ${u.geo.lng.toFixed(4)}${u.geo.accuracy ? ` (±${num(u.geo.accuracy)} m)` : ''} · <a class="link-btn" target="_blank" rel="noopener" href="https://www.google.com/maps?q=${u.geo.lat},${u.geo.lng}">Open map</a>`
+                ? `${u.geo.lat.toFixed(3)}, ${u.geo.lng.toFixed(3)}${u.geo.accuracy ? ` (±${num(u.geo.accuracy)} m)` : ''} · <a class="link-btn" target="_blank" rel="noopener" href="https://www.google.com/maps?q=${u.geo.lat},${u.geo.lng}">Open map</a>`
                 : '<span class="muted">Not captured yet</span>';
             const events = [];
             D.sales.forEach((x) => { if (x.uid === uid) events.push([x.t, `Sold ${x.name ? esc(x.name) : 'an item'} · ${naira(x.value)}`]); });
@@ -966,7 +973,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div><div class="l">First activity</div><div class="v">${a ? esc(fmtDate(a.first)) : '—'}</div></div>
                         <div><div class="l">Last activity</div><div class="v">${a ? esc(ago(a.last)) : '—'}</div></div>
                         <div><div class="l">Gender</div><div class="v">${esc(u.gender || '—')}</div></div>
-                        <div><div class="l">Sign-up location (GPS)</div><div class="v">${geo}</div></div>
+                        <div><div class="l">Sign-up area (approx.)</div><div class="v">${geo}</div></div>
                     </div>
                     <div><div class="panel-head"><h3>Recent activity</h3><span class="hint">Latest 10</span></div>
                     ${events.length ? `<div class="timeline">${events.slice(0, 10).map((e) => `<div class="ev"><span>${e[1]}</span><span>${esc(ago(e[0]))}</span></div>`).join('')}</div>` : '<p class="empty">Nothing counted since the start date.</p>'}</div>`

@@ -1734,3 +1734,14 @@ a.privacy-link-trigger { display: inline-block; padding: 8px 2px; margin: -8px 0
     .product-tabs-row .filter-tab-btn { padding: 6px 9px; font-size: 0.8rem; }
     .tab-count { padding: 0 5px; font-size: 0.7rem; }
 }
+
+/* The privacy policy: short sections that scroll, with the button always in reach */
+.policy-modal { overflow: hidden; }
+.policy-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-right: 4px; margin-top: 6px; -webkit-overflow-scrolling: touch; }
+.modal-content.policy-modal .policy-scroll p { margin: 0 0 8px; text-align: left; font-size: 0.9rem; line-height: 1.5; color: var(--text-light); }
+.policy-modal h3 { margin: 16px 0 6px; font-size: 0.95rem; font-weight: 700; text-align: left; color: var(--text-color); }
+.policy-modal ul { margin: 0 0 8px; padding-left: 18px; font-size: 0.9rem; line-height: 1.5; color: var(--text-light); }
+.policy-modal li { margin-bottom: 4px; }
+.policy-modal .modal-actions { margin-top: 16px; }
+.profile-info-btn { position: absolute; top: 10px; right: 10px; width: 40px; height: 40px; border: 0; border-radius: 50%; background: transparent; color: var(--text-light); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.profile-info-btn:active { background: #f0f0f0; color: var(--primary-color); }

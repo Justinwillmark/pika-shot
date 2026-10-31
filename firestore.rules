@@ -1,0 +1,156 @@
+// Firestore rules for PikaShot. Paste the whole file into Firebase console > Firestore Database > Rules, then Publish.
+// Keep the device places ('1'..'4') in step with maxDevices in config.js.
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.firebase.sign_in_provider == 'password'
+        && request.auth.token.email == 'jwmark212@gmail.com';
+    }
+
+    function signupVerified(phone) {
+      let path = /databases/$(database)/documents/signup_verifications/$(phone);
+      return exists(path)
+        && get(path).data.verified == true
+        && request.time < get(path).data.verifiedAt + duration.value(1, 'h');
+    }
+
+    // --- PINs ---
+    // A PIN is kept as pinHash + pinSalt + pinIter (older accounts: plain pin) and pinChangedAt.
+    // They stay as they are unless the owner just confirmed the number on WhatsApp.
+    function pinFieldsUnchanged() {
+      let before = resource.data;
+      let after = request.resource.data;
+      return after.get('pinHash', null) == before.get('pinHash', null)
+        && after.get('pinSalt', null) == before.get('pinSalt', null)
+        && after.get('pinIter', null) == before.get('pinIter', null)
+        && after.get('pin', null) == before.get('pin', null)
+        && after.get('pinChangedAt', null) == before.get('pinChangedAt', null);
+    }
+
+    // An older account swaps its plain PIN for the scrambled one at its next login.
+    function pinUpgrade() {
+      let before = resource.data;
+      let after = request.resource.data;
+      return before.get('pin', null) != null
+        && !('pinHash' in before)
+        && after.get('pin', null) == null
+        && after.get('pinHash', null) is string
+        && after.get('pinSalt', null) is string
+        && after.get('pinIter', null) is number
+        && after.get('pinChangedAt', null) == before.get('pinChangedAt', null);
+    }
+
+    // One of the four places a phone can hold on an account.
+    function deviceStampOk() {
+      return request.resource.data.keys().hasOnly(['deviceId', 'label', 'lastSeen'])
+        && request.resource.data.deviceId is string
+        && request.resource.data.lastSeen == request.time;
+    }
+
+    // A product picture is a small thumbnail kept with the product; nothing bigger is stored.
+    function thumbOk() {
+      return !('thumb' in request.resource.data)
+        || (request.resource.data.thumb is string && request.resource.data.thumb.size() < 40000);
+    }
+
+    // --- USERS & DATA SYNC RULES ---
+    match /users/{phoneNumber} {
+      // A new account needs a number confirmed on WhatsApp.
+      allow create: if request.auth != null && signupVerified(phoneNumber);
+      allow update: if request.auth != null
+        && (pinFieldsUnchanged() || pinUpgrade() || signupVerified(phoneNumber));
+      // An account is looked up by its number. Only the dashboard may list everyone, or delete an account.
+      allow get: if request.auth != null;
+      allow list, delete: if isAdmin();
+
+      // A salesperson reads and updates their admin's products and sales here.
+      match /products/{productId} {
+        allow read, delete: if request.auth != null;
+        allow create, update: if request.auth != null && thumbOk();
+      }
+      match /sales/{saleId} {
+        allow read, write: if request.auth != null;
+      }
+
+      // Which phones are signed in. Only four places exist, so a fifth phone cannot be added.
+      match /devices/{place} {
+        allow read: if request.auth != null;
+        allow delete: if request.auth != null && place in ['1', '2', '3', '4'];
+        allow create: if request.auth != null && place in ['1', '2', '3', '4'] && deviceStampOk();
+        // a phone refreshes its own place, or takes one that has sat unused for 30 days
+        allow update: if request.auth != null && place in ['1', '2', '3', '4'] && deviceStampOk()
+          && (resource.data.deviceId == request.resource.data.deviceId
+              || request.time > resource.data.lastSeen + duration.value(30, 'd'));
+      }
+    }
+
+    // --- SIGN-UP LOCATION (only the dashboard can read it) ---
+    match /user_geo/{phone} {
+      allow read: if isAdmin();
+      allow create, update: if request.auth != null
+        && request.resource.data.keys().hasOnly(['lat', 'lng', 'accuracy', 'at'])
+        && request.resource.data.lat is number && request.resource.data.lat >= -90 && request.resource.data.lat <= 90
+        && request.resource.data.lng is number && request.resource.data.lng >= -180 && request.resource.data.lng <= 180;
+    }
+
+    // --- SALESPEOPLE ---
+    // The admin makes a 4-digit code for a salesperson; entering it creates the link;
+    // deleting the link removes the salesperson.
+    match /salesperson_invites/{phone} {
+      allow get, delete: if request.auth != null;
+      allow create, update: if request.auth != null
+        && request.resource.data.keys().hasOnly(['phone', 'code', 'businessPhone', 'businessName', 'businessType', 'createdAt']);
+    }
+    match /salesperson_links/{phone} {
+      allow read, delete: if request.auth != null;
+      // only with the admin's code, used within its 20 minutes (plus room for slow phones)
+      allow create: if request.auth != null
+        && exists(/databases/$(database)/documents/salesperson_invites/$(phone))
+        && get(/databases/$(database)/documents/salesperson_invites/$(phone)).data.businessPhone == request.resource.data.businessPhone
+        && request.time < get(/databases/$(database)/documents/salesperson_invites/$(phone)).data.createdAt + duration.value(25, 'm')
+        && request.resource.data.keys().hasOnly(['phone', 'name', 'businessPhone', 'businessName', 'businessType', 'confirmedAt']);
+    }
+
+    // --- SIGN-UP AND PIN-RESET NUMBER CHECK (WhatsApp code) ---
+    match /signup_verifications/{phone} {
+      allow get: if request.auth != null;
+      allow create, update: if request.auth != null
+        && request.resource.data.verified == false
+        && request.resource.data.keys().hasOnly(['phone', 'code', 'purpose', 'createdAt', 'verified']);
+      allow read, write: if isAdmin();
+    }
+
+    // --- DASHBOARD SETTINGS (start date) ---
+    match /admin_settings/{doc} {
+      allow read, write: if isAdmin();
+    }
+
+    // --- LOGS (admin read, any signed-in user can create) ---
+    match /scan_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if request.auth != null;
+    }
+    match /call_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if request.auth != null;
+    }
+    match /sales_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if request.auth != null;
+    }
+    match /shared_logs/{logId} {
+      allow read, create, update: if request.auth != null;
+    }
+
+    // --- RETAILER STOCKS ---
+    match /retailer_stocks/{wholesalerId}/supplied_retailers/{retailerId} {
+      allow read, write: if request.auth != null;
+      match /sales/{saleId} {
+        allow read, write: if request.auth != null;
+      }
+    }
+  }
+}

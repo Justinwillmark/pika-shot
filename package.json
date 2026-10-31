@@ -1,0 +1,13 @@
+{
+  "name": "pikashot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PikaShot: sales and stock for small shops",
+  "scripts": {
+    "build": "node build.js",
+    "deploy": "node build.js && netlify deploy --prod --dir=dist"
+  },
+  "devDependencies": {
+    "terser": "^5.31.0"
+  }
+}

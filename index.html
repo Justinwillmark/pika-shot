@@ -10,43 +10,8 @@
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="manifest.json">
 
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-app.js";
-        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-auth.js";
-        import { getFirestore, collection, doc, getDoc, setDoc, getDocs, serverTimestamp, updateDoc, onSnapshot, query, addDoc, deleteDoc, writeBatch, where, runTransaction, deleteField, increment } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore.js";
-
-        const firebaseConfig = {
-            apiKey: "AIzaSyBKu623PDECcc1gYVe4xof6AVUxDlW7B_A",
-            authDomain: "pika-shot.firebaseapp.com",
-            projectId: "pika-shot",
-            storageBucket: "pika-shot.firebasestorage.app",
-            messagingSenderId: "221719282655",
-            appId: "1:221719282655:web:fefc576166eeb115077a6a"
-        };
-
-        const app = initializeApp(firebaseConfig);
-        window.fb = {
-            auth: getAuth(app),
-            db: getFirestore(app),
-            signInAnonymously,
-            collection,
-            doc,
-            getDoc,
-            setDoc,
-            getDocs,
-            updateDoc,
-            serverTimestamp,
-            onSnapshot,
-            query,
-            addDoc,
-            deleteDoc,
-            writeBatch,
-            where,
-            runTransaction,
-            deleteField,
-            increment
-        };
-    </script>
+    <script src="config.js"></script>
+    <script type="module" src="firebase-init.js"></script>
 </head>
 <body>
     <div id="dialog-layer" class="dialog-layer" style="display:none;">
@@ -251,7 +216,7 @@
                    <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
                 </div>
                 <h2>Location Access</h2>
-                <p>PikaShot uses your location to provide relevant insights & support. Please allow access to continue.</p>
+                <p>PikaShot notes your general area (not your exact spot) to understand where shops are and to support you better. It stays private. If you would rather not share it, choose Don't allow and carry on.</p>
                 <button id="grant-location-btn" class="btn btn-primary">Allow Location</button>
             </div>
         </div>
@@ -794,17 +759,52 @@
             </div>
         </div>
 
-        <div id="privacy-policy-modal" class="modal-content" style="display:none;">
-            <h2>Data & Privacy Policy</h2>
-            <p style="text-align: left;">
-                Hey there! To make PikaShot work smoothly, we save your business details and activity to better support you and also improve the service for everyone.
-            </p>
+        <div id="privacy-policy-modal" class="modal-content policy-modal" style="display:none;">
+            <h2>Data &amp; Privacy Policy</h2>
+            <div class="policy-scroll">
+                <p>Hi! Here is how PikaShot looks after your information, in plain words.</p>
+
+                <h3>What PikaShot does</h3>
+                <p>PikaShot helps you record sales, keep track of your products, see who owes you, and share products with the people you trade with.</p>
+
+                <h3>What we collect</h3>
+                <ul>
+                    <li>Your name, phone number, business name, business type and area.</li>
+                    <li>Your products, prices, stock, pictures and sales.</li>
+                    <li>Customers you add for credit sales, and transfers you send or receive.</li>
+                    <li>Your rough location, only if you allow it. The camera is used only when you scan or take a picture.</li>
+                    <li>Simple activity, like scans and calls you make from the app.</li>
+                </ul>
+
+                <h3>Why we collect it</h3>
+                <ul>
+                    <li>To run the app for you, and to keep your records the same on every phone you use.</li>
+                    <li>To make sure it is really you when you sign up or reset your PIN.</li>
+                    <li>To give you rewards and support, and to make PikaShot better.</li>
+                </ul>
+
+                <h3>How it is stored</h3>
+                <p>Your records are kept on your phone and backed up on secure online servers, so you do not lose them if you change phones. We keep them for as long as you use PikaShot.</p>
+
+                <h3>Who can see it</h3>
+                <p>Your records are yours, and we never sell your information. A business you transfer products to sees the items in that transfer and your business name. A salesperson you add sees only the sales they record. Our team may look at how the app is used so we can support you and improve it.</p>
+
+                <h3>Your choices</h3>
+                <p>You can turn off location at any time in your browser settings. To correct or remove your information, message us on WhatsApp on 07089319883.</p>
+
+                <h3>Our promise</h3>
+                <p>We respect your privacy. We collect only what we need, use it only for the reasons above, and handle it with care. We do our best to keep your information safe, and we ask you to help by keeping your PIN to yourself.</p>
+                <p>By using PikaShot you agree to this policy. If we change it, the latest version will always be here.</p>
+            </div>
             <div class="modal-actions">
                 <button id="privacy-ok-btn" class="btn btn-primary">Got it</button>
             </div>
         </div>
 
         <div id="profile-modal" class="modal-content" style="display: none;">
+            <button type="button" id="profile-privacy-btn" class="profile-info-btn" aria-label="Data and privacy policy">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+            </button>
             <h2>Profile</h2>
             <div id="scan-tracker-container" class="scan-tracker-container">
                 <h3>Today's Scans</h3>

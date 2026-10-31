@@ -5,9 +5,83 @@
   to = "/admin.html"
   status = 200 # A 200 status makes it a rewrite, not a redirect.
 
+# Project files that are not part of the app are never handed out, even if they end up in the published folder.
+[[redirects]]
+  from = "/SETUP.md"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/firestore.rules"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/build.js"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/package.json"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/package-lock.json"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/netlify.toml"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/.git/*"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/node_modules/*"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/dist/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
 # Rule for your main single-page app.
 # This ensures that if a user refreshes any page, the app still loads correctly.
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
+
+# Safety headers for every page.
+# The Content-Security-Policy only lets the app run its own code plus the few Google/Firebase and scanner hosts it uses,
+# so a stray script (for example one smuggled in through a typed name) cannot run or send data anywhere else.
+# If you ever add another outside service, add its address here too, or the browser will block it.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Content-Security-Policy = "default-src 'self'; script-src 'self' https://www.gstatic.com https://apis.google.com https://cdn.jsdelivr.net https://www.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://www.gstatic.com https://www.google.com; media-src 'self' blob:; connect-src 'self' https://*.googleapis.com https://www.gstatic.com https://cdn.jsdelivr.net https://www.google.com; frame-src https://pika-shot.firebaseapp.com https://www.google.com https://recaptcha.google.com; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains"
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "DENY"
+    # Keeps the site address visible to Google, which the API key restriction relies on.
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(self), geolocation=(self), microphone=(), payment=(), usb=(), interest-cohort=()"
+
+# The dashboard is for you only: keep it out of search engines.
+[[headers]]
+  for = "/admin*"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+
+# The app's update checker must always look for a fresh copy.
+[[headers]]
+  for = "/serviceworker.js"
+  [headers.values]
+    Cache-Control = "no-cache"

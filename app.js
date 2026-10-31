@@ -3,6 +3,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const say = (text, title) => App._say(text, title);
     const ask = (options) => App._ask(options);
     window.pikaSay = say;
+    const CFG = window.PIKA_CONFIG || {};
+    const LIMITS = { maxProducts: CFG.maxProducts || 130, editsPerHour: CFG.editsPerHour || 5, maxDevices: CFG.maxDevices || 4 };
 
     const App = {
         // --- DOM ELEMENTS ---
@@ -379,6 +381,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.privacyLinkTriggers.forEach(link => {
                 link.addEventListener('click', (e) => {
                     e.preventDefault();
+                    this._privacyBack = null;
                     this.showModal('privacy-policy-modal');
                 });
             });
@@ -386,7 +389,16 @@ document.addEventListener('DOMContentLoaded', () => {
             if (this.elements.privacyLink) {
                 this.elements.privacyLink.addEventListener('click', (e) => { e.preventDefault(); this.showModal('privacy-policy-modal'); });
             }
-            this.elements.privacyOkBtn.addEventListener('click', () => this.hideModal());
+            this.elements.privacyOkBtn.addEventListener('click', () => {
+                const back = this._privacyBack;
+                this._privacyBack = null;
+                if (back) this.showModal(back); else this.hideModal();
+            });
+            document.getElementById('profile-privacy-btn').addEventListener('click', () => {
+                this._privacyBack = 'profile-modal';
+                this.showModal('privacy-policy-modal');
+                document.querySelector('#privacy-policy-modal .policy-scroll').scrollTop = 0;
+            });
 
             // ... (Rest of event listeners) ...
             this.elements.grantLocationBtn.addEventListener('click', this.handleLocationPermission.bind(this));
@@ -714,6 +726,76 @@ document.addEventListener('DOMContentLoaded', () => {
             return d.slice(0, 11);
         },
 
+        // --- PINs ---
+        // A PIN is never stored or sent as the number itself: a random salt is added and the result is scrambled many times.
+        _toB64(bytes) { let s = ''; bytes.forEach(b => { s += String.fromCharCode(b); }); return btoa(s); },
+        _fromB64(text) { const s = atob(text); const out = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i); return out; },
+
+        async _derivePin(pin, salt, iterations) {
+            const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(String(pin)), 'PBKDF2', false, ['deriveBits']);
+            const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: this._fromB64(salt), iterations }, key, 256);
+            return this._toB64(new Uint8Array(bits));
+        },
+
+        // What is saved instead of the PIN
+        async _makePinRecord(pin) {
+            const pinSalt = this._toB64(crypto.getRandomValues(new Uint8Array(16)));
+            const pinIter = 150000;
+            return { pinHash: await this._derivePin(pin, pinSalt, pinIter), pinSalt, pinIter };
+        },
+
+        // Does `pin` belong to this account record? (Older accounts still hold the plain PIN until their next login.)
+        async _pinMatches(pin, record) {
+            if (!record) return false;
+            if (record.pinHash) {
+                const hash = await this._derivePin(pin, record.pinSalt, Number(record.pinIter) || 150000);
+                let diff = hash.length ^ String(record.pinHash).length; // same length, then every character, whatever the answer
+                for (let i = 0; i < hash.length; i++) diff |= hash.charCodeAt(i) ^ String(record.pinHash).charCodeAt(i);
+                return diff === 0;
+            }
+            return record.pin !== undefined && record.pin !== null && String(record.pin) !== '' && String(record.pin) === String(pin);
+        },
+
+        // Too many wrong PINs in a row: a short wait that grows
+        _pinLock() {
+            try {
+                const t = JSON.parse(localStorage.getItem('pika_pin_tries')) || {};
+                return t.until && t.until > Date.now() ? Math.ceil((t.until - Date.now()) / 1000) : 0;
+            } catch (e) { return 0; }
+        },
+        _pinFailed() {
+            try {
+                const t = JSON.parse(localStorage.getItem('pika_pin_tries')) || { n: 0 };
+                t.n = (t.n || 0) + 1;
+                if (t.n % 5 === 0) t.until = Date.now() + Math.min(30 * 60000, 60000 * Math.pow(2, (t.n / 5) - 1));
+                localStorage.setItem('pika_pin_tries', JSON.stringify(t));
+            } catch (e) { /* the wait is a bonus */ }
+        },
+        _pinOk() { try { localStorage.removeItem('pika_pin_tries'); } catch (e) { /* fine */ } },
+        async _pinWait() {
+            const seconds = this._pinLock();
+            if (!seconds) return false;
+            await say(`Too many wrong PINs. Try again in ${seconds > 90 ? Math.ceil(seconds / 60) + ' minutes' : seconds + ' seconds'}.`, 'Please wait');
+            return true;
+        },
+
+        // An account that still holds the plain PIN gets the scrambled version (and loses the plain one) at its next login
+        async _upgradePin(pin) {
+            const user = this.state.user;
+            if (!user || user.pinHash || !user.pin) return;
+            try {
+                const record = await this._makePinRecord(pin);
+                await window.fb.updateDoc(window.fb.doc(window.fb.db, 'users', user.phone), { ...record, pin: window.fb.deleteField() });
+                Object.assign(user, record);
+                delete user.pin;
+            } catch (error) {
+                console.error('Could not upgrade the PIN storage:', error); // the plain PIN keeps working; this runs again next login
+            }
+        },
+
+        // An id for a new product or sale: the time plus a random part, so two phones never make the same one
+        _newId() { return Date.now() * 1000 + Math.floor(Math.random() * 1000); },
+
         // "1234.5" -> "1,234.5". Only a half may follow the dot ("1." stays while typing, "1.3" drops the 3).
         // `typed` is what was just typed: a comma at the end counts as the dot (some keypads show a comma instead).
         _formatHalves(raw, typed) {
@@ -946,15 +1028,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 const snap = await window.fb.getDoc(userRef);
                 if (!snap.exists()) throw new Error('Account not found');
                 const pinChangedAt = Date.now(); // other phones compare this and log themselves out
-                await window.fb.updateDoc(userRef, { pin, pinChangedAt });
+                const pinRecord = await this._makePinRecord(pin);
+                await window.fb.updateDoc(userRef, { ...pinRecord, pin: window.fb.deleteField(), pinChangedAt });
+                await this._clearDevices(phone); // every other phone is logged out by the new PIN, so their places are free
                 // Spend the WhatsApp confirmation so it cannot open this screen again
                 await window.fb.setDoc(this._verificationRef(phone), { phone, code: 'used', purpose: 'reset', createdAt: window.fb.serverTimestamp(), verified: false });
                 this._pending = null;
                 this._savePending(null);
                 document.getElementById('new-pin').value = '';
 
-                this.state.user = { ...snap.data(), pin, pinChangedAt };
+                this.state.user = { ...snap.data(), ...pinRecord, pinChangedAt };
+                delete this.state.user.pin;
                 DB.setIdentity(this.state.user);
+                await this._claimDevice(phone);
                 await DB.saveUser(this.state.user);
                 if (this._isSalesperson()) await this._loadBusinessLink();
                 const synced = this._isWaiting() ? true : await DB.syncDataFromCloud(phone);
@@ -999,18 +1085,164 @@ document.addEventListener('DOMContentLoaded', () => {
             this._showVerification(p);
         },
 
-        // A PIN reset on another phone logs this one out (it still knows only the old PIN)
-        _watchPinChange() {
+        // Follows this person's account, so every phone shows the same: a PIN reset elsewhere logs this one out,
+        // and the low stock level, the edits used this hour and today's scans are shared by all of them.
+        _watchAccount() {
             if (this._pinWatch) { this._pinWatch(); this._pinWatch = null; }
             const user = this.state.user;
             if (!user || !user.phone || !this.state.firebaseReady) return;
             this._pinWatch = window.fb.onSnapshot(window.fb.doc(window.fb.db, 'users', user.phone), (snap) => {
-                if (!snap.exists() || !this.state.user) return;
-                const changed = Number(snap.data().pinChangedAt) || 0;
-                if (changed > (Number(this.state.user.pinChangedAt) || 0)) {
+                const me = this.state.user;
+                if (!snap.exists() || !me || me.phone !== user.phone) return;
+                const d = snap.data();
+                if ((Number(d.pinChangedAt) || 0) > (Number(me.pinChangedAt) || 0)) {
                     this._doLogout().then(() => say('Your PIN was changed on another phone. Log in with your new PIN.', 'Log in again'));
+                    return;
                 }
-            }, (error) => console.error('Could not watch for PIN changes:', error));
+                let changed = false;
+                if (Number(d.lowStockLevel) >= 1 && d.lowStockLevel !== me.lowStockLevel) {
+                    me.lowStockLevel = d.lowStockLevel;
+                    changed = true;
+                    this.renderProducts(this.elements.productSearchInput.value);
+                }
+                if (Array.isArray(d.recentEdits)) {
+                    const merged = [...new Set([...this._recentEdits(), ...d.recentEdits.map(Number)])].filter(t => t > 0 && Date.now() - t < 3600000).sort((x, y) => x - y);
+                    if (JSON.stringify(merged) !== JSON.stringify(this._recentEdits())) { me.recentEdits = merged; changed = true; }
+                }
+                if (d.scans && typeof d.scans === 'object') {
+                    me.scans = d.scans;
+                    const day = DB._today();
+                    DB.raiseScanCount(day, (Number(d.scans[day]) || 0) + (this._pendingScans || 0)).then(() => this._refreshScanCount());
+                }
+                if (changed) DB.saveUser(me, false);
+            }, (error) => console.error('Could not follow the account:', error));
+        },
+
+        // Today's scans, added up across all the phones, on the home screen and in the profile
+        async _refreshScanCount() {
+            if (!this.state.user) return;
+            const count = await DB.getScanCountForToday();
+            if (this.elements.homeScanCount) this.elements.homeScanCount.textContent = `${count}/100+`;
+            this.updateScanTracker();
+        },
+
+        // Scans are counted on the phone at once and sent to the account in small batches
+        async _flushScans() {
+            clearTimeout(this._scanTimer);
+            const count = this._pendingScans || 0;
+            const user = this.state.user;
+            if (!count || !user || !user.phone || !this.state.firebaseReady) return;
+            this._pendingScans = 0;
+            const update = { [`scans.${DB._today()}`]: window.fb.increment(count) };
+            const cutoff = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
+            Object.keys(user.scans || {}).filter(day => day < cutoff).forEach(day => { update[`scans.${day}`] = window.fb.deleteField(); });
+            try {
+                await window.fb.updateDoc(window.fb.doc(window.fb.db, 'users', user.phone), update);
+            } catch (error) {
+                this._pendingScans += count; // try again with the next batch
+                console.error('Could not send the scan count:', error);
+            }
+        },
+
+        // --- Devices: an account can be logged in on up to four phones at once ---
+        // Each phone holds one of four numbered places. A phone that has not been used for 30 days gives its place up.
+        _deviceId() {
+            try {
+                let id = localStorage.getItem('pika_device_id');
+                if (!id) {
+                    id = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+                    localStorage.setItem('pika_device_id', id);
+                }
+                return id;
+            } catch (e) {
+                return this._memDeviceId || (this._memDeviceId = `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+            }
+        },
+
+        _deviceLabel() {
+            const ua = navigator.userAgent || '';
+            const os = /Android/i.test(ua) ? 'Android' : /iPhone|iPad/i.test(ua) ? 'iPhone' : /Windows/i.test(ua) ? 'Windows' : /Mac/i.test(ua) ? 'Mac' : 'Phone';
+            const browser = /Edg\//.test(ua) ? 'Edge' : /OPR\//.test(ua) ? 'Opera' : /Firefox\//.test(ua) ? 'Firefox' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'Browser';
+            return `${os} ${browser}`;
+        },
+
+        _deviceRef(phone, place) { return window.fb.doc(window.fb.db, `users/${phone}/devices`, String(place)); },
+
+        // Takes (or refreshes) this phone's place. Answers 'ok', 'full' (all four places are in use) or 'error' (no connection).
+        async _claimDevice(phone) {
+            if (!window.fb || !phone) return 'error';
+            const id = this._deviceId();
+            let snaps;
+            try { snaps = await window.fb.getDocs(window.fb.collection(window.fb.db, `users/${phone}/devices`)); } catch (e) { return 'error'; }
+            const places = {};
+            snaps.forEach(d => { places[d.id] = d.data(); });
+            const stamp = { deviceId: id, label: this._deviceLabel(), lastSeen: window.fb.serverTimestamp() };
+            const ok = (place) => { this._devicePlace = String(place); this._deviceCheckedAt = Date.now(); this._checkClock(this._deviceRef(phone, place)); return 'ok'; };
+
+            const mine = Object.keys(places).find(k => places[k].deviceId === id);
+            if (mine) {
+                try { await window.fb.updateDoc(this._deviceRef(phone, mine), { lastSeen: window.fb.serverTimestamp() }); } catch (e) { return 'error'; }
+                return ok(mine);
+            }
+            for (let n = 1; n <= LIMITS.maxDevices; n++) {
+                if (places[String(n)]) continue;
+                try { await window.fb.setDoc(this._deviceRef(phone, n), stamp); return ok(n); } catch (e) { /* taken a moment ago: try the next place */ }
+            }
+            const unused = Object.keys(places).find(k => { const t = DB._stampMs(places[k].lastSeen); return t && Date.now() - t > 30 * 86400000; });
+            if (unused) {
+                try { await window.fb.setDoc(this._deviceRef(phone, unused), stamp); return ok(unused); } catch (e) { /* not allowed after all */ }
+            }
+            return 'full';
+        },
+
+        _tooManyDevices() {
+            say(`This account is already logged in on ${LIMITS.maxDevices} phones. Log out on one of them, or tap "Forgot PIN?" to reset your PIN and start fresh.`, 'Too many phones');
+        },
+
+        // Gives this phone's place back (logging out)
+        async _releaseDevice() {
+            const user = this.state.user;
+            if (!user || !user.phone || !this._devicePlace || !window.fb) return;
+            const place = this._devicePlace;
+            this._devicePlace = null;
+            await window.fb.deleteDoc(this._deviceRef(user.phone, place));
+        },
+
+        // A PIN reset logs every phone out: all the places are freed
+        async _clearDevices(phone) {
+            try {
+                const snaps = await window.fb.getDocs(window.fb.collection(window.fb.db, `users/${phone}/devices`));
+                const removals = [];
+                snaps.forEach(d => removals.push(window.fb.deleteDoc(this._deviceRef(phone, d.id))));
+                await Promise.all(removals);
+            } catch (error) { console.error('Could not free the places:', error); }
+            this._devicePlace = null;
+        },
+
+        // When the app opens or comes back: this phone still has its place (at most twice a day)
+        async _ensureDevice() {
+            const user = this.state.user;
+            if (!user || !user.phone || !this.state.firebaseReady || this._isWaiting()) return;
+            if (this._devicePlace && Date.now() - (this._deviceCheckedAt || 0) < 12 * 3600000) return;
+            const result = await this._claimDevice(user.phone);
+            if (result === 'full' && this.state.user && this.state.user.phone === user.phone) {
+                this._doLogout().then(() => say(`Your account was opened on ${LIMITS.maxDevices} other phones while this one was away. Log in again, or reset your PIN.`, 'Logged out'));
+            }
+        },
+
+        // Sales are stamped with the phone's clock, so a wrong clock would put them on the wrong day on every phone
+        async _checkClock(ref) {
+            try {
+                const snap = await window.fb.getDocFromServer(ref);
+                const server = DB._stampMs(snap.exists() ? snap.data().lastSeen : null);
+                const off = Date.now() - server;
+                if (!server || Math.abs(off) < 5 * 60000) return;
+                if (Date.now() - (Number(localStorage.getItem('pika_clock_warned')) || 0) < 24 * 3600000) return;
+                localStorage.setItem('pika_clock_warned', String(Date.now()));
+                const minutes = Math.round(Math.abs(off) / 60000);
+                const size = minutes >= 120 ? `${Math.round(minutes / 60)} hours` : `${minutes} minutes`;
+                say(`Your phone's clock is about ${size} ${off > 0 ? 'ahead' : 'behind'}. Turn on automatic date and time, so your sales show the right time on every phone.`, 'Check your clock');
+            } catch (e) { /* the clock check is a bonus */ }
         },
 
         // --- Salespeople -------------------------------------------------------------------------------
@@ -1190,7 +1422,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const me = this.state.user;
             const userSnap = await window.fb.getDoc(window.fb.doc(window.fb.db, 'users', phone));
             const found = userSnap.exists() ? userSnap.data() : null;
-            if (!found || found.type !== 'Salesperson' || !found.pin) return { error: "This number hasn't signed up as a salesperson before." };
+            if (!found || found.type !== 'Salesperson' || !(found.pin || found.pinHash)) return { error: "This number hasn't signed up as a salesperson before." };
             const first = String(found.name || '').split(' ')[0] || phone;
 
             const linkSnap = await window.fb.getDoc(this._linkRef(phone));
@@ -1279,19 +1511,24 @@ document.addEventListener('DOMContentLoaded', () => {
             else done();
         },
 
-        // Product pictures stay on the phone that took them. A small copy travels with each product so a salesperson can see it too.
-        async _shareProductPictures() {
+        // Products that have a picture on this phone but no small copy online get one (a few at a time, so it costs almost nothing)
+        async _backfillThumbs(limit = 12) {
+            if (this._isSalesperson()) return;
             try {
                 const all = await DB.getAllProducts();
+                let done = 0;
                 for (const product of all) {
+                    if (done >= limit) break;
                     if (!(product.image instanceof Blob) || product.thumb) continue;
-                    const thumb = await this._makeThumbnail(product.image);
+                    const thumb = await this._productThumb(product.image);
                     if (!thumb) continue;
                     product.thumb = thumb;
-                    await DB.saveProduct(product);
+                    await DB.saveProduct(product, { only: ['thumb'], thumb: true });
+                    done++;
                 }
             } catch (e) { console.error('Could not prepare product pictures:', e); }
         },
+        _shareProductPictures() { return this._backfillThumbs(40); },
 
         // The Salespeople tab: one card per salesperson, with a summary for every day whose money is not confirmed yet
         _renderSalespeople() {
@@ -1493,11 +1730,22 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             // Verify PIN against cloud data
-            if (this.state.tempUserCloudData && String(this.state.tempUserCloudData.pin) === pin) {
-                this.showLoader();
+            if (await this._pinWait()) { this.elements.loginPinInput.value = ''; return; }
+            this.showLoader();
+            const pinOk = await this._pinMatches(pin, this.state.tempUserCloudData);
+            if (pinOk) {
+                this._pinOk();
+                // A phone needs a free place: an account can be on four at once
+                if (await this._claimDevice(this.state.tempPhone) === 'full') {
+                    this.hideLoader();
+                    this.elements.loginPinInput.value = '';
+                    this._tooManyDevices();
+                    return;
+                }
                 // Login successful
                 this.state.user = this.state.tempUserCloudData;
                 DB.setIdentity(this.state.user);
+                await this._upgradePin(pin); // an older account swaps its plain PIN for the scrambled one
                 await DB.saveUser(this.state.user); // Save locally
                 if (this._isSalesperson()) await this._loadBusinessLink(); // which business (if any) has confirmed them
 
@@ -1512,6 +1760,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.startRealtimeSync(); // Start listeners
                 this.hideLoader();
             } else {
+                this.hideLoader();
+                this._pinFailed();
                 this.elements.loginPinInput.value = '';
                 await this._needs(this.elements.loginPinInput, "That PIN is wrong. Try again.", "Wrong PIN");
             }
@@ -1541,7 +1791,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const newUser = {
                 id: 1, // Local ID
                 phone: this.state.tempPhone,
-                pin: pin,
+                ...(await this._makePinRecord(pin)),
                 name, gender, business, type, location, uid,
                 createdAt: window.fb.serverTimestamp()
             };
@@ -1551,6 +1801,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 DB.setIdentity(newUser);
                 await DB.saveUser(newUser);
                 this.state.user = newUser;
+                this._claimDevice(newUser.phone);
                 try { localStorage.removeItem('pika_verified_phone'); } catch (e) { /* fine */ }
 
                 this.showView('location-permission-view');
@@ -1690,8 +1941,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 );
 
                 if (!this._isSalesperson()) this._listenForIncomingTransfers(); // a salesperson has no stock of their own to receive
-                this._watchPinChange();
+                this._watchAccount();
                 this._watchLink();
+                this._ensureDevice();
+                setTimeout(() => this._backfillThumbs(), 6000);
 
                 this.watchPendingTransfers();
 
@@ -1701,13 +1954,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     document.removeEventListener('visibilitychange', this._visibilityHandler);
                 }
                 this._visibilityHandler = async () => {
+                    if (document.visibilityState === 'hidden') { this._flushScans(); return; } // the other phones should see them now
                     if (document.visibilityState === 'visible' && this.state.user) {
                         this.ensureFirebase().then(() => this.checkIncomingTransfers());
-                        await DB.resyncSalesFromCloud();
+                        await DB.catchUp(); // only what changed while away
                         this.updateDashboard();
+                        this.renderProducts(this.elements.productSearchInput.value);
                         if (this.state.currentView === 'all-sales-view') {
                             this.renderAllSales();
                         }
+                        this._ensureDevice();
                     }
                 };
                 document.addEventListener('visibilitychange', this._visibilityHandler);
@@ -1722,6 +1978,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         async _doLogout() {
             {
+                try { await Promise.race([this._flushScans(), new Promise(r => setTimeout(r, 1500))]); } catch (e) { /* the scans were only counts */ }
+                try { await Promise.race([this._releaseDevice(), new Promise(r => setTimeout(r, 2500))]); } catch (e) { /* offline: the place frees up by itself */ }
                 if (this._pinWatch) { this._pinWatch(); this._pinWatch = null; }
                 if (this._linkWatch) { this._linkWatch(); this._linkWatch = null; }
                 if (this.state.linksListener) { this.state.linksListener(); this.state.linksListener = null; }
@@ -1887,16 +2145,23 @@ document.addEventListener('DOMContentLoaded', () => {
             const entered = el.pinConfirmInput.value.trim();
             if (entered.length !== 6 || el.pinConfirmOkBtn.disabled) return;
             el.pinConfirmOkBtn.disabled = true;
-            const real = await this._getAccountPin();
-            if (real === null) {
+            if (this._pinLock()) {
+                el.pinConfirmError.textContent = `Too many wrong PINs. Try again in ${this._pinLock()} seconds.`;
+                el.pinConfirmInput.value = '';
+                return;
+            }
+            const record = await this._getPinRecord();
+            if (record === null) {
                 el.pinConfirmError.textContent = "Couldn't check your PIN. Try again.";
                 el.pinConfirmOkBtn.disabled = false;
                 return;
             }
-            if (entered === real) {
+            if (await this._pinMatches(entered, record)) {
+                this._pinOk();
                 this._finishPin(true);
                 return;
             }
+            this._pinFailed();
             el.pinConfirmError.textContent = 'Wrong PIN. Try again.';
             el.pinConfirmInput.value = '';
             el.pinInputWrap.classList.add('input-error-shake');
@@ -1904,14 +2169,14 @@ document.addEventListener('DOMContentLoaded', () => {
             el.pinConfirmInput.focus();
         },
 
-        // The PIN saved on this phone; if this sign-in did not keep one, read it from the account
-        async _getAccountPin() {
+        // What this phone knows about the PIN; if it has nothing, ask the account
+        async _getPinRecord() {
             const user = this.state.user || {};
-            if (user.pin !== undefined && user.pin !== null && String(user.pin) !== '') return String(user.pin);
+            if (user.pinHash || (user.pin !== undefined && user.pin !== null && String(user.pin) !== '')) return user;
             try {
                 if (user.phone && window.fb) {
                     const snap = await window.fb.getDoc(window.fb.doc(window.fb.db, 'users', user.phone));
-                    if (snap.exists() && snap.data().pin) return String(snap.data().pin);
+                    if (snap.exists() && (snap.data().pinHash || snap.data().pin)) return snap.data();
                 }
             } catch (error) {
                 console.error('Could not read the account PIN:', error);
@@ -2182,7 +2447,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     discountMark = '<sup class="discount-mark">**</sup>';
                 }
 
-                saleEl.innerHTML = `<div class="sale-item-overlay">Previously Transferred</div><img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${this.formatNumber(sale.quantity)} x &#8358;${this.formatNumber(sale.price)}</span></div><p class="sale-price">${discountMark}&#8358;${this.formatNumber(sale.total)}</p>${this._saleEditExtrasHtml(sale)}`;
+                saleEl.innerHTML = `<div class="sale-item-overlay">Previously Transferred</div><img src="${imageUrl}" alt="${this._esc(sale.productName)}"><div class="sale-info"><p>${this._esc(sale.productName)}</p><span>${this.formatNumber(sale.quantity)} x &#8358;${this.formatNumber(sale.price)}</span></div><p class="sale-price">${discountMark}&#8358;${this.formatNumber(sale.total)}</p>${this._saleEditExtrasHtml(sale)}`;
 
                 this.addSaleItemEventListeners(saleEl, sale);
                 this._appendSaleEl(targetElement, saleEl, sale);
@@ -2244,7 +2509,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     acknowledgedHtml = `<span class="acknowledgement-text">Money confirmed by ${this._esc(this.state.user.businessName || 'your admin')}.</span>`;
                 }
 
-                groupHeader.innerHTML = `<h3>${groupTitle}</h3>${totalHtml}`;
+                groupHeader.innerHTML = `<h3>${this._esc(groupTitle)}</h3>${totalHtml}`;
                 groupContainer.appendChild(groupHeader);
 
                 if (acknowledgedHtml) {
@@ -2276,7 +2541,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         numberingHtml = `<span style="font-weight: bold; margin-right: 12px; color: var(--text-color); font-size: 1.1em; display: flex; align-items: center;">${index + 1}.</span>`;
                     }
 
-                    saleEl.innerHTML = `<div class="sale-item-overlay">Previously Transferred</div>${numberingHtml}<img src="${imageUrl}" alt="${sale.productName}"><div class="sale-info"><p>${sale.productName}</p><span>${this.formatNumber(sale.quantity)} x &#8358;${this.formatNumber(sale.price)}</span></div><p class="sale-price">${discountMark}&#8358;${this.formatNumber(sale.total)}</p>${this._saleEditExtrasHtml(sale)}`;
+                    saleEl.innerHTML = `<div class="sale-item-overlay">Previously Transferred</div>${numberingHtml}<img src="${imageUrl}" alt="${this._esc(sale.productName)}"><div class="sale-info"><p>${this._esc(sale.productName)}</p><span>${this.formatNumber(sale.quantity)} x &#8358;${this.formatNumber(sale.price)}</span></div><p class="sale-price">${discountMark}&#8358;${this.formatNumber(sale.total)}</p>${this._saleEditExtrasHtml(sale)}`;
                     this.addSaleItemEventListeners(saleEl, sale);
                     this._appendSaleEl(groupContainer, saleEl, sale);
                 });
@@ -2500,7 +2765,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="product-card-info">
                         <h4>${this._esc(displayName)}</h4>
                         <p class="product-price">&#8358;${this.formatNumber(product.price)}</p>
-                        <p class="product-stock">${product.stock > 0 ? `${this.formatNumber(product.stock)} ${product.unit} left` : ''}</p>
+                        <p class="product-stock">${product.stock > 0 ? `${this.formatNumber(product.stock)} ${this._esc(product.unit)} left` : ''}</p>
                     </div>${this._productEditMarkHtml(product)}`;
 
                 const editBtn = card.querySelector('.edit-btn-icon');
@@ -2566,6 +2831,49 @@ document.addEventListener('DOMContentLoaded', () => {
             this.showToast(`Low stock now shows below ${level}.`);
         },
 
+        // --- Limits: how many products an account can hold, and how often one can be edited by hand ---
+        async _roomForProducts(extra) {
+            const count = (await DB.getAllProducts()).length;
+            if (count + extra <= LIMITS.maxProducts) return true;
+            const left = Math.max(0, LIMITS.maxProducts - count);
+            say(`You can keep up to ${LIMITS.maxProducts} products and you have ${count}${left ? `, so there is room for ${left} more` : ''}. Delete a product you no longer sell to make room.`, 'Product limit');
+            return false;
+        },
+
+        // How many products a transfer would add (the ones that match something already in the list are just topped up)
+        _countNewProducts(items, products) {
+            const known = [...products];
+            let added = 0;
+            for (const item of items || []) {
+                const name = String(item.name || '').toLowerCase();
+                const hit = known.find(p => (item.barcode && this._barcodesMatch(p.barcode, item.barcode)) || String(p.originalName || p.name || '').toLowerCase() === name);
+                if (!hit) { added++; known.push({ barcode: item.barcode, name: item.name }); }
+            }
+            return added;
+        },
+
+        _recentEdits() {
+            const list = (this.state.user && Array.isArray(this.state.user.recentEdits)) ? this.state.user.recentEdits : [];
+            return list.map(Number).filter(t => t > 0 && Date.now() - t < 3600000).sort((x, y) => x - y);
+        },
+
+        async _checkEditQuota() {
+            const recent = this._recentEdits();
+            if (recent.length < LIMITS.editsPerHour) return true;
+            const minutes = Math.max(1, Math.ceil((recent[0] + 3600000 - Date.now()) / 60000));
+            say(`You can edit products ${LIMITS.editsPerHour} times an hour, and you have used all ${LIMITS.editsPerHour}. Try again in ${minutes} ${minutes === 1 ? 'minute' : 'minutes'}.`, 'Edit limit');
+            return false;
+        },
+
+        async _recordEdit() {
+            const user = this.state.user;
+            user.recentEdits = [...this._recentEdits(), Date.now()];
+            try {
+                await DB.saveUser(user, false);
+                if (this.state.firebaseReady) await window.fb.setDoc(window.fb.doc(window.fb.db, 'users', user.phone), { recentEdits: user.recentEdits }, { merge: true });
+            } catch (error) { console.error('Could not note the edit:', error); }
+        },
+
         // `fallbackData` is the older, smaller shape: used when the database rules refuse the richer one,
         // so adding detail to a log never costs the log itself.
         async _logToFirestore(collectionName, docId, data, fallbackData) {
@@ -2606,29 +2914,49 @@ document.addEventListener('DOMContentLoaded', () => {
             this._logToFirestore('sales_logs', null, rich, edited ? null : base);
         },
 
-        // Where this user is, kept on their account so the admin dashboard can place them on a map.
-        // Only called after the user allowed location access.
+        // Where this shop is, to the nearest few hundred metres. It is kept in a private spot that only the dashboard can read,
+        // never on the profile (a profile can be looked up by anyone who has the phone number). Only called after location was allowed.
         async _saveGeo(position) {
             const user = this.state.user;
             if (!user || !user.phone || !position || !position.coords || !this.state.firebaseReady) return;
-            const geo = {
-                lat: Number(position.coords.latitude.toFixed(5)),
-                lng: Number(position.coords.longitude.toFixed(5)),
+            return this._sendGeo(user, {
+                lat: position.coords.latitude,
+                lng: position.coords.longitude,
                 accuracy: Math.round(position.coords.accuracy || 0)
-            };
-            try {
-                await window.fb.setDoc(window.fb.doc(window.fb.db, 'users', user.phone), { geo }, { merge: true });
-                user.geo = geo;
-                await DB.saveUser(user, false);
-            } catch (error) {
-                console.error('Could not save location:', error);
-            }
+            });
         },
 
-        // Users who already allowed location (it is asked for at sign-up) but were never saved: no new prompt is shown
+        async _sendGeo(user, place) {
+            const lat = Number(Number(place.lat).toFixed(3));
+            const lng = Number(Number(place.lng).toFixed(3));
+            if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+            const geo = { lat, lng, accuracy: Math.max(0, Math.round(Number(place.accuracy) || 0)) };
+            user.geo = geo;
+            user.geoSent = true; // once per sign-in
+            try { await DB.saveUser(user, false); } catch (error) { /* the cloud copy below is what matters */ }
+            try {
+                await window.fb.setDoc(window.fb.doc(window.fb.db, 'user_geo', user.phone), { ...geo, at: window.fb.serverTimestamp() });
+            } catch (error) {
+                console.error('Could not save location:', error);
+                user.geoSent = false; // try again at the next start
+                return;
+            }
+            try { // accounts from before kept it on the profile: tidy that away
+                await window.fb.updateDoc(window.fb.doc(window.fb.db, 'users', user.phone), { geo: window.fb.deleteField() });
+            } catch (error) { /* the profile may already be clean */ }
+        },
+
+        // Anyone who already allowed location (it is asked for at sign-up) but was never saved, or whose location still sits on the
+        // profile from the older version: no new prompt is shown
         async _backfillGeo() {
             try {
-                if (!this.state.user || this.state.user.geo || !navigator.geolocation || !navigator.permissions) return;
+                const user = this.state.user;
+                if (!user || user.geoSent || !this.state.firebaseReady) return;
+                if (user.geo && Number.isFinite(Number(user.geo.lat)) && Number.isFinite(Number(user.geo.lng))) {
+                    await this._sendGeo(user, user.geo);
+                    return;
+                }
+                if (!navigator.geolocation || !navigator.permissions) return;
                 const permission = await navigator.permissions.query({ name: 'geolocation' });
                 if (permission.state !== 'granted') return;
                 navigator.geolocation.getCurrentPosition(
@@ -2663,7 +2991,6 @@ document.addEventListener('DOMContentLoaded', () => {
         handleLocationPermission() {
             navigator.geolocation.getCurrentPosition(
                 (position) => {
-                    console.log('Location permission granted:', position.coords);
                     this._saveGeo(position);
                     this.showView('camera-permission-view');
                 },
@@ -2672,7 +2999,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     this.showToast("Location is off. You can turn it on later in your browser settings.");
                     this.showView('camera-permission-view');
                 },
-                { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+                { enableHighAccuracy: false, timeout: 10000, maximumAge: 600000 } // the general area is enough, and is found faster indoors
             );
         },
         async handleCameraPermission() { try { const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }); stream.getTracks().forEach(track => track.stop()); await this.loadMainApp(); this.startRealtimeSync(); } catch (err) { console.error("Camera permission denied:", err); say("PikaShot needs your camera to scan. Allow it in your browser settings.", "Camera is off"); } },
@@ -2776,14 +3103,18 @@ document.addEventListener('DOMContentLoaded', () => {
             // one crisp checkout-scanner beep
             this._playNotes([{ freq: 2300, start: 0, dur: 0.17, type: 'square', vol: 0.1, release: 0.03 }]);
             await DB.incrementScanCount();
+            this._pendingScans = (this._pendingScans || 0) + 1;
+            clearTimeout(this._scanTimer);
+            this._scanTimer = setTimeout(() => this._flushScans(), 30000); // sent together, not one by one
             this.updateScanTracker();
         },
 
-        startAddProduct() {
+        async startAddProduct() {
             if (this._isSalesperson()) {
                 this.showToast('Only your admin can add products.');
                 return;
             }
+            if (!(await this._roomForProducts(1))) return;
             this._setCameraActions(false);
             if (!this.state.cameraReady) { say("The scanner is still loading. Wait a moment and try again.", "Please wait"); return; }
             if (!Camera.isSupported()) { say("This phone cannot scan barcodes.", "Cannot scan"); return; }
@@ -2990,7 +3321,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const isEditing = !!this.state.editingProduct;
 
             let productData = {
-                id: isEditing ? this.state.editingProduct.id : Date.now(),
+                id: isEditing ? this.state.editingProduct.id : this._newId(),
                 name: this.elements.productNameInput.value.trim(),
                 price: this.unformatNumber(this.elements.productPriceInput.value),
                 stock: this.unformatNumber(this.elements.productStockInput.value),
@@ -3026,17 +3357,37 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
+            // New products need room; an edit counts towards the hourly limit (finishing a received product's setup does not)
+            let saveOptions = null;
+            if (!isEditing) {
+                if (!(await this._roomForProducts(1))) return;
+            } else {
+                const before = this.state.editingProduct;
+                const changed = ['name', 'price', 'stock', 'unit', 'barcode', 'stockVisible'].filter(k => JSON.stringify(productData[k] === undefined ? null : productData[k]) !== JSON.stringify(before[k] === undefined ? null : before[k]));
+                const pictureChanged = !!this.state.capturedBlob && this.state.capturedBlob !== before.image; // a new picture, not the old one loaded into the form
+                if (!changed.length && !pictureChanged) {
+                    this.hideModal();
+                    this.state.editingProduct = null;
+                    this.showToast('Nothing was changed.');
+                    return;
+                }
+                const counts = !before.needsSetup;
+                if (counts && !(await this._checkEditQuota())) return;
+                saveOptions = { only: [...changed, 'editedAt', ...(before.needsSetup ? ['needsSetup'] : [])], counts };
+            }
+
             if (productData.unit === 'cartons' && this.state.user.type === 'Wholesaler') {
                 this.elements.cartonDetailsForm.reset();
                 this.elements.cartonProductNameLabel.textContent = "What's inside?";
                 this.elements.cartonQuantityLabel.textContent = 'How many per carton?';
                 this.state.tempProductDataForCarton = productData;
+                this.state.tempSaveOptions = saveOptions && { counts: saveOptions.counts }; // the carton details are saved with the whole product
                 this.hideModal();
                 this.showModal('carton-details-modal');
                 return;
             }
 
-            await this._commitProductSave(productData);
+            await this._commitProductSave(productData, saveOptions);
         },
 
         async handleSaveCartonDetails(e) {
@@ -3053,11 +3404,12 @@ document.addEventListener('DOMContentLoaded', () => {
             productData.subUnitType = subUnitType;
             productData.subUnitQuantity = subUnitQuantity;
 
-            await this._commitProductSave(productData);
+            await this._commitProductSave(productData, this.state.tempSaveOptions);
             this.state.tempProductDataForCarton = null;
+            this.state.tempSaveOptions = null;
         },
 
-        async _commitProductSave(productData) {
+        async _commitProductSave(productData, saveOptions) {
             // Tell the admin dashboard what this user calls the item behind a barcode
             const before = this.state.editingProduct;
             if (productData.barcode && (!before || before.name !== productData.name || before.barcode !== productData.barcode)) {
@@ -3071,11 +3423,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             }
 
-            if (productData.image instanceof Blob) {
-                const thumb = await this._makeThumbnail(productData.image);
-                if (thumb) productData.thumb = thumb; // a small copy that travels with the product, so a salesperson sees it too
+            // A small copy of the picture is saved online with the product, so it is still there after logging out or
+            // clearing the phone's data. It is made again only when the picture itself is new.
+            let thumbChanged = false;
+            const newPicture = !!this.state.capturedBlob && !(before && before.image === this.state.capturedBlob);
+            if (productData.image instanceof Blob && (newPicture || !(before && before.thumb))) {
+                const thumb = await this._productThumb(productData.image);
+                if (thumb) { productData.thumb = thumb; thumbChanged = true; }
+            } else if (before && before.thumb) {
+                productData.thumb = before.thumb;
             }
-            await DB.saveProduct(productData);
+            if (before && before._seenInCloud) productData._seenInCloud = true;
+
+            let options = null;
+            if (saveOptions && saveOptions.only) {
+                options = { only: thumbChanged ? [...saveOptions.only, 'thumb'] : saveOptions.only, thumb: thumbChanged };
+            } else if (before) {
+                options = { thumb: thumbChanged }; // the whole product goes (cartons), the picture only if it is new
+            } else {
+                options = { thumb: true };
+            }
+            await DB.saveProduct(productData, options);
+            if (saveOptions && saveOptions.counts) this._recordEdit();
             await this._syncSupplierStock(productData); // no-op unless this product came from a supplier
 
             this.hideModal();
@@ -3355,8 +3724,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const stockBefore = product.stock;
             product.stock = availableStock - quantity;
 
-            // A salesperson only moves the stock by what they sold, so it never overwrites what another phone just did
-            await DB.saveProduct(product, this._isSalesperson() ? product.stock - stockBefore : undefined);
+            // The stock moves by what was sold (never "set to"), so phones selling at the same time add up correctly
+            await DB.saveProduct(product, product.stock - stockBefore);
             
             let total = Math.max(0, Math.round((quantity * unitPrice) - discount));
             if (activeRadio && activeRadio.value === 'credit') {
@@ -3365,7 +3734,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             const sale = {
                 ...(editing || {}),
-                id: editing ? editing.id : Date.now(),
+                id: editing ? editing.id : this._newId(),
                 productId: product.id,
                 productName: editing ? editing.productName : product.name,
                 quantity: quantity,
@@ -4229,7 +4598,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Blob -> small square JPEG data URL (or null if the picture cannot be read). The app only ever shows product
         // pictures in square-ish boxes (object-fit: cover), so the middle square is all that needs to travel.
-        _makeThumbnail(blob) {
+        _makeThumbnail(blob, maxSide, quality) {
             return new Promise((resolve) => {
                 const url = URL.createObjectURL(blob);
                 const img = new Image();
@@ -4238,16 +4607,23 @@ document.addEventListener('DOMContentLoaded', () => {
                     try {
                         const side = Math.min(img.naturalWidth, img.naturalHeight);
                         if (!side) { finish(null); return; }
-                        const size = Math.min(this.THUMB_SIZE, side);
+                        const size = Math.min(maxSide || this.THUMB_SIZE, side);
                         const canvas = document.createElement('canvas');
                         canvas.width = canvas.height = size;
                         canvas.getContext('2d').drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, size, size);
-                        finish(canvas.toDataURL('image/jpeg', 0.55));
+                        finish(canvas.toDataURL('image/jpeg', quality || 0.55));
                     } catch (e) { finish(null); }
                 };
                 img.onerror = () => finish(null);
                 img.src = url;
             });
+        },
+
+        // The picture that is saved online with a product: small enough to cost almost nothing, clear enough to know the product by
+        async _productThumb(blob) {
+            let thumb = await this._makeThumbnail(blob, 240, 0.68);
+            if (thumb && thumb.length > 45000) thumb = await this._makeThumbnail(blob, 200, 0.55);
+            return thumb && thumb.length <= 60000 ? thumb : null;
         },
 
         // Transfers come from other users: only ever accept a plain base64 picture
@@ -4276,7 +4652,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (saleToUpdate) {
                     saleToUpdate.pendingTransfer = { logId, to: targetPhone }; // latest transfer
                     saleToUpdate.pendingTransfers = [...(saleToUpdate.pendingTransfers || []), { logId, to: targetPhone }];
-                    updates.push(DB.updateSale(saleToUpdate));
+                    updates.push(DB.updateSale(saleToUpdate, ['pendingTransfer', 'pendingTransfers']));
                 }
             }
 
@@ -4348,7 +4724,7 @@ document.addEventListener('DOMContentLoaded', () => {
             await Promise.all(affected.map(sale => {
                 sale.sharedAsLog = true;
                 sale.transferredTo = logData.claimedBy || (sale.pendingTransfer && sale.pendingTransfer.to);
-                return DB.updateSale(sale);
+                return DB.updateSale(sale, ['sharedAsLog', 'transferredTo']);
             }));
 
             await this.updateDashboard();
@@ -4679,7 +5055,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     : `<span class="rc-thumb" aria-hidden="true"></span>`;
                 return `<div class="rc-item${anyPicture ? ' has-thumb' : ''}">${thumb}<div class="rc-item-main">` +
                     `<div class="rc-row"><span class="rc-item-name">${this._esc(item.name)}</span><span class="rc-amt">${money(lineTotal)}</span></div>` +
-                    `<div class="rc-calc">${this.formatNumber(item.quantity)} ${unit} &times; ${money(item.price)}</div>${sub}` +
+                    `<div class="rc-calc">${this.formatNumber(item.quantity)} ${this._esc(unit)} &times; ${money(item.price)}</div>${sub}` +
                     `</div></div>`;
             }).join('');
 
@@ -4711,6 +5087,17 @@ document.addEventListener('DOMContentLoaded', () => {
             const isRetailerReceiving = this.state.user.type === 'Retailer';
             const log = this.state.scannedLogData;
             const supplierId = log.senderId;
+
+            // The new products must fit in the list before the transfer is claimed
+            {
+                const current = await DB.getAllProducts();
+                const added = this._countNewProducts(log.items, current);
+                if (current.length + added > LIMITS.maxProducts) {
+                    const room = Math.max(0, LIMITS.maxProducts - current.length);
+                    say(`This transfer brings ${added} new ${added === 1 ? 'product' : 'products'} and you have room for ${room} more (the limit is ${LIMITS.maxProducts}). Delete products you no longer sell, then accept it again.`, 'Product limit');
+                    return;
+                }
+            }
 
             // Only the first person to accept gets the products
             this.showLoader();
@@ -4771,6 +5158,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 let finalProduct;
+                let thumbSentHere = false; // the sender's small picture became this product's online picture
 
                 if (existingProduct) {
                     const previousSupplier = existingProduct.supplierId;
@@ -4791,7 +5179,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     // The sender's picture only fills a gap: a picture the user already has is never replaced
                     if (!existingProduct.image) {
                         const sentImage = this._imageUrlToBlob(item.image);
-                        if (sentImage) existingProduct.image = sentImage;
+                        if (sentImage) { existingProduct.image = sentImage; existingProduct.thumb = this._safeImageUrl(item.image); thumbSentHere = true; }
                     }
                     existingProduct.isSalesperson = isSalesperson;
                     existingProduct.originalName = originalName;
@@ -4803,13 +5191,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     finalProduct = existingProduct;
                 } else {
                     finalProduct = {
-                        id: Date.now() + Math.random(),
+                        id: this._newId(),
                         name: item.name,
                         originalName: originalName,
                         price: costPrice,
                         stock: stockToAdd,
                         unit: unitType,
                         image: this._imageUrlToBlob(item.image),
+                        thumb: this._safeImageUrl(item.image) || undefined,
                         barcode: barcode,
                         createdAt: new Date(),
                         supplierId: supplierId,
@@ -4825,7 +5214,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     allProducts.push(finalProduct); // so a repeated barcode/name inside the same transfer is merged too
                 }
-                productUpdates.push(DB.saveProduct(finalProduct));
+                if (existingProduct) {
+                    // the stock is added to whatever it is now; the fields that changed are sent, nothing else
+                    productUpdates.push(DB.saveProduct(finalProduct, { delta: stockToAdd, thumb: thumbSentHere,
+                        only: ['supplierId', 'barcode', 'needsSetup', 'lockedUntilOOS', 'isSalesperson', 'originalName', 'wholesalerPrice', 'subUnitType', 'subUnitQuantity', 'thumb'] }));
+                } else {
+                    productUpdates.push(DB.saveProduct(finalProduct, { thumb: true }));
+                }
                 if (finalProduct.stockVisible !== false) {
                     updatedProductsForFirebase[finalProduct.originalName] = { stock: finalProduct.stock, unit: finalProduct.unit, isSalesperson };
                 }
@@ -5013,7 +5408,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     for (const productName in retailer.products) {
                         const product = retailer.products[productName];
                         const stockClass = product.stock <= 0 ? 'out-of-stock' : (product.stock < 10 ? 'restock-now' : '');
-                        productsHtml += `<div class="retailer-product-item ${stockClass}"><span>${productName}</span><strong>${this._esc(this.formatStockRange(product.stock, product.unit))}</strong></div>`;
+                        productsHtml += `<div class="retailer-product-item ${stockClass}"><span>${this._esc(productName)}</span><strong>${this._esc(this.formatStockRange(product.stock, product.unit))}</strong></div>`;
                     }
                 } else {
                     productsHtml = `<div class="retailer-product-item"><span>No product data available.</span></div>`;
@@ -5023,15 +5418,15 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const phoneIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>`;
-            const callButton = retailer.retailerPhone ? `<a href="tel:${retailer.retailerPhone}" class="retailer-call-btn" title="Call ${retailer.retailerName}">${phoneIcon}</a>` : '';
+            const callButton = retailer.retailerPhone ? `<a href="tel:${this._esc(retailer.retailerPhone)}" class="retailer-call-btn" title="Call ${this._esc(retailer.retailerName)}">${phoneIcon}</a>` : '';
             const deleteIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
             const status = this.formatTimeAgo(retailer.lastUpdate?.toDate());
 
             return `
-                <div class="card" data-retailer-id="${retailer.id}" data-retailer-name="${retailer.retailerName}">
+                <div class="card" data-retailer-id="${this._esc(retailer.id)}" data-retailer-name="${this._esc(retailer.retailerName)}">
                     <div class="retailer-header">
                         <div style="flex-grow: 1;">
-                            <h4>${retailer.retailerName} (${retailer.retailerLocation})</h4>
+                            <h4>${this._esc(retailer.retailerName)} (${this._esc(retailer.retailerLocation)})</h4>
                             <p class="retailer-status ${status.className}">${status.text}</p>
                         </div>
                         ${callButton}
@@ -5148,7 +5543,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (!sale) throw new Error('Credit sale not found');
                         sale.creditSettled = true;
                         sale.creditSettledAt = Date.now();
-                        await DB.updateSale(sale);
+                        await DB.updateSale(sale, ['creditSettled', 'creditSettledAt']);
                         card.remove();
                         this.showToast('Credit card removed.');
                         this.renderRetailerStocks(); // refresh the tab

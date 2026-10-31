@@ -1,10 +1,12 @@
-const CACHE_NAME = 'pika-shot-cache-v17';
+const CACHE_NAME = 'pika-shot-cache-v18';
 const LIB_CACHE_NAME = 'pika-shot-libs-v1'; // third-party scanner library, kept for offline scanning
 const ASSETS_TO_CACHE = [
     '/',
     '/index.html',
     '/style.css',
     '/app.js',
+    '/config.js',
+    '/firebase-init.js',
     '/db.js',
     '/camera.js',
     '/manifest.json',
@@ -39,7 +41,7 @@ self.addEventListener('activate', event => {
 
 self.addEventListener('fetch', event => {
     // The admin dashboard is never kept in this cache, so it is always the latest version.
-    if (/^\/admin(\.html|\.js|\.css)?$/.test(new URL(event.request.url).pathname)) return;
+    if (/^\/admin(-init)?(\.html|\.js|\.css)?$/.test(new URL(event.request.url).pathname)) return;
 
     // Scanner fallback library: serve the cached copy when there is one, refresh it in the background.
     if (event.request.url.includes('cdn.jsdelivr.net/npm/@zxing/library')) {
@@ -52,6 +54,19 @@ self.addEventListener('fetch', event => {
                     }).catch(() => null);
                     return cached || network.then(response => response || new Response(null, { status: 503, statusText: 'Service Unavailable' }));
                 })
+            )
+        );
+        return;
+    }
+
+    // Firebase code: the version is part of its address, so a saved copy never goes stale. Keeping it lets the app start with no internet.
+    if (event.request.url.startsWith('https://www.gstatic.com/firebasejs/')) {
+        event.respondWith(
+            caches.open(LIB_CACHE_NAME).then(cache =>
+                cache.match(event.request).then(cached => cached || fetch(event.request).then(response => {
+                    if (response && response.status === 200) cache.put(event.request, response.clone());
+                    return response;
+                }))
             )
         );
         return;
