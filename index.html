@@ -328,7 +328,7 @@
                         <div class="search-field">
                             <input type="search" id="product-search-input" placeholder="Search my products...">
                             <button type="button" id="low-stock-settings-btn" class="search-settings-btn" aria-label="Set the low stock level">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
                             </button>
                         </div>
                     </div>
@@ -801,17 +801,22 @@
             </div>
         </div>
 
-        <div id="profile-modal" class="modal-content" style="display: none;">
-            <button type="button" id="profile-privacy-btn" class="profile-info-btn" aria-label="Data and privacy policy">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
-            </button>
-            <h2>Profile</h2>
+        <div id="profile-modal" class="modal-content profile-modal" style="display: none;">
+            <div class="profile-bar">
+                <span class="profile-bar-gap"></span>
+                <h2 class="profile-title">Profile</h2>
+                <button type="button" id="profile-privacy-btn" class="profile-icon-btn" aria-label="Data and privacy policy">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                </button>
+            </div>
             <div id="scan-tracker-container" class="scan-tracker-container">
-                <h3>Today's Scans</h3>
+                <div class="airtime-head">
+                    <span class="airtime-title">Today's scans</span>
+                    <span class="airtime-count"><span id="scan-count">0</span>/100+</span>
+                </div>
                 <div class="scan-progress-bar">
                     <div id="scan-progress" class="scan-progress"></div>
                 </div>
-                <p><span id="scan-count">0</span>/100+ Scans</p>
                 <div id="scan-reward" class="scan-reward"></div>
             </div>
             <div class="profile-details">
@@ -836,11 +841,11 @@
                     <span id="profile-role" class="profile-value"></span>
                 </div>
             </div>
-            <div class="modal-actions">
+            <div class="profile-actions">
                 <button id="cancel-profile-btn" class="btn btn-secondary">Cancel</button>
-                <div class="profile-buttons-inline">
-                    <a href="tel:07089319883" id="get-help-btn" class="btn btn-primary">Get Help</a>
-                    <button id="logout-btn" class="btn btn-danger">Logout</button>
+                <div class="profile-actions-row">
+                    <a href="tel:07089319883" id="get-help-btn" class="btn">Get help</a>
+                    <button id="logout-btn" class="btn">Logout</button>
                 </div>
             </div>
         </div>
@@ -848,6 +853,7 @@
 
     <script src="db.js"></script>
     <script src="camera.js"></script>
+    <script src="nudges.js"></script>
     <script src="app.js"></script>
 </body>
 </html>

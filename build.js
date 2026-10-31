@@ -15,7 +15,7 @@ const OUT = path.join(ROOT, 'dist');
 // What gets published (the build script, notes and tooling stay home)
 const FILES = [
     'index.html', 'admin.html', 'style.css', 'admin.css', 'manifest.json',
-    'app.js', 'db.js', 'camera.js', 'admin.js', 'serviceworker.js',
+    'app.js', 'db.js', 'camera.js', 'nudges.js', 'admin.js', 'serviceworker.js',
     'config.js', 'firebase-init.js', 'admin-init.js'
 ];
 const FOLDERS = ['icons'];

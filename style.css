@@ -629,6 +629,18 @@ button:focus { outline: none; }
     display: flex; align-items: center; gap: 3px; cursor: pointer; padding: 5px 8px; border-radius: 10px; background: rgba(255,255,255,0.15); backdrop-filter: blur(4px); transition: background 0.2s;
 }
 .home-scan-menu-trigger:active { background: rgba(255,255,255,0.25); }
+/* A new profile message has arrived: a gentle wiggle, then a rest, again and again (the app stops it after 30 seconds) */
+.home-scan-menu-trigger.nudge-shake { animation: nudge-wiggle 2.6s ease-in-out infinite; transform-origin: 50% 50%; }
+@keyframes nudge-wiggle {
+    0%, 28%, 100% { transform: none; }
+    3% { transform: rotate(-9deg) translateX(-1px); }
+    7% { transform: rotate(8deg) translateX(1px); }
+    11% { transform: rotate(-6deg); }
+    15% { transform: rotate(5deg); }
+    19% { transform: rotate(-3deg); }
+    23% { transform: rotate(2deg); }
+}
+@media (prefers-reduced-motion: reduce) { .home-scan-menu-trigger.nudge-shake { animation: none; } }
 .home-scan-menu-trigger span#home-scan-count {
     font-size: 0.7rem; font-weight: 400; color: #fff;
 }
@@ -956,14 +968,19 @@ button:focus { outline: none; }
     background-color: #fff8e1;
 }
 /* === Credit card (Customers tab): who, what, how much is still owed, and one clear action === */
-#retailer-stock-view .credit-card { padding: 14px 16px 14px; border-left: 4px solid var(--danger-color); overflow: hidden; }
+#retailer-stock-view .credit-card, #retailer-stock-view .stock-card { padding: 14px 16px 14px; overflow: hidden; }
+#retailer-stock-view .credit-card { border-left: 4px solid var(--danger-color); }
+#retailer-stock-view .stock-card { border-left: 4px solid var(--primary-color); }
 .credit-top { display: flex; align-items: center; gap: 10px; }
 .credit-who { flex: 1; min-width: 0; }
 .credit-who h4 { display: flex; flex-wrap: nowrap; align-items: center; column-gap: 8px; row-gap: 3px; margin: 0; font-size: 1.05rem; font-weight: 700; line-height: 1.25; white-space: nowrap; }
 .credit-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* a long name ends in "…" on its line */
 .credit-pill { flex: none; padding: 2px 8px; border-radius: 999px; background: rgba(208, 2, 27, 0.1); color: var(--danger-color); font-size: 0.64rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
 .credit-when { margin: 2px 0 0; font-size: 0.78rem; color: var(--text-light); }
-.credit-card .retailer-call-btn { flex: none; margin: 0; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: #e6f4f5; }
+.credit-when .retailer-status { margin: 0; font-size: inherit; }
+.stock-pill { background: rgba(0, 140, 149, 0.1); color: var(--primary-color); }
+.stock-card .credit-stock { margin-top: 12px; padding-top: 6px; }
+.credit-card .retailer-call-btn, .stock-card .retailer-call-btn { flex: none; margin: 0; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: #e6f4f5; }
 .credit-item { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-top: 14px; font-size: 0.9rem; }
 .credit-item-name { min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
 .credit-item-qty { flex: none; color: var(--text-light); font-size: 0.82rem; }
@@ -980,6 +997,9 @@ button:focus { outline: none; }
 .credit-stock .retailer-product-item { padding: 6px 8px; font-size: 0.85rem; }
 .delete-credit-btn { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; min-height: 44px; margin-top: 14px; border: 1.5px solid var(--primary-color); border-radius: 10px; background: transparent; color: var(--primary-color); font: inherit; font-size: 0.9rem; font-weight: 600; cursor: pointer; }
 .delete-credit-btn:active { background: #e6f4f5; }
+.stock-card .delete-retailer-btn { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; min-height: 44px; margin: 12px 0 0; padding: 0; border: 1.5px solid var(--border-color); border-radius: 10px; background: transparent; color: var(--danger-color); font: inherit; font-size: 0.9rem; font-weight: 600; cursor: pointer; }
+.stock-card .delete-retailer-btn svg { width: 16px; height: 16px; }
+.stock-card .delete-retailer-btn:active { background: #ffebee; }
 
 .card-footer {
     padding: 8px 16px;
@@ -1150,104 +1170,44 @@ button:focus { outline: none; }
 
 
 
-/* Profile Modal */
-.profile-details {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    margin-bottom: 24px;
-}
-.profile-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 8px 0;
-    border-bottom: 1px solid var(--border-color);
-}
-.profile-item:last-child {
-    border-bottom: none;
-}
-.profile-label {
-    font-size: 0.9rem;
-    color: var(--text-light);
-    font-weight: 500;
-}
-.profile-value {
-    font-size: 1rem;
-    font-weight: 600;
-    text-align: right;
-}
-.profile-buttons-inline {
-    display: flex;
-    gap: 12px;
-}
-#get-help-btn {
-    flex: 2;
-    text-decoration: none;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-}
-#logout-btn {
-    flex: 1;
-    background-color: transparent;
-    border: 1px solid var(--danger-color);
-    color: var(--danger-color);
-}
-#logout-btn:active {
-    background-color: #ffebee;
-}
+/* Profile Modal: a title, the airtime card, a plain list of details, two buttons. Small text stays light. */
+.profile-modal { padding: 10px 20px 20px; }
+.profile-bar { display: grid; grid-template-columns: 36px 1fr 36px; align-items: center; margin: 0 -10px 10px; }
+.profile-bar-gap { width: 36px; }
+.profile-icon-btn { width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: #9aa2a9; display: flex; align-items: center; justify-content: center; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.profile-icon-btn:active { background: #f0f0f0; color: var(--primary-color); }
+.modal-content h2.profile-title { margin: 0; text-align: center; font-size: 1.1rem; font-weight: 700; color: var(--text-color); }
 
-/* Scan Tracker in Profile */
-.scan-tracker-container {
-    background-color: var(--background-color);
-    padding: 16px;
-    border-radius: var(--border-radius);
-    margin-bottom: 24px;
-    text-align: center;
+.scan-tracker-container { padding: 14px; border-radius: 14px; background: #f5f8f8; text-align: left; }
+.airtime-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.airtime-title { font-size: 0.875rem; font-weight: 600; color: var(--text-color); }
+.airtime-count { font-size: 0.8rem; color: var(--text-light); font-variant-numeric: tabular-nums; }
+.airtime-count span { font-weight: 600; color: var(--text-color); }
+.scan-progress-bar { width: 100%; height: 6px; background-color: #e2eaea; border-radius: 3px; overflow: hidden; }
+.scan-progress { width: 0%; height: 100%; background: var(--primary-color); border-radius: 3px; transition: width 0.5s ease-out; }
+.scan-reward.is-link { cursor: pointer; justify-content: space-between; }
+.scan-reward.is-link::after { content: "\203A"; flex: none; margin-left: 8px; font-size: 1.4rem; line-height: 1; opacity: 0.6; }
+.scan-reward { display: flex; align-items: center; min-height: 2.7em; margin-top: 8px; font-size: 1rem; font-weight: 700; line-height: 1.35; color: var(--primary-color); animation: reward-in 0.45s ease-out; }
+@keyframes reward-in {
+    0% { transform: translateY(6px) scale(0.96); opacity: 0; }
+    100% { transform: none; opacity: 1; }
 }
-.scan-tracker-container h3 {
-    margin: 0 0 12px 0;
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--text-color);
-}
-.scan-progress-bar {
-    width: 100%;
-    height: 12px;
-    background-color: var(--border-color);
-    border-radius: 6px;
-    overflow: hidden;
-    margin-bottom: 8px;
-}
-.scan-progress {
-    width: 0%;
-    height: 100%;
-    background: linear-gradient(90deg, #F5A623, #D0021B);
-    border-radius: 6px;
-    transition: width 0.5s ease-out;
-}
-.scan-tracker-container p {
-    font-size: 0.9rem;
-    color: var(--text-light);
-    margin: 0;
-}
-.scan-tracker-container p span {
-    font-weight: 700;
-    color: var(--text-color);
-}
-.scan-reward {
-    margin-top: 12px;
-    font-size: 1.1rem;
-    font-weight: 700;
-    color: var(--primary-color);
-    animation: reward-pop 0.5s ease-out;
-}
-@keyframes reward-pop {
-    0% { transform: scale(0.5); opacity: 0; }
-    80% { transform: scale(1.1); }
-    100% { transform: scale(1); opacity: 1; }
-}
+@media (prefers-reduced-motion: reduce) { .scan-reward { animation: none; } }
+
+.profile-details { display: flex; flex-direction: column; margin: 12px 0 0; }
+.profile-item { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 10px 0; border-top: 1px solid #eef0f1; }
+.profile-item:first-child { border-top: 0; }
+.profile-label { flex: none; font-size: 0.85rem; font-weight: 400; color: #8c9399; }
+.profile-value { min-width: 0; font-size: 0.95rem; font-weight: 600; color: var(--text-color); text-align: right; overflow-wrap: anywhere; }
+
+.profile-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+.profile-actions-row { display: flex; gap: 10px; }
+.profile-actions .btn { flex: 1; min-height: 44px; padding: 10px 14px; font-size: 0.95rem; font-weight: 600; display: flex; align-items: center; justify-content: center; text-decoration: none; }
+.profile-actions > .btn { flex: none; }
+#get-help-btn { background: var(--primary-color); color: #fff; }
+#get-help-btn:active { background: var(--primary-dark); }
+#logout-btn { background: transparent; border: 1.5px solid rgba(208, 2, 27, 0.35); color: var(--danger-color); }
+#logout-btn:active { background: #ffebee; }
 
 /* Receipt & Log Modals */
 .receipt-modal {
@@ -1719,8 +1679,8 @@ a.privacy-link-trigger { display: inline-block; padding: 8px 2px; margin: -8px 0
 
 /* Products: the low stock setting sits quietly inside the search bar; the filter tabs keep their centred row, with counts and colours */
 .search-field { position: relative; margin-bottom: 12px; }
-.search-field #product-search-input { margin-bottom: 0; padding-right: 44px; }
-.search-settings-btn { position: absolute; top: 50%; right: 5px; transform: translateY(-50%); width: 34px; height: 34px; padding: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 50%; background: transparent; color: #b4bbc2; cursor: pointer; transition: color 0.2s; -webkit-tap-highlight-color: transparent; }
+.search-field #product-search-input { margin-bottom: 0; padding-right: 46px; }
+.search-settings-btn { position: absolute; top: 50%; right: 5px; transform: translateY(-50%); width: 34px; height: 34px; padding: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 50%; background: transparent; color: #8d969e; cursor: pointer; transition: color 0.2s; -webkit-tap-highlight-color: transparent; }
 .search-settings-btn:hover, .search-settings-btn:active, .search-settings-btn:focus-visible { color: var(--primary-color); outline: none; }
 .tab-count { display: inline-block; min-width: 1.4em; margin-left: 2px; padding: 0 6px; border-radius: 999px; background: rgba(0, 0, 0, 0.07); font-size: 0.72rem; font-weight: 700; line-height: 1.5; text-align: center; font-variant-numeric: tabular-nums; }
 .filter-tab-btn[data-filter="restock"] .tab-count { background: rgba(240, 173, 78, 0.22); color: #9a6100; }
@@ -1728,9 +1688,13 @@ a.privacy-link-trigger { display: inline-block; padding: 8px 2px; margin: -8px 0
 .filter-tab-btn[data-filter="restock"].active { background-color: var(--warning-color); border-color: var(--warning-color); color: #fff; }
 .filter-tab-btn[data-filter="outofstock"].active { background-color: var(--danger-color); border-color: var(--danger-color); color: #fff; }
 .filter-tab-btn.active .tab-count { background: rgba(255, 255, 255, 0.3); color: #fff; }
+#product-filter-tabs { gap: 8px; }
+#product-filter-tabs .filter-tab-btn { flex: 0 0 auto; min-height: 34px; padding: 5px 12px; border-radius: 999px; font-size: 0.82rem; }
+#product-filter-tabs .filter-tab-btn[data-filter="all"] { min-width: 52px; } /* wide enough to be a capsule, not a ball */
 @media (max-width: 360px) {
     #product-filter-tabs { gap: 6px; padding: 0 12px 12px; }
-    #product-filter-tabs .filter-tab-btn { padding: 6px 9px; font-size: 0.8rem; }
+    #product-filter-tabs .filter-tab-btn { padding: 5px 9px; font-size: 0.8rem; }
+    #product-filter-tabs .filter-tab-btn[data-filter="all"] { min-width: 48px; }
     .tab-count { padding: 0 5px; font-size: 0.7rem; }
 }
 
@@ -1742,5 +1706,3 @@ a.privacy-link-trigger { display: inline-block; padding: 8px 2px; margin: -8px 0
 .policy-modal ul { margin: 0 0 8px; padding-left: 18px; font-size: 0.9rem; line-height: 1.5; color: var(--text-light); }
 .policy-modal li { margin-bottom: 4px; }
 .policy-modal .modal-actions { margin-top: 16px; }
-.profile-info-btn { position: absolute; top: 10px; right: 10px; width: 40px; height: 40px; border: 0; border-radius: 50%; background: transparent; color: var(--text-light); display: flex; align-items: center; justify-content: center; cursor: pointer; }
-.profile-info-btn:active { background: #f0f0f0; color: var(--primary-color); }

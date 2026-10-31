@@ -571,7 +571,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.cancelSelectionBtn.addEventListener('click', this.exitSelectionMode.bind(this));
             this.elements.closeReceiptBtn.addEventListener('click', () => this.hideModal());
             this.elements.shareReceiptBtn.addEventListener('click', this.shareReceipt.bind(this));
-            this.elements.printReceiptBtn.addEventListener('click', () => window.print());
+            this.elements.printReceiptBtn.addEventListener('click', () => { window.print(); this._nudgeAct('receipt'); });
             this.elements.shareLogBtn.addEventListener('click', this.initiatePhoneTransfer.bind(this));
             this.elements.confirmPhoneTransferBtn.addEventListener('click', this.processPhoneTransfer.bind(this));
             this.elements.cancelPhoneTransferBtn.addEventListener('click', this.closePhoneTransfer.bind(this));
@@ -652,6 +652,10 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.cancelCartonDetailsBtn.addEventListener('click', () => { this.hideModal(); this.showModal('product-form-modal'); });
             this.elements.logoutBtn.addEventListener('click', this.handleLogout.bind(this));
             this.elements.cancelProfileBtn.addEventListener('click', () => this.hideModal());
+            this.elements.scanReward.addEventListener('click', () => { // "Tap to see" (customers who owe) or "Get help" (money for stock)
+                if (this._nudgeGo === 'customers') { this.hideModal(); this.navigateTo('stock-levels-view'); }
+                else if (this._nudgeGo === 'funding') window.open(`https://wa.me/${this.WA_NUMBER}?text=${encodeURIComponent("I'm a PikaShot top seller and need money for stock.")}`, '_blank', 'noopener');
+            });
 
             this.elements.cartonSubunitTypeInput.addEventListener('input', (e) => {
                 const selectedUnit = e.target.value;
@@ -1295,7 +1299,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         _applyLink(link) {
             const user = this.state.user;
-            ['businessPhone', 'businessName', 'businessType', 'businessLowStock'].forEach(k => { delete user[k]; });
+            ['businessPhone', 'businessName', 'businessType', 'businessLowStock', 'businessAdminName'].forEach(k => { delete user[k]; });
             if (link && link.businessPhone) {
                 user.businessPhone = link.businessPhone;
                 user.businessName = link.businessName || '';
@@ -1319,6 +1323,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         const business = await window.fb.getDoc(window.fb.doc(window.fb.db, 'users', link.businessPhone));
                         const level = business.exists() ? Number(business.data().lowStockLevel) : 0;
                         if (level >= 1) user.businessLowStock = level;
+                        const adminName = business.exists() ? String(business.data().name || '').trim() : '';
+                        if (adminName) user.businessAdminName = adminName; // who the salesperson answers to, for notices
                     } catch (e) { /* the usual level of 7 applies */ }
                 }
                 await DB.saveUser(user, false);
@@ -1849,6 +1855,7 @@ document.addEventListener('DOMContentLoaded', () => {
             await this.updateDashboard();
             await this.renderProducts();
             this._backfillGeo();
+            this._nudgeOnOpen();
         },
 
         // --- Incoming transfers -------------------------------------------------------------------
@@ -1980,6 +1987,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (document.visibilityState === 'visible' && this.state.user) {
                         this.ensureFirebase().then(() => this.checkIncomingTransfers());
                         await DB.catchUp(); // only what changed while away
+                        this._nudgeOnOpen();
                         this.updateDashboard();
                         this.renderProducts(this.elements.productSearchInput.value);
                         if (this.state.currentView === 'all-sales-view') {
@@ -2417,7 +2425,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         toggleFigures(e) {
             e.stopPropagation(); // the card itself opens All Sales
-            if (this._isSalesperson() && e.currentTarget === this.elements.toggleInventoryFiguresBtn) return; // that eye stays closed
+            if (this._isSalesperson() && e.currentTarget === this.elements.toggleInventoryFiguresBtn) { // that eye stays closed, and they are told why
+                const admin = this.state.user.businessAdminName || this.state.user.businessName;
+                say(`The total worth of the products is only visible to your admin${admin ? ` (${admin})` : ''}.`, 'Admin only');
+                return;
+            }
             this.state.figuresHidden = !this.state.figuresHidden;
             try { localStorage.setItem('pikashot_hide_figures', this.state.figuresHidden ? '1' : '0'); } catch (err) { /* storage unavailable */ }
             this.applyFigureVisibility();
@@ -3126,6 +3138,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // one crisp checkout-scanner beep
             this._playNotes([{ freq: 2300, start: 0, dur: 0.17, type: 'square', vol: 0.1, release: 0.03 }]);
             await DB.incrementScanCount();
+            this._nudgeAct('scan');
             this._pendingScans = (this._pendingScans || 0) + 1;
             clearTimeout(this._scanTimer);
             this._scanTimer = setTimeout(() => this._flushScans(), 30000); // sent together, not one by one
@@ -3807,6 +3820,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             await this._attachItemImages(logData.items, [sale], [product]);
                             const logCollectionRef = window.fb.collection(window.fb.db, 'shared_logs');
                             const logRef = await window.fb.addDoc(logCollectionRef, logData);
+                            this._nudgeAct('transfer');
                             // The sale only counts as transferred once the recipient accepts it
                             sale.pendingTransfer = { logId: logRef.id, to: targetPhone };
                             sale.pendingTransfers = [{ logId: logRef.id, to: targetPhone }];
@@ -3823,6 +3837,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 await DB.addSale(sale);
                 this._logSale(sale, product);
+                this._nudgeAct('sale');
             }
 
             if (this.state.firebaseReady && product.supplierId && this._businessPhone() && product.stockVisible !== false) {
@@ -4383,6 +4398,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         title: 'Your Receipt',
                         text: 'Here is your receipt from ' + this.state.user.business,
                     });
+                    this._nudgeAct('receipt');
                 } catch (error) {
                     console.error('Error sharing:', error);
                 }
@@ -4667,6 +4683,7 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         async handleLogShared(logId, targetPhone) {
+            this._nudgeAct('transfer');
             this.hideModal();
             const allSales = await DB.getAllSales();
             const updates = [];
@@ -5298,6 +5315,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             this.hideModal();
             this.state.scannedLogData = null;
+            this._nudgeAct('transfer');
             await this.renderProducts();
             this.navigateTo('products-view');
             this.showCelebration({
@@ -5445,20 +5463,20 @@ document.addEventListener('DOMContentLoaded', () => {
             const callButton = retailer.retailerPhone ? `<a href="tel:${this._esc(retailer.retailerPhone)}" class="retailer-call-btn" title="Call ${this._esc(retailer.retailerName)}">${phoneIcon}</a>` : '';
             const deleteIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
             const status = this.formatTimeAgo(retailer.lastUpdate?.toDate());
+            const where = retailer.retailerLocation ? `${this._esc(retailer.retailerLocation)} &middot; ` : '';
 
+            // Laid out like the credit card: who, a tag for what the card is, their details, one action
             return `
-                <div class="card" data-retailer-id="${this._esc(retailer.id)}" data-retailer-name="${this._esc(retailer.retailerName)}">
-                    <div class="retailer-header">
-                        <div style="flex-grow: 1;">
-                            <h4>${this._esc(retailer.retailerName)} (${this._esc(retailer.retailerLocation)})</h4>
-                            <p class="retailer-status ${status.className}">${status.text}</p>
+                <div class="card stock-card" data-retailer-id="${this._esc(retailer.id)}" data-retailer-name="${this._esc(retailer.retailerName)}">
+                    <div class="credit-top">
+                        <div class="credit-who">
+                            <h4><span class="credit-name">${this._esc(retailer.retailerName)}</span><span class="credit-pill stock-pill">Stock</span></h4>
+                            <p class="credit-when">${where}<span class="retailer-status ${status.className}">${this._esc(status.text)}</span></p>
                         </div>
                         ${callButton}
                     </div>
-                    <div class="retailer-product-list">${productsHtml}</div>
-                    <div class="card-footer">
-                        <button class="delete-retailer-btn">${deleteIcon}</button>
-                    </div>
+                    <div class="credit-stock">${productsHtml}</div>
+                    <button type="button" class="delete-retailer-btn">${deleteIcon}<span>Remove from list</span></button>
                 </div>
             `;
         },
@@ -5672,6 +5690,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.profileRole.textContent = this.state.user.type;
 
                 await this.updateScanTracker();
+                await this._renderNudge();
 
                 this.showModal('profile-modal');
             }
@@ -5684,19 +5703,106 @@ document.addEventListener('DOMContentLoaded', () => {
             const progress = Math.min((count / 100) * 100, 100);
             this.elements.scanProgress.style.width = `${progress}%`;
 
-            let rewardText = '';
-            if (count >= 100) {
-                rewardText = 'Over 100 scans! You are a SUPERSTAR! 🎉';
-            } else if (count >= 50) {
-                rewardText = 'You are on fire! Keep going! 🔥';
-            } else if (count >= 25) {
-                rewardText = 'Great start! Let\'s do more! 🚀';
-            } else if (count > 0) {
-                rewardText = '👍 Scan more for free airtime!';
-            } else {
-                rewardText = 'Record sales for free airtime';
-            }
-            this.elements.scanReward.textContent = rewardText;
+        },
+
+        // --- The message in the Profile card (the words and rules live in nudges.js) ---
+        _nudgeKey() { return `pika_nudge_${this.state.user.phone}`; },
+
+        _nudgeLoad() {
+            try {
+                const saved = JSON.parse(localStorage.getItem(this._nudgeKey()));
+                if (saved && saved.v === 1) { saved.acts = saved.acts || { receipt: [], transfer: [] }; saved.recent = saved.recent || []; return saved; }
+            } catch (e) { /* a fresh start */ }
+            const seed = (window.crypto && crypto.getRandomValues) ? crypto.getRandomValues(new Uint32Array(1))[0] : Math.floor(Math.random() * 4294967296);
+            return PikaNudges.newState(seed); // everyone's run of messages starts from their own seed
+        },
+
+        _nudgeSave(state) {
+            try { localStorage.setItem(this._nudgeKey(), JSON.stringify(state)); } catch (e) { /* it simply starts over next time */ }
+        },
+
+        // One job at a time, so quick actions (a scan and a sale together) never overwrite each other
+        _nudgeRun(job) {
+            this._nudgeChain = (this._nudgeChain || Promise.resolve()).then(job).catch((e) => { console.error('Profile message:', e); });
+            return this._nudgeChain;
+        },
+
+        async _nudgeContext(state) {
+            const user = this.state.user;
+            const now = new Date();
+            const [sales, products] = await Promise.all([DB.getAllSales(), DB.getAllProducts()]);
+            const lowLevel = this._lowStockLevel();
+            PikaNudges.trackStock(state, products, lowLevel, now); // writes down how long products have been low or out
+            return PikaNudges.buildContext({ sales, products, user, now, lowLevel, acts: state.acts, lowSince: state.lowSince, canTransfer: user.type === 'Wholesaler', canFund: user.type !== 'Salesperson' });
+        },
+
+        // A new message has arrived by itself: the homepage capsule shakes for 30 seconds, or until the profile is opened
+        _nudgeShake() {
+            clearTimeout(this._shakeTimer);
+            const chip = this.elements.homeScanMenuTrigger;
+            if (!chip) return;
+            let freshAt = 0;
+            try { if (this.state.user) freshAt = Number(this._nudgeLoad().freshAt) || 0; } catch (e) { /* no shake */ }
+            const left = freshAt + 30000 - Date.now();
+            const on = left > 0 && left <= 30000;
+            chip.classList.toggle('nudge-shake', on);
+            if (on) this._shakeTimer = setTimeout(() => chip.classList.remove('nudge-shake'), left);
+        },
+
+        // One more thing done: a sale, a scan, a transfer, a receipt shared or printed. Every 5 of them (in any mix) bring a new message.
+        _nudgeAct(kind) {
+            return this._nudgeRun(async () => {
+                if (!this.state.user || !window.PikaNudges) return;
+                const state = this._nudgeLoad();
+                PikaNudges.act(state, kind, new Date());
+                let arrived = false;
+                if (kind === 'sale' && !state.welcomed) { // the very first sale gets a welcome, straight away
+                    const total = await DB.countSales();
+                    if (total === 1) { PikaNudges.welcome(state, null); arrived = true; }
+                    else if (total > 1) state.welcomed = true; // an account that was selling long before this existed
+                }
+                if (!arrived && state.actions >= PikaNudges.EVERY) { // the 5th action: the next message comes up now
+                    PikaNudges.show(state, await this._nudgeContext(state));
+                    arrived = true;
+                }
+                if (arrived) state.freshAt = Date.now();
+                this._nudgeSave(state);
+                if (arrived) this._nudgeShake();
+            });
+        },
+
+        // The app opened (or came back) after a day or more without a sale: a kind nudge, once a day
+        _nudgeOnOpen() {
+            return this._nudgeRun(async () => {
+                if (!this.state.user || !window.PikaNudges || this._isWaiting()) return;
+                const state = this._nudgeLoad();
+                if (state.openDay === PikaNudges.todayIndex()) { this._nudgeShake(); return; } // (a message that arrived a moment ago may still be shaking)
+                const ctx = await this._nudgeContext(state);
+                if (PikaNudges.onOpen(state, ctx)) state.freshAt = Date.now();
+                this._nudgeSave(state);
+                this._nudgeShake();
+            });
+        },
+
+        _renderNudge() {
+            return this._nudgeRun(async () => {
+                const el = this.elements.scanReward;
+                let view = { text: 'Every sale counts toward your airtime benefits. 🎁', go: null };
+                try {
+                    if (this.state.user && window.PikaNudges) {
+                        const state = this._nudgeLoad();
+                        const ctx = await this._nudgeContext(state);
+                        view = PikaNudges.show(state, ctx);
+                        state.freshAt = 0; // it has been seen: the capsule stops shaking
+                        this._nudgeSave(state);
+                    }
+                } catch (e) { console.error('Could not choose the profile message:', e); }
+                el.textContent = view.text.replace(/ ([^ ]*)$/, '\u00A0$1').replace(/ ([^ ]*\u00A0[^ ]*)$/, '\u00A0$1'); // the last words stay with the emoji, so it never sits alone on a second line
+                el.classList.toggle('is-link', !!view.go);
+                this._nudgeGo = view.go || null;
+                el.style.animation = 'none'; void el.offsetWidth; el.style.animation = ''; // plays the little entrance
+                this._nudgeShake();
+            });
         },
     };
 

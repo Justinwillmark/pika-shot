@@ -29,6 +29,36 @@ document.addEventListener('DOMContentLoaded', () => {
     const dayNum = (ms) => Math.floor((ms - new Date(ms).getTimezoneOffset() * 60000) / DAY); // whole local days
     const fmtDay = (ms) => new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
     const fmtDate = (ms) => new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+
+    // The Lagos areas people choose at sign-up, and roughly where the middle of each is (from OpenStreetMap).
+    // Nothing is sent anywhere: a GPS point is matched to the nearest middle on this page.
+    const AREAS = {
+        'Agege': [6.6253, 3.3112], 'Ajeromi-Ifelodun': [6.4551, 3.3360], 'Alimosho': [6.5844, 3.2576], 'Amuwo-Odofin': [6.4471, 3.2663],
+        'Apapa': [6.4452, 3.3684], 'Badagry': [6.4393, 2.9060], 'Epe': [6.5857, 3.9757], 'Eti-Osa': [6.4592, 3.5321],
+        'Ibeju-Lekki': [6.4711, 3.8148], 'Ifako-Ijaiye': [6.6636, 3.2895], 'Ikeja': [6.6016, 3.3516], 'Ikorodu': [6.6191, 3.5041],
+        'Kosofe': [6.5820, 3.4148], 'Lagos Island': [6.4550, 3.3950], 'Lagos Mainland': [6.4933, 3.3884], 'Mushin': [6.5248, 3.3516],
+        'Ojo': [6.4625, 3.1657], 'Oshodi-Isolo': [6.5398, 3.3124], 'Shomolu': [6.5336, 3.3842], 'Surulere': [6.4856, 3.3540]
+    };
+    const kmBetween = (a, b) => {
+        const r = Math.PI / 180, dLat = (b[0] - a[0]) * r, dLng = (b[1] - a[1]) * r;
+        const h = Math.pow(Math.sin(dLat / 2), 2) + Math.cos(a[0] * r) * Math.cos(b[0] * r) * Math.pow(Math.sin(dLng / 2), 2);
+        return 12742 * Math.asin(Math.sqrt(h));
+    };
+    // Where a GPS point is: the nearest area, how far from its middle, and whether it fits the place the person chose.
+    // Areas are big and the middle is only a middle, so "fits" also allows a point that is almost as close to the chosen area.
+    const whereIs = (geo, chosen) => {
+        const p = [geo.lat, geo.lng];
+        let best = null;
+        Object.keys(AREAS).forEach((name) => { const d = kmBetween(p, AREAS[name]); if (!best || d < best.km) best = { name, km: d }; });
+        const outside = best.km > 45;
+        const own = AREAS[chosen] ? kmBetween(p, AREAS[chosen]) : null;
+        return {
+            name: outside ? 'Outside Lagos' : best.name,
+            km: best.km,
+            ownKm: own,
+            fits: own === null ? null : (!outside && (best.name === chosen || own - best.km <= 2.5))
+        };
+    };
     const fmtTime = (ms) => `${fmtDay(ms)}, ${new Date(ms).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
     const ago = (ms) => {
         if (!ms) return '—';
@@ -383,7 +413,8 @@ document.addEventListener('DOMContentLoaded', () => {
             raw.users.forEach((doc) => {
                 const u = doc.data();
                 const g = places.get(doc.id) || u.geo; // older accounts may still hold it on the profile
-                const geo = g && Number.isFinite(g.lat) && Number.isFinite(g.lng) ? { lat: g.lat, lng: g.lng, accuracy: g.accuracy || null } : null;
+                const geo = g && Number.isFinite(g.lat) && Number.isFinite(g.lng) ? { lat: g.lat, lng: g.lng, accuracy: g.accuracy || null, at: toMs(g.at) || null } : null;
+                if (geo) geo.area = whereIs(geo, u.location);
                 const user = {
                     id: doc.id, phone: u.phone || doc.id, name: u.name || '', business: u.business || '',
                     type: u.type || 'Unknown', location: u.location || '', gender: u.gender || '',
@@ -949,7 +980,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const isNew = u.createdAt && Date.now() - u.createdAt <= 7 * DAY;
             const kpi = (v, l) => `<div class="mini"><div class="v">${v}</div><div class="l">${esc(l)}</div></div>`;
             const geo = u.geo
-                ? `${u.geo.lat.toFixed(3)}, ${u.geo.lng.toFixed(3)}${u.geo.accuracy ? ` (±${num(u.geo.accuracy)} m)` : ''} · <a class="link-btn" target="_blank" rel="noopener" href="https://www.google.com/maps?q=${u.geo.lat},${u.geo.lng}">Open map</a>`
+                ? `${esc(u.geo.area.name)}${u.geo.area.fits === false ? ` <span class="muted">(chose ${esc(u.location)})</span>` : ''} · <a class="link-btn" target="_blank" rel="noopener" href="https://www.google.com/maps?q=${u.geo.lat},${u.geo.lng}">Open map</a>`
+                  + `<div class="muted" style="font-size:0.78rem;margin-top:2px">${u.geo.lat.toFixed(3)}, ${u.geo.lng.toFixed(3)}${u.geo.accuracy ? ` (±${num(u.geo.accuracy)} m)` : ''} · about ${num(u.geo.area.km)} km from the middle of ${esc(u.geo.area.name === 'Outside Lagos' ? 'the nearest area' : u.geo.area.name)} · ${u.geo.at ? `saved ${fmtDate(u.geo.at)}` : 'saved date unknown'}</div>`
                 : '<span class="muted">Not captured yet</span>';
             const events = [];
             D.sales.forEach((x) => { if (x.uid === uid) events.push([x.t, `Sold ${x.name ? esc(x.name) : 'an item'} · ${naira(x.value)}`]); });
@@ -973,7 +1005,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div><div class="l">First activity</div><div class="v">${a ? esc(fmtDate(a.first)) : '—'}</div></div>
                         <div><div class="l">Last activity</div><div class="v">${a ? esc(ago(a.last)) : '—'}</div></div>
                         <div><div class="l">Gender</div><div class="v">${esc(u.gender || '—')}</div></div>
-                        <div><div class="l">Sign-up area (approx.)</div><div class="v">${geo}</div></div>
+                        <div><div class="l">GPS location (approx.)</div><div class="v">${geo}</div></div>
                     </div>
                     <div><div class="panel-head"><h3>Recent activity</h3><span class="hint">Latest 10</span></div>
                     ${events.length ? `<div class="timeline">${events.slice(0, 10).map((e) => `<div class="ev"><span>${e[1]}</span><span>${esc(ago(e[0]))}</span></div>`).join('')}</div>` : '<p class="empty">Nothing counted since the start date.</p>'}</div>`
@@ -1189,10 +1221,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 ${rows.length > shown.length ? `<div class="actions" style="justify-content:center;margin-top:12px"><button class="btn" type="button" data-umore>Show more (${num(rows.length - shown.length)} left)</button></div>` : ''}`;
         },
 
+        // The GPS columns of the users CSV (empty when there is no GPS): where it is in words, whether it fits the place chosen, a map link
+        geoColumns(u) {
+            const g = u.geo;
+            if (!g) return ['', '', '', '', '', '', '', ''];
+            const fits = g.area.fits === null ? 'n/a' : g.area.fits ? 'Yes' : 'No';
+            return [g.area.name, fits, g.area.ownKm === null ? '' : Math.round(g.area.ownKm * 10) / 10, `https://www.google.com/maps?q=${g.lat},${g.lng}`,
+                g.accuracy || '', g.at ? new Date(g.at).toISOString().slice(0, 10) : '', g.lat, g.lng];
+        },
+
         exportUsers() {
             const rows = this.decorateUsers().map((x) => [x.u.name, x.u.business, x.u.phone, x.u.type, x.u.location, x.u.gender, this.statusLabel[x.status],
-                x.u.createdAt ? new Date(x.u.createdAt).toISOString() : '', x.a ? new Date(x.a.last).toISOString() : '', x.s.days.size, x.s.volume, x.s.sent, x.s.accepted, x.u.geo ? x.u.geo.lat : '', x.u.geo ? x.u.geo.lng : '']);
-            this.exportCsv('pikashot_users.csv', ['Name', 'Business', 'Phone', 'Type', 'Location', 'Gender', 'Status', 'Joined', 'Last active', `Days active (${this.m.r.short})`, 'Sales (NGN)', 'Transfers sent', 'Transfers accepted', 'Latitude', 'Longitude'], rows);
+                x.u.createdAt ? new Date(x.u.createdAt).toISOString() : '', x.a ? new Date(x.a.last).toISOString() : '', x.s.days.size, x.s.volume, x.s.sent, x.s.accepted, ...this.geoColumns(x.u)]);
+            this.exportCsv('pikashot_users.csv', ['Name', 'Business', 'Phone', 'Type', 'Location', 'Gender', 'Status', 'Joined', 'Last active', `Days active (${this.m.r.short})`, 'Sales (NGN)', 'Transfers sent', 'Transfers accepted', 'GPS area (nearest)', 'GPS fits chosen place', 'Km from chosen place', 'Map link', 'GPS accuracy (m)', 'GPS saved on', 'Latitude', 'Longitude'], rows);
         },
 
         // ================= Rewards =================

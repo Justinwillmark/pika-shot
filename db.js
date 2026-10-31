@@ -14,7 +14,7 @@ const DB = {
     dataPhone: null, // whose products and sales these are: a salesperson works on their admin's
     _salesBy: null, // a salesperson only reads (and keeps) the sales they recorded themselves
     // Kept on this phone only: they say which business confirmed a salesperson, and the cloud copy of that is its own record
-    LOCAL_ONLY_USER_FIELDS: ['businessPhone', 'businessName', 'businessType', 'businessLowStock', 'geo', 'geoSent'],
+    LOCAL_ONLY_USER_FIELDS: ['businessPhone', 'businessName', 'businessType', 'businessLowStock', 'businessAdminName', 'geo', 'geoSent'],
     OVERLAP_MS: 2000,                    // each catch-up looks a few seconds back, so nothing slips between two reads
     FULL_CHECK_MS: 24 * 60 * 60 * 1000,  // once a day the product list is compared in full (it is small)
     unsubscribeProducts: null,
@@ -504,6 +504,9 @@ const DB = {
     getAllSales() {
         const store = this._getStore('sales', 'readonly');
         return this._requestToPromise(store.getAll());
+    },
+    countSales() {
+        return this._requestToPromise(this._getStore('sales', 'readonly').count());
     },
 
     getSalesByProductId(productId) {
