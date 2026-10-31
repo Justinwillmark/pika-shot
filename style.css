@@ -536,7 +536,7 @@ button:focus { outline: none; }
 .input-error-shake {
     animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
 }
-#product-form .input-error-shake {
+#product-form button.input-error-shake {
     border: 1px solid var(--danger-color) !important;
     box-shadow: 0 0 5px rgba(208, 2, 27, 0.5);
 }
@@ -980,98 +980,6 @@ button:focus { outline: none; }
 .credit-stock .retailer-product-item { padding: 6px 8px; font-size: 0.85rem; }
 .delete-credit-btn { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; min-height: 44px; margin-top: 14px; border: 1.5px solid var(--primary-color); border-radius: 10px; background: transparent; color: var(--primary-color); font: inherit; font-size: 0.9rem; font-weight: 600; cursor: pointer; }
 .delete-credit-btn:active { background: #e6f4f5; }
-
-/* Salesperson Card Styles */
-.salesperson-summary {
-    padding: 12px 16px;
-}
-.sales-section {
-    margin-bottom: 16px;
-}
-.sales-section:last-child {
-    margin-bottom: 0;
-}
-.sales-section h5 {
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: var(--text-color);
-    margin-bottom: 8px;
-    padding-bottom: 4px;
-    border-bottom: 1px solid var(--border-color);
-}
-.sales-today-details .sales-day-item {
-    display: flex;
-    justify-content: space-between;
-    font-size: 0.85rem;
-    color: var(--text-light);
-    padding: 4px 0;
-}
-.sales-today-details .sales-day-item span:first-child {
-    font-weight: 500;
-    color: var(--text-color);
-}
-.sales-today-total {
-    font-size: 0.9rem;
-    font-weight: 700;
-    color: var(--primary-color);
-    text-align: right;
-    margin-top: 8px;
-    padding-top: 8px;
-    border-top: 1px dashed var(--border-color);
-}
-.sales-day {
-    background-color: #fdfdfd;
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    padding: 10px;
-    margin-bottom: 10px;
-}
-.sales-day-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 0.9rem;
-    margin-bottom: 8px;
-}
-.sales-day-header strong {
-    font-weight: 600;
-}
-.sales-day-header span {
-    font-weight: 700;
-    color: var(--primary-dark);
-}
-.sales-day-actions {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 0.85rem;
-    color: var(--text-light);
-    margin-top: 8px;
-    padding-top: 8px;
-    border-top: 1px solid #f0f0f0;
-}
-.sales-day-buttons {
-    display: flex;
-    gap: 8px;
-}
-.sales-day-buttons button {
-    font-size: 0.8rem;
-    font-weight: 600;
-    padding: 5px 12px;
-    border-radius: 6px;
-    cursor: pointer;
-    border: 1.5px solid;
-}
-.btn-yes {
-    background-color: #eaf6ec;
-    color: var(--success-color);
-    border-color: var(--success-color);
-}
-.btn-no {
-    background-color: #fee;
-    color: var(--danger-color);
-    border-color: var(--danger-color);
-}
 
 .card-footer {
     padding: 8px 16px;
@@ -1682,3 +1590,136 @@ button:focus { outline: none; }
 .amount-owing { flex: 0 0 auto; font-size: clamp(0.72rem, 3.4vw, 0.85rem); color: var(--text-light); white-space: nowrap; }
 .amount-owing strong { color: var(--danger-color); font-weight: 700; font-variant-numeric: tabular-nums; }
 .contact-name-display { flex: 0 1 auto; min-width: 0; margin-left: auto; font-size: clamp(0.68rem, 3vw, 0.75rem); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* === Salespeople === */
+/* A sale slides to the left to show who recorded it */
+.sale-item { touch-action: pan-y; transform: translateX(var(--swipe, 0px)); z-index: 1; }
+.sale-item.selected { transform: translateX(var(--swipe, 0px)) scale(1.02); }
+.sale-item.swiping { transition: background-color 0.2s; }
+.sale-by {
+    position: absolute; top: 0; right: 0; bottom: 0; width: 124px; box-sizing: border-box; padding-right: 14px;
+    display: flex; align-items: center; justify-content: flex-end; text-align: right;
+    font-size: 0.72rem; font-weight: 600; line-height: 1.3; color: var(--text-light);
+    opacity: 0; transition: opacity 0.15s; pointer-events: none;
+}
+.sale-by span { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.sale-row.peek .sale-by { opacity: 1; }
+.credit-by { margin: 2px 0 0; font-size: 0.78rem; font-weight: 600; color: var(--primary-color); }
+
+/* The salesperson's waiting screen and the admin's "add a salesperson" screen */
+.modal-content .form-group input.sp-code-input { text-align: center; padding-left: 0.5em; font-size: 1.6rem; font-weight: 700; letter-spacing: 0.5em; }
+.modal-content p.sp-error { min-height: 1.3em; margin: -8px 0 12px; font-size: 0.85rem; line-height: 1.35; color: var(--danger-color); }
+.sp-link { padding: 10px; border: 0; background: none; font: inherit; font-size: 0.9rem; font-weight: 600; color: var(--text-light); text-decoration: underline; cursor: pointer; }
+.sp-rules { margin: 4px 0 20px; padding: 12px 14px; border-radius: 12px; background: #f6f8f9; text-align: left; }
+.modal-content .sp-rules p { margin: 0 0 6px; text-align: left; font-size: 0.85rem; line-height: 1.4; color: var(--text-color); }
+.modal-content .sp-rules p.sp-rules-lead { font-weight: 700; }
+.sp-rules ul { margin: 0; padding-left: 18px; font-size: 0.84rem; line-height: 1.55; color: var(--text-light); }
+#add-salesperson-modal #sp-add-form .modal-actions { margin-top: 0; }
+.sp-code-box { margin: 4px 0; padding: 16px; border-radius: 14px; background: #e6f4f5; text-align: center; }
+.sp-code-box strong { padding-left: 0.3em; font-size: 2.6rem; font-weight: 800; letter-spacing: 0.3em; color: var(--primary-color); font-variant-numeric: tabular-nums; }
+.sp-code-box.expired { background: #f3f3f3; }
+.sp-code-box.expired strong { color: #b5b5b5; text-decoration: line-through; }
+.modal-content p.sp-timer { margin: 6px 0 0; text-align: center; font-size: 0.88rem; color: var(--text-light); }
+#add-salesperson-modal #sp-add-done .modal-actions { margin-top: 18px; }
+
+/* The Salespeople tab: a card per salesperson, a summary card per day that still needs their money confirmed */
+.sp-card { overflow: hidden; }
+.sp-head { display: flex; align-items: center; gap: 12px; padding: 14px 8px 14px 16px; }
+.sp-avatar { flex: none; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: #e6f4f5; color: var(--primary-color); font-weight: 800; }
+.sp-id { flex: 1; min-width: 0; }
+.sp-id h4 { margin: 0; font-size: 1.02rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sp-id p { margin: 1px 0 0; font-size: 0.78rem; color: var(--text-light); }
+.sp-remove { flex: none; width: 44px; height: 44px; border: 0; background: none; color: var(--danger-color); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.sp-remove svg { width: 20px; height: 20px; }
+.sp-empty { margin: 0; padding: 14px 16px 16px; border-top: 1px solid var(--border-color); font-size: 0.88rem; color: var(--text-light); }
+.sp-day { padding: 14px 16px 16px; border-top: 1px solid var(--border-color); }
+.sp-day-top { display: flex; justify-content: space-between; gap: 12px; font-size: 0.78rem; font-weight: 600; color: var(--text-light); }
+.sp-day-total { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-top: 6px; }
+.sp-day-total span { font-size: 0.85rem; color: var(--text-light); }
+.sp-day-total strong { font-size: 1.6rem; font-weight: 800; letter-spacing: -0.01em; color: var(--primary-color); font-variant-numeric: tabular-nums; }
+.sp-rows { margin-top: 10px; padding: 2px 12px; border-radius: 10px; background: #f6f8f9; }
+.sp-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; width: 100%; padding: 9px 0; border: 0; background: none; font: inherit; font-size: 0.88rem; text-align: left; color: inherit; }
+.sp-row + .sp-row { border-top: 1px solid #e8ecee; }
+.sp-row span { color: var(--text-light); }
+.sp-row strong { font-weight: 700; color: var(--text-color); text-align: right; font-variant-numeric: tabular-nums; }
+.sp-row-link { cursor: pointer; }
+.sp-row-link strong { color: var(--danger-color); }
+.sp-row-link i { margin-left: 2px; font-style: normal; font-size: 1.1rem; }
+.sp-row strong.sp-none { color: #b5bcc2; font-weight: 600; }
+.sp-received { margin-top: 12px; min-height: 46px; }
+
+/* Room for the + button under the last salesperson, and tabs that fit the narrowest phones */
+#salespeople-view.all-sales-container { padding-bottom: 110px; }
+#stock-levels-view .product-filter-tabs { min-width: 0; }
+@media (max-width: 360px) {
+    #stock-levels-view .page-actions-header { gap: 8px; padding-left: 12px; padding-right: 12px; }
+    #stock-levels-view .product-filter-tabs { gap: 6px; }
+    #stock-levels-view .filter-tab-btn { padding: 6px 10px; font-size: 0.8rem; }
+    #refresh-stocks-btn span { display: none; }
+}
+
+/* A field that needs attention: it shakes, and its box and title turn red for a moment */
+.form-group.input-error-shake input, .form-group.input-error-shake select, .quantity-stepper.input-error-shake,
+.input-with-prefix.input-error-shake input, .pin-input-wrap.input-error-shake input { border-color: var(--danger-color); }
+.form-group.input-error-shake > label { color: var(--danger-color); }
+
+/* === Every phone size: tap areas, text that wraps instead of being cut off, and fluid type === */
+.loader-container { height: 100vh; height: 100dvh; }
+
+/* Buttons and icons: at least a thumb-sized area, the look stays the same */
+.menu-btn, .back-btn { left: 10px; display: flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; padding: 8px; }
+.app-header h1 { margin: 0 54px; font-size: clamp(1rem, 5.2vw, 1.4rem); }
+.figures-toggle, .edit-btn-icon { position: relative; }
+.figures-toggle::after { content: ''; position: absolute; inset: -10px; }
+.edit-btn-icon::after { content: ''; position: absolute; inset: -7px; }
+.delete-btn-icon { top: 12px; right: 12px; width: 40px; height: 40px; }
+.filter-tab-btn { min-height: 38px; }
+.btn-icon-link { min-height: 40px; padding: 0 6px; }
+.see-all-btn { min-height: 44px; }
+
+/* Long names use two lines before they are cut */
+.sale-info p, .sp-id h4 { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; line-height: 1.25; }
+.sale-by { width: 132px; }
+.sale-tag { font-size: 0.66rem; }
+.credit-pill { font-size: 0.7rem; }
+.contact-name-display { font-size: clamp(0.72rem, 3vw, 0.78rem); }
+.amount-owing { font-size: clamp(0.78rem, 3.4vw, 0.88rem); }
+.sp-day-total strong { font-size: clamp(1.35rem, 6.2vw, 1.6rem); }
+.credit-owes strong { font-size: clamp(1.3rem, 6vw, 1.5rem); }
+
+/* Short screens (small phones, or a phone turned sideways) */
+@media (max-height: 520px) {
+    .page { padding-bottom: 72px; }
+    .modal-container { padding: 10px; }
+    .modal-content { padding-top: 16px; padding-bottom: 16px; }
+    .dialog-layer { padding: 10px; }
+    .app-header { padding-top: 10px; padding-bottom: 10px; }
+}
+
+/* The bar under a selected sale: its buttons stay on one line, whatever the width */
+.sale-tag { font-size: 0.7rem; }
+.btn-icon-link { min-width: 44px; justify-content: center; }
+.receipt-actions .btn { white-space: nowrap; padding-left: 12px; padding-right: 12px; font-size: clamp(0.85rem, 3.8vw, 1rem); }
+.receipt-actions .btn-secondary:not(.btn-edit-sale) { flex: 0 0 auto; width: auto; }
+.receipt-actions .btn-primary { flex: 1 1 0; }
+@media (max-width: 360px) {
+    .receipt-actions { padding: 12px; gap: 10px; }
+}
+
+/* The sale screen on small phones: a long product name takes two lines, and the spacing tightens so more of the form shows */
+#confirm-sale-modal #sale-product-name { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; line-height: 1.25; font-size: clamp(1rem, 4.6vw, 1.2rem); }
+@media (max-height: 640px) {
+    #confirm-sale-modal .sale-item-details { gap: 12px; margin-bottom: 8px; }
+    #confirm-sale-modal .sale-total { margin-bottom: 8px; padding-top: 10px; }
+    #confirm-sale-modal .sale-type-section { margin-bottom: 30px; }
+    #confirm-sale-modal .modal-actions { padding-top: 14px; padding-bottom: 14px; }
+}
+
+/* Sign-up and login: links, icons and choices big enough for a thumb */
+.wa-link-btn { min-height: 44px; padding: 6px 10px; }
+.icon-btn { width: 40px; height: 40px; padding: 0; }
+.input-icons { right: 6px; gap: 0; }
+.input-wrapper input, .onboarding-form .input-wrapper input, .form-group.outlined .input-wrapper input { padding-right: 92px; }
+.reg-segment button { min-height: 40px; }
+a.privacy-link-trigger { display: inline-block; padding: 8px 2px; margin: -8px 0; }
+

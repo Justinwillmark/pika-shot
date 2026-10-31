@@ -263,7 +263,6 @@ document.addEventListener('DOMContentLoaded', () => {
             tempProductDataForCarton: null,
             productFilter: 'all',
             stockViewFilter: 'customers',
-            acknowledgedSalesData: {},
         },
 
         // --- INITIALIZATION ---
@@ -284,6 +283,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 // Check if user is already logged in locally
                 this.state.user = await DB.getUser();
+                DB.setIdentity(this.state.user);
+                if (this._isSalesperson()) {
+                    // They may have been confirmed (or removed) since this phone last checked
+                    const businessName = this.state.user.businessName;
+                    if (await this._loadBusinessLink() === 'removed') await this._removedFromBusiness(businessName);
+                }
 
                 if (!this.state.user) {
                     this.showView('onboarding-step-1');
@@ -370,6 +375,7 @@ document.addEventListener('DOMContentLoaded', () => {
             typeButtons.forEach(btn => btn.addEventListener('click', () => {
                 this.elements.businessTypeInput.value = btn.dataset.value;
                 btn.parentElement.classList.add('chosen'); // stops the "you can tap these" animation
+                document.getElementById('business-name-group').hidden = btn.dataset.value === 'Salesperson'; // they have no business to name
                 typeButtons.forEach(b => {
                     b.classList.toggle('selected', b === btn);
                     b.setAttribute('aria-checked', String(b === btn));
@@ -512,9 +518,38 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             this.elements.seeAllSalesBtn.addEventListener('click', () => this.navigateTo('all-sales-view'));
             this.elements.seeLastSalesBtn.addEventListener('click', () => this.navigateTo('all-sales-view'));
-            if(document.getElementById('add-salesperson-fab')) {
-                document.getElementById('add-salesperson-fab').addEventListener('click', () => say('This is coming soon.', 'Coming soon'));
-            }
+            // Salespeople: the admin adds one with a code; the salesperson types it in
+            document.getElementById('add-salesperson-fab').addEventListener('click', () => this.openAddSalesperson());
+            document.getElementById('sp-add-cancel').addEventListener('click', () => this.closeAddSalesperson());
+            document.getElementById('sp-add-go').addEventListener('click', () => this.handleGetSalespersonCode());
+            const spPhone = document.getElementById('sp-add-phone');
+            spPhone.addEventListener('input', (e) => {
+                const digits = this._localPhone(e.target.value);
+                if (e.target.value !== digits) e.target.value = digits;
+                document.getElementById('sp-add-error').textContent = '';
+            });
+            spPhone.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); this.handleGetSalespersonCode(); } });
+            document.getElementById('sp-copy').addEventListener('click', () => this.copySalespersonCode());
+            document.getElementById('sp-new').addEventListener('click', () => this.handleNewSalespersonCode());
+            document.getElementById('sp-done').addEventListener('click', () => this.closeAddSalesperson());
+            const spCode = document.getElementById('sp-code-input');
+            spCode.addEventListener('input', (e) => {
+                e.target.value = e.target.value.replace(/\D/g, '').slice(0, 4);
+                document.getElementById('sp-code-btn').disabled = e.target.value.length !== 4;
+                document.getElementById('sp-code-error').textContent = '';
+            });
+            spCode.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); this.handleSalespersonCode(); } });
+            document.getElementById('sp-code-btn').addEventListener('click', () => this.handleSalespersonCode());
+            document.getElementById('sp-logout-btn').addEventListener('click', () => this.handleLogout());
+            this.elements.salespeopleView.addEventListener('click', (e) => {
+                const el = e.target.closest('[data-act]');
+                const card = el && el.closest('.sp-card');
+                if (!card) return;
+                const { phone, name } = card.dataset;
+                if (el.dataset.act === 'remove') this.removeSalesperson(phone, name);
+                else if (el.dataset.act === 'received') this.confirmSalespersonMoney(phone, name, el.closest('.sp-day').dataset.day);
+                else if (el.dataset.act === 'credit') this.showCustomersTab();
+            });
             this.elements.allSalesTimeFilter.addEventListener('change', () => {
                 if (this.elements.allSalesTimeFilter.value === 'expenses') {
                     say('This is coming soon.', 'Coming soon');
@@ -724,7 +759,7 @@ document.addEventListener('DOMContentLoaded', () => {
         async handleCheckPhone() {
             const phone = this.elements.checkPhoneInput.value.trim();
             if (!/^0\d{10}$/.test(phone)) {
-                say("Enter your 11-digit WhatsApp number, like 08012345678.", "Check your number");
+                await this._needs(this.elements.checkPhoneInput, "Enter your 11-digit WhatsApp number, like 08012345678.", "Check your number");
                 return;
             }
 
@@ -879,7 +914,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const pin = document.getElementById('new-pin').value.trim();
             const phone = this.state.tempPhone;
             const pending = this._pendingVerification();
-            if (!/^\d{6}$/.test(pin)) { say('Your PIN must be 6 numbers.', 'Check your PIN'); return; }
+            if (!/^\d{6}$/.test(pin)) { await this._needs(document.getElementById('new-pin'), 'Your PIN must be 6 numbers.', 'Check your PIN'); return; }
             if (!phone || !pending || pending.phone !== phone || pending.purpose !== 'reset') {
                 say('Verify your number on WhatsApp first.', 'Verify first');
                 this.showView('onboarding-step-1');
@@ -899,8 +934,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('new-pin').value = '';
 
                 this.state.user = { ...snap.data(), pin, pinChangedAt };
+                DB.setIdentity(this.state.user);
                 await DB.saveUser(this.state.user);
-                const synced = await DB.syncDataFromCloud(phone);
+                if (this._isSalesperson()) await this._loadBusinessLink();
+                const synced = this._isWaiting() ? true : await DB.syncDataFromCloud(phone);
                 if (!synced) say('Your new PIN works. Some data will finish syncing soon.', 'PIN saved');
                 await this.loadMainApp();
                 this.startRealtimeSync();
@@ -951,6 +988,430 @@ document.addEventListener('DOMContentLoaded', () => {
             }, (error) => console.error('Could not watch for PIN changes:', error));
         },
 
+        // --- Salespeople -------------------------------------------------------------------------------
+        // A salesperson sells from an admin's products and only ever sees what they recorded themselves.
+        // The admin adds them with a 4-digit code (salesperson_invites). Entering it creates the link
+        // (salesperson_links) that says which business they work for; deleting the link removes them.
+        SALESPERSON_CODE_TTL_MS: 20 * 60 * 1000,
+        MAX_SALESPEOPLE: 5,
+
+        _isSalesperson() { const u = this.state.user; return !!u && u.type === 'Salesperson'; },
+        // A salesperson who no business has confirmed yet
+        _isWaiting() { const u = this.state.user; return !!u && u.type === 'Salesperson' && !u.businessPhone; },
+        // The phone the products, sales and credit belong to: a salesperson's admin, otherwise the user themselves
+        _businessPhone() {
+            const u = this.state.user;
+            if (!u) return null;
+            return u.type === 'Salesperson' ? (u.businessPhone || null) : u.phone;
+        },
+        // Who a transfer comes "from": the business, whoever in it recorded the sale
+        _sender() {
+            const u = this.state.user;
+            if (u.type === 'Salesperson') return { store: u.businessName || '', id: u.businessPhone, role: u.businessType || 'Wholesaler' };
+            return { store: u.business, id: u.phone, role: u.type };
+        },
+
+        _linkRef(phone) { return window.fb.doc(window.fb.db, 'salesperson_links', phone); },
+        _inviteRef(phone) { return window.fb.doc(window.fb.db, 'salesperson_invites', phone); },
+
+        _applyLink(link) {
+            const user = this.state.user;
+            ['businessPhone', 'businessName', 'businessType'].forEach(k => { delete user[k]; });
+            if (link && link.businessPhone) {
+                user.businessPhone = link.businessPhone;
+                user.businessName = link.businessName || '';
+                user.businessType = link.businessType || '';
+            }
+            DB.setIdentity(user);
+        },
+
+        // Which business (if any) has confirmed this salesperson. Answers 'linked', 'waiting', 'removed' (confirmed on this phone
+        // before, but their admin has since removed them) or 'unknown' (the server could not be reached: keep what this phone knows).
+        async _loadBusinessLink() {
+            const user = this.state.user;
+            if (!user || user.type !== 'Salesperson' || !window.fb) return 'unknown';
+            try {
+                const snap = await window.fb.getDoc(this._linkRef(user.phone));
+                const hadBusiness = !!user.businessPhone;
+                const link = snap.exists() ? snap.data() : null;
+                this._applyLink(link);
+                await DB.saveUser(user, false);
+                if (link && link.businessPhone) return 'linked';
+                return hadBusiness ? 'removed' : 'waiting';
+            } catch (error) {
+                console.error('Could not check which business this salesperson works for:', error);
+                return 'unknown';
+            }
+        },
+
+        // A salesperson is logged out the moment their admin removes them
+        _watchLink() {
+            if (this._linkWatch) { this._linkWatch(); this._linkWatch = null; }
+            const user = this.state.user;
+            if (!user || user.type !== 'Salesperson' || !user.businessPhone || !this.state.firebaseReady) return;
+            const business = user.businessPhone;
+            this._linkWatch = window.fb.onSnapshot(this._linkRef(user.phone), (snap) => {
+                const me = this.state.user;
+                if (!me || me.type !== 'Salesperson' || me.businessPhone !== business) return;
+                if (!snap.exists() && snap.metadata && snap.metadata.fromCache) return; // the server has not answered yet
+                const link = snap.exists() ? snap.data() : null;
+                if (!link || link.businessPhone !== business) this._removedFromBusiness(me.businessName);
+            }, (error) => console.error('Could not watch the salesperson link:', error));
+        },
+
+        // Logs them out at once; the message waits for a tap, so nothing waits on it
+        _removedFromBusiness(businessName) {
+            const loggedOut = this._doLogout();
+            loggedOut.then(() => say(`${businessName || 'Your admin'} removed you as a salesperson. You can log in again and join another business.`, 'Removed'));
+            return loggedOut;
+        },
+
+        // The only thing a salesperson sees until a business confirms them
+        _showWaiting() {
+            this.elements.appHeader.style.display = 'none';
+            this.elements.mainContent.style.display = 'none';
+            this.elements.bottomNav.style.display = 'none';
+            this.elements.views.forEach(view => view.classList.remove('active'));
+            this.state.currentView = null;
+            const input = document.getElementById('sp-code-input');
+            input.value = '';
+            document.getElementById('sp-code-error').textContent = '';
+            document.getElementById('sp-code-btn').disabled = true;
+            this.showModal('sp-waiting-modal');
+            setTimeout(() => input.focus(), 150);
+        },
+
+        async handleSalespersonCode() {
+            const input = document.getElementById('sp-code-input');
+            const btn = document.getElementById('sp-code-btn');
+            const error = document.getElementById('sp-code-error');
+            const code = input.value.trim();
+            if (!/^\d{4}$/.test(code) || btn.disabled) return;
+            const user = this.state.user;
+            btn.disabled = true;
+            error.textContent = '';
+            try {
+                const snap = await window.fb.getDoc(this._inviteRef(user.phone));
+                const invite = snap.exists() ? snap.data() : null;
+                if (!invite || String(invite.code) !== code) {
+                    error.textContent = 'That code is not right. Check it with your admin.';
+                    return;
+                }
+                if (Date.now() - DB._normalizeTimestamp(invite.createdAt).getTime() > this.SALESPERSON_CODE_TTL_MS) {
+                    error.textContent = 'This code has expired. Ask your admin for a new one and use it within 20 minutes of it being generated.';
+                    return;
+                }
+                await window.fb.setDoc(this._linkRef(user.phone), {
+                    phone: user.phone,
+                    name: user.name,
+                    businessPhone: invite.businessPhone,
+                    businessName: invite.businessName || '',
+                    businessType: invite.businessType || '',
+                    confirmedAt: Date.now()
+                });
+                window.fb.deleteDoc(this._inviteRef(user.phone)).catch(() => { /* the code is spent either way: the link now exists */ });
+                await this._enterBusiness();
+            } catch (e) {
+                console.error('Could not check the code:', e);
+                error.textContent = 'Could not check the code. Check your internet and try again.';
+            } finally {
+                btn.disabled = !/^\d{4}$/.test(input.value.trim());
+            }
+        },
+
+        // A confirmed salesperson opens their admin's products and starts following their own sales
+        async _enterBusiness() {
+            this.showLoader();
+            try {
+                const status = await this._loadBusinessLink();
+                if (status !== 'linked') throw new Error('The link was not saved');
+                const synced = await DB.syncDataFromCloud(this.state.user.phone);
+                this.hideModal();
+                await this.loadMainApp();
+                this.startRealtimeSync();
+                if (!synced) say('You are in. Some data will finish syncing soon.', 'Logged in');
+            } finally {
+                this.hideLoader();
+            }
+        },
+
+        // --- Admin side: add, summarise, confirm money, remove ---
+        openAddSalesperson() {
+            document.getElementById('sp-add-form').hidden = false;
+            document.getElementById('sp-add-done').hidden = true;
+            const phone = document.getElementById('sp-add-phone');
+            phone.value = '';
+            document.getElementById('sp-add-error').textContent = '';
+            this.showModal('add-salesperson-modal');
+            setTimeout(() => phone.focus(), 150);
+        },
+
+        closeAddSalesperson() {
+            clearInterval(this._spTimer);
+            this._spCode = null;
+            this.hideModal();
+        },
+
+        // Makes a fresh 4-digit code for a number that signed up as a salesperson. Answers { error } or { phone, name, code, createdAt }.
+        async _createSalespersonCode(phone) {
+            if (!navigator.onLine || !this.state.firebaseReady) return { error: 'You need internet to add a salesperson.' };
+            const me = this.state.user;
+            const userSnap = await window.fb.getDoc(window.fb.doc(window.fb.db, 'users', phone));
+            const found = userSnap.exists() ? userSnap.data() : null;
+            if (!found || found.type !== 'Salesperson' || !found.pin) return { error: "This number hasn't signed up as a salesperson before." };
+            const first = String(found.name || '').split(' ')[0] || phone;
+
+            const linkSnap = await window.fb.getDoc(this._linkRef(phone));
+            if (linkSnap.exists()) {
+                return { error: linkSnap.data().businessPhone === me.phone ? `${first} is already your salesperson.` : `${first} already works for another business.` };
+            }
+            const mine = await window.fb.getDocs(window.fb.query(window.fb.collection(window.fb.db, 'salesperson_links'), window.fb.where('businessPhone', '==', me.phone)));
+            if (mine.size >= this.MAX_SALESPEOPLE) return { error: `You can add up to ${this.MAX_SALESPEOPLE} salespeople.` };
+
+            const code = String(1000 + Math.floor(Math.random() * 9000));
+            const createdAt = Date.now(); // for this screen's countdown; the code itself is stamped by the server
+            await window.fb.setDoc(this._inviteRef(phone), { phone, code, businessPhone: me.phone, businessName: me.business || '', businessType: me.type, createdAt: window.fb.serverTimestamp() });
+            this._shareProductPictures(); // so the salesperson sees the pictures too
+            return { phone, name: found.name || phone, code, createdAt };
+        },
+
+        async handleGetSalespersonCode() {
+            const input = document.getElementById('sp-add-phone');
+            const error = document.getElementById('sp-add-error');
+            const btn = document.getElementById('sp-add-go');
+            const phone = this._localPhone(input.value);
+            error.textContent = '';
+            if (!/^0\d{10}$/.test(phone)) { error.textContent = 'Enter their 11-digit phone number.'; return; }
+            btn.disabled = true;
+            try {
+                const result = await this._createSalespersonCode(phone);
+                if (result.error) error.textContent = result.error;
+                else this._showSalespersonCode(result);
+            } catch (e) {
+                console.error('Could not make a salesperson code:', e);
+                error.textContent = 'Could not get a code. Check your internet and try again.';
+            } finally {
+                btn.disabled = false;
+            }
+        },
+
+        _showSalespersonCode(result) {
+            this._spCode = result;
+            const first = String(result.name).split(' ')[0];
+            document.getElementById('sp-add-form').hidden = true;
+            document.getElementById('sp-add-done').hidden = false;
+            document.getElementById('sp-done-title').textContent = `Code for ${first}`;
+            document.getElementById('sp-done-sub').textContent = `Ask ${first} to enter this code in PikaShot.`;
+            const box = document.querySelector('#sp-add-done .sp-code-box');
+            const timer = document.getElementById('sp-timer');
+            const copyBtn = document.getElementById('sp-copy');
+            document.getElementById('sp-code-value').textContent = result.code;
+            clearInterval(this._spTimer);
+            const tick = () => {
+                const left = result.createdAt + this.SALESPERSON_CODE_TTL_MS - Date.now();
+                const expired = left <= 0;
+                box.classList.toggle('expired', expired);
+                copyBtn.disabled = expired;
+                if (expired) {
+                    timer.textContent = 'This code has expired. Tap New code.';
+                    clearInterval(this._spTimer);
+                    return;
+                }
+                const secs = Math.ceil(left / 1000);
+                timer.textContent = `Expires in ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+            };
+            tick();
+            this._spTimer = setInterval(tick, 1000);
+        },
+
+        async handleNewSalespersonCode() {
+            if (!this._spCode) return;
+            const btn = document.getElementById('sp-new');
+            btn.disabled = true;
+            try {
+                const result = await this._createSalespersonCode(this._spCode.phone);
+                if (result.error) say(result.error, 'Cannot make a code');
+                else this._showSalespersonCode(result);
+            } catch (e) {
+                console.error('Could not make a new salesperson code:', e);
+                say('Check your internet and try again.', 'No internet');
+            } finally {
+                btn.disabled = false;
+            }
+        },
+
+        copySalespersonCode() {
+            if (!this._spCode) return;
+            const done = () => this.showToast('Code copied.');
+            if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(this._spCode.code).then(done, () => {});
+            else done();
+        },
+
+        // Product pictures stay on the phone that took them. A small copy travels with each product so a salesperson can see it too.
+        async _shareProductPictures() {
+            try {
+                const all = await DB.getAllProducts();
+                for (const product of all) {
+                    if (!(product.image instanceof Blob) || product.thumb) continue;
+                    const thumb = await this._makeThumbnail(product.image);
+                    if (!thumb) continue;
+                    product.thumb = thumb;
+                    await DB.saveProduct(product);
+                }
+            } catch (e) { console.error('Could not prepare product pictures:', e); }
+        },
+
+        // The Salespeople tab: one card per salesperson, with a summary for every day whose money is not confirmed yet
+        _renderSalespeople() {
+            const view = this.elements.salespeopleView;
+            if (this.state.retailerListener) { this.state.retailerListener(); this.state.retailerListener = null; }
+            if (this.state.linksListener) { this.state.linksListener(); this.state.linksListener = null; }
+            view.innerHTML = '<div class="spinner"></div>';
+            let first = true;
+            const links = window.fb.query(window.fb.collection(window.fb.db, 'salesperson_links'), window.fb.where('businessPhone', '==', this.state.user.phone));
+            this.state.linksListener = window.fb.onSnapshot(links, (snap) => {
+                const people = [];
+                snap.forEach(d => people.push(d.data()));
+                this.state.salespeople = people.sort((a, b) => (Number(a.confirmedAt) || 0) - (Number(b.confirmedAt) || 0));
+                if (!first) snap.docChanges().forEach(change => { if (change.type === 'added') this._salespersonJoined(change.doc.data()); });
+                first = false;
+                this._drawSalespeople();
+            }, (error) => {
+                console.error('Could not load salespeople:', error);
+                view.innerHTML = '<p class="empty-state">Error loading data.</p>';
+            });
+        },
+
+        _salespersonJoined(link) {
+            const first = String(link.name || link.phone).split(' ')[0];
+            if (this._spCode && this._spCode.phone === link.phone) this.closeAddSalesperson();
+            this.showToast(`${first} joined as your salesperson.`);
+        },
+
+        async _drawSalespeople() {
+            const view = this.elements.salespeopleView;
+            const people = this.state.salespeople || [];
+            if (!people.length) {
+                view.innerHTML = '<p class="empty-state">No salespeople yet. Tap the + button to add one.</p>';
+                return;
+            }
+            const sales = await DB.getAllSales();
+            if (!this.state.user) return; // logged out while this was loading
+            view.innerHTML = people.map(person => this._salespersonCard(person, sales.filter(s => s.recordedBy === person.phone && !s.moneyConfirmed))).join('');
+        },
+
+        _dayKey(value) {
+            const d = DB._normalizeTimestamp(value);
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        },
+
+        _dayLabel(key) {
+            const [y, m, d] = key.split('-').map(Number);
+            const date = new Date(y, m - 1, d);
+            const today = this._dayKey(new Date());
+            const yesterday = this._dayKey(new Date(Date.now() - 86400000));
+            const short = date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+            if (key === today) return `Today · ${short}`;
+            if (key === yesterday) return `Yesterday · ${short}`;
+            return `${date.toLocaleDateString('en-GB', { weekday: 'short' })} · ${short}`;
+        },
+
+        // What one day of one salesperson's sales adds up to
+        _summariseSales(sales) {
+            const sum = { count: sales.length, total: 0, items: 0, discount: 0, discountedItems: 0, credit: 0, transfers: 0, edits: 0 };
+            sales.forEach(sale => {
+                const qty = Number(sale.quantity) || 0;
+                const paid = Number(sale.total) || 0;
+                const gross = qty * (Number(sale.price) || 0);
+                sum.total += paid;
+                sum.items += qty;
+                if (sale.saleType === 'credit') {
+                    if (!sale.creditSettled) sum.credit += Math.max(0, gross - paid);
+                } else if (Number(sale.discount) > 0) {
+                    sum.discount += Number(sale.discount);
+                    sum.discountedItems += qty;
+                }
+                if (sale.sharedAsLog || this._pendingLogIds(sale).length) sum.transfers++;
+                if (sale.edited) sum.edits++;
+            });
+            return sum;
+        },
+
+        _salespersonCard(person, pending) {
+            const e = (v) => this._esc(v);
+            const money = (n) => `₦${this.formatNumber(n)}`;
+            const trash = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>';
+            const days = {};
+            pending.forEach(sale => { (days[this._dayKey(sale.timestamp)] = days[this._dayKey(sale.timestamp)] || []).push(sale); });
+            const cards = Object.keys(days).sort().reverse().map(key => {
+                const s = this._summariseSales(days[key]);
+                const none = '<strong class="sp-none">–</strong>';
+                return `
+                    <div class="sp-day" data-day="${key}">
+                        <div class="sp-day-top"><span>${e(this._dayLabel(key))}</span><span>${s.count} ${s.count === 1 ? 'sale' : 'sales'}</span></div>
+                        <div class="sp-day-total"><span>Total sales</span><strong>${money(s.total)}</strong></div>
+                        <div class="sp-rows">
+                            <div class="sp-row"><span>Items sold</span><strong>${this.formatNumber(s.items)}</strong></div>
+                            <div class="sp-row"><span>Discounts</span>${s.discount ? `<strong>${money(s.discount)} · ${this.formatNumber(s.discountedItems)} ${s.discountedItems === 1 ? 'item' : 'items'}</strong>` : none}</div>
+                            ${s.credit
+                                ? `<button type="button" class="sp-row sp-row-link" data-act="credit"><span>Credit</span><strong>${money(s.credit)} <i aria-hidden="true">›</i></strong></button>`
+                                : `<div class="sp-row"><span>Credit</span>${none}</div>`}
+                            <div class="sp-row"><span>Transfers</span>${s.transfers ? `<strong>${s.transfers}</strong>` : none}</div>
+                            <div class="sp-row"><span>Sale edits</span>${s.edits ? `<strong>${s.edits}</strong>` : none}</div>
+                        </div>
+                        <button type="button" class="btn btn-primary sp-received" data-act="received">I received the money</button>
+                    </div>`;
+            }).join('');
+            const initial = (String(person.name || '?').trim().charAt(0) || '?').toUpperCase();
+            return `
+                <div class="card sp-card" data-phone="${e(person.phone)}" data-name="${e(person.name || person.phone)}">
+                    <div class="sp-head">
+                        <div class="sp-avatar">${e(initial)}</div>
+                        <div class="sp-id"><h4>${e(person.name || person.phone)}</h4><p>${e(person.phone)}</p></div>
+                        <button type="button" class="sp-remove" data-act="remove" aria-label="Remove ${e(person.name || person.phone)}">${trash}</button>
+                    </div>
+                    ${cards || '<p class="sp-empty">Nothing waiting. All money is confirmed.</p>'}
+                </div>`;
+        },
+
+        async confirmSalespersonMoney(phone, name, dayKey) {
+            const sales = (await DB.getAllSales()).filter(s => s.recordedBy === phone && !s.moneyConfirmed && this._dayKey(s.timestamp) === dayKey);
+            if (!sales.length) { this._drawSalespeople(); return; }
+            const total = sales.reduce((sum, s) => sum + (Number(s.total) || 0), 0);
+            const first = String(name).split(' ')[0];
+            const confirmed = await this.requestPin(`Confirm you received ₦${this.formatNumber(total)} from ${first} for ${this._dayLabel(dayKey)}.`);
+            if (!confirmed) return;
+            const at = Date.now();
+            try {
+                // Only the sales that were on the card: anything recorded since gets its own card
+                await Promise.all(sales.map(s => DB.patchSale(s.id, { moneyConfirmed: true, moneyConfirmedAt: at })));
+                this.showToast(`Confirmed ₦${this.formatNumber(total)} from ${first}.`);
+            } catch (error) {
+                console.error('Could not confirm the money:', error);
+                say('That was not saved. Check your internet and try again.', 'Not saved');
+            }
+            this._drawSalespeople();
+        },
+
+        async removeSalesperson(phone, name) {
+            const first = String(name).split(' ')[0];
+            const confirmed = await this.requestPin(`Remove ${first}? They are logged out right away, and their unconfirmed sales summaries are lost. Confirm any money you received first.`);
+            if (!confirmed) return;
+            try {
+                await window.fb.deleteDoc(this._linkRef(phone));
+                window.fb.deleteDoc(this._inviteRef(phone)).catch(() => { /* there may be no code to remove */ });
+                this.showToast(`${first} was removed.`);
+            } catch (error) {
+                console.error('Could not remove the salesperson:', error);
+                say('Check your internet and try again.', 'Not removed');
+            }
+        },
+
+        showCustomersTab() {
+            this.state.stockViewFilter = 'customers';
+            this.renderRetailerStocks();
+        },
+
         // --- Install as a proper Android app ---
         // Chrome's own install (the beforeinstallprompt event) makes a real app that shows in the app list,
         // so the small sign-up button only appears when Chrome offers that; a home-screen shortcut is never suggested.
@@ -995,7 +1456,7 @@ document.addEventListener('DOMContentLoaded', () => {
         async handleLogin() {
             const pin = this.elements.loginPinInput.value.trim();
             if (pin.length !== 6) {
-                say("Enter your 6-digit PIN.", "Check your PIN");
+                await this._needs(this.elements.loginPinInput, "Enter your 6-digit PIN.", "Check your PIN");
                 return;
             }
 
@@ -1004,10 +1465,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.showLoader();
                 // Login successful
                 this.state.user = this.state.tempUserCloudData;
+                DB.setIdentity(this.state.user);
                 await DB.saveUser(this.state.user); // Save locally
+                if (this._isSalesperson()) await this._loadBusinessLink(); // which business (if any) has confirmed them
 
-                // Sync data
-                const success = await DB.syncDataFromCloud(this.state.tempPhone);
+                // Sync data (a salesperson who is still waiting has none yet)
+                const success = this._isWaiting() ? true : await DB.syncDataFromCloud(this.state.tempPhone);
                 if (!success) {
                     say("You are in. Some data will finish syncing soon.", "Logged in");
                 }
@@ -1017,8 +1480,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.startRealtimeSync(); // Start listeners
                 this.hideLoader();
             } else {
-                say("That PIN is wrong. Try again.", "Wrong PIN");
                 this.elements.loginPinInput.value = '';
+                await this._needs(this.elements.loginPinInput, "That PIN is wrong. Try again.", "Wrong PIN");
             }
         },
 
@@ -1032,8 +1495,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const location = this.elements.businessLocationInput.value;
             const pin = this.elements.createPinInput.value.trim();
 
-            if (!firstName || !lastName || !gender || !business || !type || !location || pin.length !== 6) {
-                say('Fill in every box. Your PIN must be 6 numbers.', 'Check your details'); return;
+            if (!firstName || !lastName || !gender || (!business && type !== 'Salesperson') || !type || !location || pin.length !== 6) {
+                const e = this.elements;
+                const missing = !firstName ? e.firstNameInput : !lastName ? e.lastNameInput : !gender ? e.genderInput : !location ? e.businessLocationInput
+                    : (!business && type !== 'Salesperson') ? e.businessNameInput : !type ? document.getElementById('business-type-options') : e.createPinInput;
+                await this._needs(missing, missing === e.createPinInput ? 'Your PIN must be 6 numbers.' : 'Fill in every box.', 'Check your details'); return;
             }
 
             this.showLoader();
@@ -1049,6 +1515,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             try {
                 // Save to IndexedDB and Sync to Cloud (handled by db.js)
+                DB.setIdentity(newUser);
                 await DB.saveUser(newUser);
                 this.state.user = newUser;
                 try { localStorage.removeItem('pika_verified_phone'); } catch (e) { /* fine */ }
@@ -1064,6 +1531,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // --- CORE APP LOGIC (Updated) ---
         async loadMainApp() {
+            if (this._isWaiting()) { this._showWaiting(); return; } // nothing to show until a business confirms them
             this.elements.appHeader.style.display = 'flex';
             this.elements.mainContent.style.display = 'block';
             this.elements.bottomNav.style.display = 'flex';
@@ -1088,7 +1556,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Live listener that survives errors: it reconnects with a growing pause instead of silently dying.
         _listenForIncomingTransfers() {
-            if (!this.state.firebaseReady || !this.state.user || !this.state.user.phone) return;
+            if (!this.state.firebaseReady || !this.state.user || !this.state.user.phone || this._isSalesperson()) return;
             const phone = this.state.user.phone;
             if (this._transfersListener) { this._transfersListener(); this._transfersListener = null; }
             clearTimeout(this._transfersRetryTimer);
@@ -1115,7 +1583,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // One-off catch-up read (app returned to the foreground, connection came back, ...)
         async checkIncomingTransfers() {
-            if (!this.state.firebaseReady || !this.state.user || !this.state.user.phone) return;
+            if (!this.state.firebaseReady || !this.state.user || !this.state.user.phone || this._isSalesperson()) return;
             try {
                 const snapshot = await window.fb.getDocs(this._incomingTransfersQuery());
                 snapshot.forEach((d) => {
@@ -1167,9 +1635,10 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         startRealtimeSync() {
-            if (this.state.user && this.state.user.phone) {
+            if (this.state.user && this.state.user.phone && !this._isWaiting()) {
+                DB.setIdentity(this.state.user);
                 DB.setupRealtimeListeners(
-                    this.state.user.phone,
+                    this._businessPhone(),
                     () => { // On Products Change
                         this.renderProducts(this.elements.productSearchInput.value);
                     },
@@ -1179,11 +1648,17 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (this.state.currentView === 'all-sales-view') {
                             this.renderAllSales();
                         }
+                        if (this.state.currentView === 'stock-levels-view') {
+                            if (this._isSalesperson()) this._renderSalespersonCustomers();
+                            else if (this.state.stockViewFilter === 'salespeople') this._drawSalespeople();
+                            else this._drawCustomers();
+                        }
                     }
                 );
 
-                this._listenForIncomingTransfers();
+                if (!this._isSalesperson()) this._listenForIncomingTransfers(); // a salesperson has no stock of their own to receive
                 this._watchPinChange();
+                this._watchLink();
 
                 this.watchPendingTransfers();
 
@@ -1215,6 +1690,9 @@ document.addEventListener('DOMContentLoaded', () => {
         async _doLogout() {
             {
                 if (this._pinWatch) { this._pinWatch(); this._pinWatch = null; }
+                if (this._linkWatch) { this._linkWatch(); this._linkWatch = null; }
+                if (this.state.linksListener) { this.state.linksListener(); this.state.linksListener = null; }
+                clearInterval(this._spTimer);
                 await DB.clearUser(); // This also stops realtime listeners
                 this.stopWatchingTransfers();
                 if (this._transfersListener) { this._transfersListener(); this._transfersListener = null; }
@@ -1227,6 +1705,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.state.user = null;
                 this.state.tempPhone = null;
                 this.state.tempUserCloudData = null;
+                this.state.stockViewFilter = 'customers';
+                this.state.retailersData = null;
+                this.state.salespeople = null;
+                ['recentSalesList', 'allSalesList', 'productGrid', 'retailerStockView', 'salespeopleView'].forEach(key => { if (this.elements[key]) this.elements[key].innerHTML = ''; });
                 this.hideModal();
 
                 // Reset views
@@ -1293,6 +1775,20 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         },
         _say(text, title = 'Please check') { return this._dialog({ title, text }); },
+        // Says what is missing and, only once the person has read it and tapped OK, shakes the field that needs them
+        async _needs(field, text, title) {
+            await this._say(text, title);
+            this._shake(field);
+        },
+        _shake(field) {
+            if (!field) return;
+            const target = (field.closest && field.closest('.quantity-stepper, .pin-input-wrap, .input-with-prefix, .form-group, .reg-segment')) || field;
+            if (target.scrollIntoView) target.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            target.classList.remove('input-error-shake');
+            void target.offsetWidth; // lets the shake play again if it was just playing
+            target.classList.add('input-error-shake');
+            setTimeout(() => target.classList.remove('input-error-shake'), 1200);
+        },
         _ask(options) { return this._dialog(options); },
         hideModal() { this.elements.modalContainer.style.display = 'none'; this.elements.modalContainer.querySelectorAll('.modal-content').forEach(m => m.style.display = 'none'); this._followKeyboard(false); },
 
@@ -1424,9 +1920,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             if (viewId === 'all-sales-view') {
-                if (this.state.user.type === 'Salesperson') {
-                    await this.fetchAcknowledgedSales();
-                }
                 this.elements.allSalesTimeFilter.value = 'all';
                 this.renderAllSales();
             }
@@ -1441,6 +1934,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (this.state.retailerListener) {
                     this.state.retailerListener();
                     this.state.retailerListener = null;
+                }
+                if (this.state.linksListener) {
+                    this.state.linksListener();
+                    this.state.linksListener = null;
                 }
             }
 
@@ -1471,6 +1968,7 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         handlePopState(event) {
+            if (this._isWaiting()) return;
             const viewId = (event.state && event.state.view) || 'home-view';
             this.navigateTo(viewId, true);
         },
@@ -1519,7 +2017,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     this.elements.seeStockLevelsContainer.style.display = 'block';
                     const buttonText = this.state.user.type === 'Salesperson' ? 'Customers' : 'Customers & Salespeople';
                     this.elements.seeStockLevelsBtn.innerHTML = `${buttonText} <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="arrow-icon"><polyline points="9 18 15 12 9 6"></polyline></svg>`;
-                    this.elements.shareLogBtn.style.display = this.state.user.type === 'Retailer' ? 'none' : 'block';
+                    this.elements.shareLogBtn.style.display = (this.state.user.type === 'Retailer' || this.state.user.type === 'Salesperson') ? 'none' : 'block';
                 } else {
                     this.elements.seeStockLevelsContainer.style.display = 'none';
                     this.elements.shareLogBtn.style.display = 'none';
@@ -1577,27 +2075,29 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.itemsSoldEl.textContent = hidden ? '***' : figures.items;
             }
 
-            // The total worth of the inventory (My Products) follows the same hide / show choice
+            // The total worth of the inventory (My Products) follows the same hide / show choice. A salesperson never sees it.
             const inventory = this.state.inventoryValue;
+            const inventoryHidden = hidden || this._isSalesperson();
             if (this.elements.productTotalValue) {
-                this.elements.productTotalValue.textContent = inventory == null ? '' : (hidden ? '***' : inventory);
+                this.elements.productTotalValue.textContent = inventory == null ? '' : (inventoryHidden ? '***' : inventory);
             }
             if (this.elements.toggleInventoryFiguresBtn) {
                 this.elements.toggleInventoryFiguresBtn.style.display = inventory == null ? 'none' : '';
             }
 
-            [this.elements.toggleFiguresBtn, this.elements.toggleInventoryFiguresBtn].forEach(btn => {
+            [[this.elements.toggleFiguresBtn, hidden], [this.elements.toggleInventoryFiguresBtn, inventoryHidden]].forEach(([btn, isHidden]) => {
                 if (!btn) return;
-                btn.setAttribute('aria-pressed', String(hidden));
-                btn.setAttribute('aria-label', hidden ? 'Show figures' : 'Hide figures');
+                btn.setAttribute('aria-pressed', String(isHidden));
+                btn.setAttribute('aria-label', isHidden ? 'Show figures' : 'Hide figures');
                 const open = btn.querySelector('.eye-open'), closed = btn.querySelector('.eye-closed');
-                if (open) open.style.display = hidden ? 'none' : '';
-                if (closed) closed.style.display = hidden ? '' : 'none';
+                if (open) open.style.display = isHidden ? 'none' : '';
+                if (closed) closed.style.display = isHidden ? '' : 'none';
             });
         },
 
         toggleFigures(e) {
             e.stopPropagation(); // the card itself opens All Sales
+            if (this._isSalesperson() && e.currentTarget === this.elements.toggleInventoryFiguresBtn) return; // that eye stays closed
             this.state.figuresHidden = !this.state.figuresHidden;
             try { localStorage.setItem('pikashot_hide_figures', this.state.figuresHidden ? '1' : '0'); } catch (err) { /* storage unavailable */ }
             this.applyFigureVisibility();
@@ -1612,22 +2112,6 @@ document.addEventListener('DOMContentLoaded', () => {
             else if (sale.saleType === 'discount' || sale.discount > 0) right = { text: 'Discounted', cls: 'discounted' };
             const left = sale.sharedAsLog ? { text: 'Transferred', cls: 'transferred' } : null;
             return { right, left };
-        },
-
-        _appendSaleEl(container, saleEl, sale) {
-            const { right, left } = this._saleSideLabels(sale);
-            if (!right && !left) { container.appendChild(saleEl); return; }
-            const row = document.createElement('div');
-            row.className = 'sale-row';
-            row.appendChild(saleEl);
-            [[right, 'right'], [left, 'left']].forEach(([label, side]) => {
-                if (!label) return;
-                const tag = document.createElement('span');
-                tag.className = `sale-tag ${side} ${label.cls}`;
-                tag.textContent = label.text;
-                row.appendChild(tag);
-            });
-            container.appendChild(row);
         },
 
         async renderSalesList(sales, targetElement, limit) {
@@ -1655,7 +2139,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // The picture the product had when it was sold; only older sales without one use the product's current picture
                 const matchedProduct = productMap[sale.productId];
                 const imageBlob = sale.image || (matchedProduct && matchedProduct.image);
-                const imageUrl = imageBlob ? URL.createObjectURL(imageBlob) : 'icons/icon-192.png';
+                const imageUrl = imageBlob ? URL.createObjectURL(imageBlob) : (this._safeImageUrl(matchedProduct && matchedProduct.thumb) || 'icons/icon-192.png');
 
                 // Add discount marker if applicable
                 let discountMark = '';
@@ -1716,19 +2200,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 const groupHeader = document.createElement('div');
                 groupHeader.className = 'sales-group-header';
 
-                const safeDateKey = groupTitle.split(', ')[1] ? new Date(groupTitle.split(', ')[1] + ' ' + new Date().getFullYear()).toLocaleDateString('en-NG', { year: 'numeric', month: 'short', day: 'numeric' }).replace(/[^a-zA-Z0-9]/g, '_') : groupTitle.replace(/[^a-zA-Z0-9]/g, '_');
-
-                const acknowledgement = this.state.acknowledgedSalesData[safeDateKey];
+                const groupSales = groupedSales[groupTitle];
                 let totalHtml = `<p class="sales-group-total">&#8358;${this.formatNumber(dailyTotal)}</p>`;
                 let acknowledgedHtml = '';
 
-                if (acknowledgement && acknowledgement.acknowledged) {
-                    const wholesalerName = acknowledgement.wholesalerName || 'your wholesaler';
+                // A salesperson sees which days their admin has confirmed the money for
+                if (this._isSalesperson() && Array.isArray(groupSales) && groupSales.length && groupSales.every(sale => sale.moneyConfirmed)) {
                     const checkmarkIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="checkmark-icon"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
                     totalHtml = `<p class="sales-group-total acknowledged">${checkmarkIcon} &#8358;${this.formatNumber(dailyTotal)}</p>`;
-
-                    const ackDate = new Date(groupTitle.split(', ')[1]).toLocaleDateString('en-NG', { month: 'short', day: 'numeric' });
-                    acknowledgedHtml = `<span class="acknowledgement-text">Payment for ${ackDate} acknowledged by ${wholesalerName}.</span>`;
+                    acknowledgedHtml = `<span class="acknowledgement-text">Money confirmed by ${this._esc(this.state.user.businessName || 'your admin')}.</span>`;
                 }
 
                 groupHeader.innerHTML = `<h3>${groupTitle}</h3>${totalHtml}`;
@@ -1748,7 +2228,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     // The picture the product had when it was sold; only older sales without one use the product's current picture
                     const matchedProduct = productMap[sale.productId];
                     const imageBlob = sale.image || (matchedProduct && matchedProduct.image);
-                    const imageUrl = imageBlob ? URL.createObjectURL(imageBlob) : 'icons/icon-192.png';
+                    const imageUrl = imageBlob ? URL.createObjectURL(imageBlob) : (this._safeImageUrl(matchedProduct && matchedProduct.thumb) || 'icons/icon-192.png');
 
                     // Add discount marker
                     let discountMark = '';
@@ -1925,11 +2405,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             if (products.length === 0) {
-                if (this.state.user && this.state.user.type === 'Salesperson') {
-                const spTab = document.querySelector('[data-filter="salespeople"]');
-                if (spTab) spTab.style.display = 'none';
-
-                    this.elements.productGrid.innerHTML = '<p class="empty-state">You have no products yet. Scan a QR code from your wholesaler (admin) to receive products.</p>';
+                if (this._isSalesperson() && !searchText && filterType === 'all') {
+                    this.elements.productGrid.innerHTML = '<p class="empty-state">Your admin has not added any products yet.</p>';
                 } else if (searchText) {
                     this.elements.productGrid.innerHTML = '<p class="empty-state">No products match your search.</p>';
                 } else if (filterType === 'restock') {
@@ -1948,11 +2425,13 @@ document.addEventListener('DOMContentLoaded', () => {
             products.forEach(product => {
                 const card = document.createElement('div');
                 card.className = 'product-card';
-                const imageUrl = product.image ? URL.createObjectURL(product.image) : 'icons/icon-192.png';
+                const imageUrl = product.image ? URL.createObjectURL(product.image) : (this._safeImageUrl(product.thumb) || 'icons/icon-192.png');
 
                 let badgeHtml = '';
                 if (product.stock <= 0) {
                     badgeHtml = '<div class="out-of-stock-badge">Out of Stock</div>';
+                } else if (this._isSalesperson()) {
+                    if (product.stock < 7) badgeHtml = '<div class="restock-badge">Low stock!</div>';
                 } else if (product.isSalesperson) {
                     // a salesperson's only setup step is the picture, which usually arrives with the transfer now
                     if (!product.image) {
@@ -1976,7 +2455,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const pencilIconSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>`;
                 card.innerHTML = `
                     ${badgeHtml}
-                    <button class="edit-btn-icon">${pencilIconSVG}</button>
+                    ${this._isSalesperson() ? '' : `<button class="edit-btn-icon">${pencilIconSVG}</button>`}
                     <div class="product-card-image-wrapper">
                         <img src="${imageUrl}" alt="${this._esc(product.name)}">
                     </div>
@@ -1987,7 +2466,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>${this._productEditMarkHtml(product)}`;
 
                 const editBtn = card.querySelector('.edit-btn-icon');
-                editBtn.addEventListener('click', (e) => {
+                if (editBtn) editBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
                     this.handleEditProduct(product)
                 });
@@ -2031,7 +2510,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // and the dashboard keeps the latest version of each sale.
         _logSale(sale, product, edited) {
             const value = Math.max(0, (Number(sale.quantity) || 0) * (Number(sale.price) || 0) - (Number(sale.discount) || 0));
-            const base = { userId: this.state.user.phone, total: sale.total, timestamp: window.fb.serverTimestamp() };
+            const base = { userId: this._businessPhone() || this.state.user.phone, total: sale.total, timestamp: window.fb.serverTimestamp() };
             const rich = {
                 ...base,
                 saleId: sale.id,
@@ -2221,18 +2700,11 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         startAddProduct() {
-            if (this.state.user && this.state.user.type === 'Salesperson') {
-                const spTab = document.querySelector('[data-filter="salespeople"]');
-                if (spTab) spTab.style.display = 'none';
-
-                this.showToast("Salespeople can only receive products via QR code from a wholesaler.");
+            if (this._isSalesperson()) {
+                this.showToast('Only your admin can add products.');
                 return;
             }
-            if (this.elements.scanSelectFromProductsBtn) {
-                this.elements.scanSelectFromProductsBtn.style.display = 'none';
-                this.elements.cancelScanBtn.style.flex = '0 0 100%';
-                this.elements.cancelScanBtn.style.maxWidth = '300px';
-            }
+            this._setCameraActions(false);
             if (!this.state.cameraReady) { say("The scanner is still loading. Wait a moment and try again.", "Please wait"); return; }
             if (!Camera.isSupported()) { say("This phone cannot scan barcodes.", "Cannot scan"); return; }
             this.elements.scanFeedback.textContent = 'Scan product barcode';
@@ -2299,7 +2771,7 @@ document.addEventListener('DOMContentLoaded', () => {
         redirectToAddProducts() {
             const isSalesperson = this.state.user && this.state.user.type === 'Salesperson';
             this.showToast(isSalesperson
-                ? "You have no products yet. Accept products from your wholesaler first."
+                ? "Your admin has not added any products yet."
                 : "Add your products first, then you can record sales.");
             setTimeout(() => {
                 this.navigateTo('products-view');
@@ -2322,11 +2794,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (!this.state.cameraReady) { say("The scanner is still loading. Wait a moment and try again.", "Please wait"); return; }
             if (!Camera.isSupported()) { say("This phone cannot scan barcodes.", "Cannot scan"); return; }
-            if (this.elements.scanSelectFromProductsBtn) {
-                this.elements.scanSelectFromProductsBtn.style.display = 'block';
-                this.elements.cancelScanBtn.style.flex = '0 0 30%';
-                this.elements.cancelScanBtn.style.maxWidth = '100px';
-            }
+            this._setCameraActions(true);
             this.elements.scanFeedback.textContent = 'Scanning for barcode...';
             this.navigateTo('camera-view');
             Camera.startScan(
@@ -2371,7 +2839,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.hideModal();
             this.elements.entryChoiceTitle.textContent = 'New Sale Entry';
             this.elements.entryChoiceParagraph.textContent = 'How would you like to log this sale?';
-            this.elements.manualEntryBtn.style.display = 'block';
+            this.elements.manualEntryBtn.style.display = this._isSalesperson() ? 'none' : 'block'; // a salesperson sells only the admin's products
             this.elements.retrySellScanBtn.style.display = 'none';
             this.showModal('entry-choice-modal');
         },
@@ -2444,6 +2912,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         async handleSaveProduct(e) {
             e.preventDefault();
+            if (this._isSalesperson()) return;
 
             // NEW: Enforce internet connection for product management
             if (!navigator.onLine) {
@@ -2475,23 +2944,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (isEditing) productData.editedAt = Date.now(); // every edit starts the product's "recently edited" line afresh
 
-            if (!productData.name || isNaN(productData.price) || isNaN(productData.stock)) {
-                say('Fill in the product name, price and stock.', 'Check your entry'); return;
-            }
+            const form = this.elements;
+            if (!productData.name) { await this._needs(form.productNameInput, 'Add the product name.', 'Check your entry'); return; }
+            if (form.productPriceInput.value.trim() === '' || isNaN(productData.price)) { await this._needs(form.productPriceInput, 'Add the price.', 'Check your entry'); return; }
+            if (form.productStockInput.value.trim() === '' || isNaN(productData.stock)) { await this._needs(form.productStockInput, 'Add how many are in stock.', 'Check your entry'); return; }
 
             if (!productData.image) {
-                say('Add a photo of the product first.', 'Photo needed');
-                const addPicBtn = this.elements.addChangePictureBtn;
-                addPicBtn.classList.add('input-error-shake');
-                setTimeout(() => addPicBtn.classList.remove('input-error-shake'), 600);
+                await this._needs(form.addChangePictureBtn, 'Add a photo of the product first.', 'Photo needed');
                 return;
             }
 
             if (isEditing && this.state.editingProduct.needsSetup === 'barcode-and-price' && !productData.barcode) {
-                say('Scan this product\'s barcode first.', 'Barcode needed');
-                const scanBarcodeBtn = this.elements.scanNewBarcodeBtn;
-                scanBarcodeBtn.classList.add('input-error-shake');
-                setTimeout(() => scanBarcodeBtn.classList.remove('input-error-shake'), 600);
+                await this._needs(form.scanNewBarcodeBtn, 'Scan this product\'s barcode first.', 'Barcode needed');
                 return;
             }
 
@@ -2515,10 +2979,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const subUnitType = this.elements.cartonSubunitTypeInput.value;
             const subUnitQuantity = this.unformatNumber(this.elements.cartonSubunitQuantityInput.value);
 
-            if (!subUnitType || isNaN(subUnitQuantity) || subUnitQuantity <= 0) {
-                say('Choose what is inside and how many.', 'Check your entry');
-                return;
-            }
+            if (!subUnitType) { await this._needs(this.elements.cartonSubunitTypeInput, 'Choose what is inside.', 'Check your entry'); return; }
+            if (isNaN(subUnitQuantity) || subUnitQuantity <= 0) { await this._needs(this.elements.cartonSubunitQuantityInput, 'Add how many are in each carton.', 'Check your entry'); return; }
 
             let productData = this.state.tempProductDataForCarton;
             productData.subUnitType = subUnitType;
@@ -2542,6 +3004,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             }
 
+            if (productData.image instanceof Blob) {
+                const thumb = await this._makeThumbnail(productData.image);
+                if (thumb) productData.thumb = thumb; // a small copy that travels with the product, so a salesperson sees it too
+            }
             await DB.saveProduct(productData);
             await this._syncSupplierStock(productData); // no-op unless this product came from a supplier
 
@@ -2555,6 +3021,7 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         handleEditProduct(product) {
+            if (this._isSalesperson()) { this.showToast('Only your admin can edit products.'); return; }
             this.state.editingProduct = product;
             this.state.capturedBarcode = product.barcode;
             this.elements.productForm.reset();
@@ -2632,10 +3099,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         async handleDeleteProduct() {
             if (!this.state.editingProduct) return;
-            if (this.state.user && this.state.user.type === 'Salesperson' && this.state.editingProduct.stock > 0) {
-                say("You can delete a product only when its stock is 0.", "Cannot delete yet");
-                return;
-            }
+            if (this._isSalesperson()) { say('Only your admin can delete products.', 'Admin only'); return; }
             // The PIN is the confirmation. Backing out (or leaving) returns to the product they were editing.
             const confirmed = await this.requestPin(`Delete "${this.state.editingProduct.name}" for good? This cannot be undone.`);
             if (!confirmed) {
@@ -2650,17 +3114,28 @@ document.addEventListener('DOMContentLoaded', () => {
             this.showToast('Product deleted.');
         },
 
+        // The camera screen's buttons: only a sale scan offers "Select from products"
+        _setCameraActions(withSelect) {
+            if (!this.elements.scanSelectFromProductsBtn) return;
+            this.elements.scanSelectFromProductsBtn.style.display = withSelect ? 'block' : 'none';
+            this.elements.cancelScanBtn.style.flex = withSelect ? '0 0 30%' : '0 0 100%';
+            this.elements.cancelScanBtn.style.maxWidth = withSelect ? '100px' : '300px';
+        },
+
         async handleAddOrChangePicture() {
             this.hideModal();
 
             // Hide scan-related UI elements for photo capture
             document.querySelector('#camera-overlay .scan-box').style.display = 'none';
+            this._setCameraActions(false); // taking a picture has nothing to do with selling
             this.elements.scanFeedback.textContent = 'Hold steady...';
 
+            const attempt = this._photoAttempt = (this._photoAttempt || 0) + 1;
             this.navigateTo('camera-view');
             try {
                 const { blob } = await Camera.capturePhoto(this.elements.scanTimerDisplay, this.elements.scanFeedback);
-                history.back();
+                if (attempt !== this._photoAttempt) return; // a newer picture was started meanwhile
+                if (this.state.currentView === 'camera-view') history.back(); // Cancel has already gone back once
                 if (blob) {
                     this.state.capturedBlob = blob;
                     this.elements.capturedImagePreview.src = URL.createObjectURL(blob);
@@ -2669,12 +3144,13 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (error) {
                 console.error("Error capturing image:", error);
                 say("The photo did not work. Please try again.", "Photo failed");
-                history.back();
+                if (this.state.currentView === 'camera-view') history.back();
             }
         },
 
         startBarcodeAssignmentScan() {
             this.hideModal();
+            this._setCameraActions(false);
             this.elements.scanFeedback.textContent = 'Scan new barcode...';
             this.navigateTo('camera-view');
             Camera.startScan(
@@ -2722,7 +3198,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.state.editingSale = null;
             this.state.sellingProduct = product;
             this.elements.saleModalTitle.textContent = 'Confirm Sale';
-            this.elements.saleProductImage.src = product.image ? URL.createObjectURL(product.image) : 'icons/icon-192.png';
+            this.elements.saleProductImage.src = product.image ? URL.createObjectURL(product.image) : (this._safeImageUrl(product.thumb) || 'icons/icon-192.png');
             this.elements.saleProductName.textContent = product.name;
             this.elements.saleProductStock.textContent = `Stock: ${this.formatNumber(product.stock)} ${product.unit} left`;
             this.elements.saleQuantityLabel.textContent = `How many ${product.unit}?`;
@@ -2789,11 +3265,11 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (activeRadio && activeRadio.value === 'credit') {
                 partPayment = this.unformatNumber(this.elements.discountAmountInput.value) || 0;
                 if (!this.state.selectedContact) {
-                    say('Pick who is buying on credit.', 'Customer needed');
+                    await this._needs(this.elements.selectContactBtn, 'Pick who is buying on credit.', 'Customer needed');
                     return false;
                 }
                 if (this.elements.discountAmountInput.value.trim() === '') {
-                    say('How much did they pay now? Enter 0 if nothing.', 'Amount needed');
+                    await this._needs(this.elements.discountAmountInput, 'How much did they pay now? Enter 0 if nothing.', 'Amount needed');
                     return false;
                 }
                 customerName = this.state.selectedContact.name;
@@ -2805,13 +3281,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const unitPrice = editing ? editing.price : (product ? product.price : 0);
 
             if (!product) { say('This product is no longer available.', 'Not available'); return false; }
-            if (quantity <= 0) { say('Enter how many you are selling.', 'Check your entry'); return false; }
-            if (quantity > availableStock) { say(`Only ${this.formatNumber(availableStock)} ${product.unit} left in stock.`, 'Not enough stock'); return false; }
-            if (partPayment !== null && partPayment > Math.round(quantity * unitPrice)) { say('The part payment cannot be more than the total.', 'Check the amount'); return false; }
+            if (quantity <= 0) { await this._needs(this.elements.saleQuantityInput, 'Enter how many you are selling.', 'Check your entry'); return false; }
+            if (quantity > availableStock) { await this._needs(this.elements.saleQuantityInput, `Only ${this.formatNumber(availableStock)} ${product.unit} left in stock.`, 'Not enough stock'); return false; }
+            if (partPayment !== null && partPayment > Math.round(quantity * unitPrice)) { await this._needs(this.elements.discountAmountInput, 'The part payment cannot be more than the total.', 'Check the amount'); return false; }
 
+            const stockBefore = product.stock;
             product.stock = availableStock - quantity;
 
-            await DB.saveProduct(product);
+            // A salesperson only moves the stock by what they sold, so it never overwrites what another phone just did
+            await DB.saveProduct(product, this._isSalesperson() ? product.stock - stockBefore : undefined);
             
             let total = Math.max(0, Math.round((quantity * unitPrice) - discount));
             if (activeRadio && activeRadio.value === 'credit') {
@@ -2836,6 +3314,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 unit: product.unit
             };
             if (editing) sale.edited = true;
+            if (!editing && this._isSalesperson()) { // the admin sees who recorded it
+                sale.recordedBy = this.state.user.phone;
+                sale.recordedByName = this.state.user.name;
+            }
 
             // Auto-transfer for credit sales (not repeated when an existing sale is edited)
             if (!editing && sale.saleType === 'credit' && this.state.selectedContact && this.state.selectedContact.phone) {
@@ -2843,11 +3325,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (this.state.firebaseReady && window.fb) {
                         const targetPhone = this.state.selectedContact.phone.trim().replace(/\s+/g, '');
                         if (targetPhone.length >= 10) {
+                            const sender = this._sender();
                             const logData = {
                                 pikaLogVersion: 2,
-                                senderStore: this.state.user.business,
-                                senderId: this.state.user.phone,
-                                senderRole: this.state.user.type,
+                                senderStore: sender.store,
+                                senderId: sender.id,
+                                senderRole: sender.role,
+                                ...(this._isSalesperson() ? { sentBy: this.state.user.phone, sentByName: this.state.user.name } : {}),
                                 targetPhone: targetPhone,
                                 claimed: false,
                                 saleIds: [sale.id],
@@ -2882,9 +3366,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 this._logSale(sale, product);
             }
 
-            if (this.state.firebaseReady && product.supplierId && this.state.user.phone && product.stockVisible !== false) {
+            if (this.state.firebaseReady && product.supplierId && this._businessPhone() && product.stockVisible !== false) {
                 try {
-                    const retailerDocRef = window.fb.doc(window.fb.db, `retailer_stocks/${product.supplierId}/supplied_retailers/${this.state.user.phone}`);
+                    const retailerDocRef = window.fb.doc(window.fb.db, `retailer_stocks/${product.supplierId}/supplied_retailers/${this._businessPhone()}`);
                     const updateData = {};
                     const firebaseProductName = product.originalName || product.name;
                     updateData[`products.${firebaseProductName}.stock`] = product.stock;
@@ -2892,25 +3376,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     updateData.lastUpdate = window.fb.serverTimestamp();
 
                     await window.fb.updateDoc(retailerDocRef, updateData);
-
-                    if (product.isSalesperson) {
-                        const saleDataForWholesaler = {
-                            ...sale
-                        };
-                        delete saleDataForWholesaler.image; // Don't upload blob to Firestore
-                        const salesSubcollectionRef = window.fb.collection(window.fb.db, `retailer_stocks/${product.supplierId}/supplied_retailers/${this.state.user.phone}/sales`);
-                        if (editing) {
-                            // Update the wholesaler's existing copy of this sale instead of adding a second one
-                            delete saleDataForWholesaler.timestamp;
-                            const existing = await window.fb.getDocs(window.fb.query(salesSubcollectionRef, window.fb.where('id', '==', sale.id)));
-                            const updates = [];
-                            existing.forEach(d => updates.push(window.fb.updateDoc(d.ref, saleDataForWholesaler)));
-                            await Promise.all(updates);
-                        } else {
-                            saleDataForWholesaler.timestamp = window.fb.serverTimestamp();
-                            await window.fb.addDoc(salesSubcollectionRef, saleDataForWholesaler);
-                        }
-                    }
 
                 } catch (error) {
                     console.error("Failed to sync sale to Firebase:", error);
@@ -2952,19 +3417,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
         async handleManualSale(e) {
             e.preventDefault();
+            if (this._isSalesperson()) { say('Pick a product from your admin\'s products.', 'Products only'); return; }
             const name = this.elements.manualProductName.value.trim();
             const price = this.unformatNumber(this.elements.manualProductPrice.value);
             const quantity = this.unformatNumber(this.elements.manualSaleQuantity.value);
             const unit = this.elements.manualProductUnit.value;
-            if (!name || isNaN(price) || isNaN(quantity) || quantity <= 0) {
-                say('Fill in the product name, price and how many.', 'Check your entry'); return;
-            }
+            if (!name) { await this._needs(this.elements.manualProductName, 'Add the product name.', 'Check your entry'); return; }
+            if (this.elements.manualProductPrice.value.trim() === '' || isNaN(price)) { await this._needs(this.elements.manualProductPrice, 'Add the price.', 'Check your entry'); return; }
+            if (isNaN(quantity) || quantity <= 0) { await this._needs(this.elements.manualSaleQuantity, 'Add how many.', 'Check your entry'); return; }
 
             const allProducts = await DB.getAllProducts();
             let productToSell = allProducts.find(p => p.name.toLowerCase() === name.toLowerCase());
             if (productToSell) {
                 if (productToSell.stock < quantity) {
-                    say(`Only ${this.formatNumber(productToSell.stock)} ${productToSell.unit} of ${name} left.`, 'Not enough stock');
+                    await this._needs(this.elements.manualSaleQuantity, `Only ${this.formatNumber(productToSell.stock)} ${productToSell.unit} of ${name} left.`, 'Not enough stock');
                     return;
                 }
                 productToSell.stock -= quantity;
@@ -2988,16 +3454,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     updateData.lastUpdate = window.fb.serverTimestamp();
 
                     await window.fb.updateDoc(retailerDocRef, updateData);
-
-                    if (productToSell.isSalesperson) {
-                        const saleDataForWholesaler = {
-                            ...sale,
-                            timestamp: window.fb.serverTimestamp()
-                        };
-                        delete saleDataForWholesaler.image; // Don't upload blob to Firestore
-                        const salesSubcollectionRef = window.fb.collection(window.fb.db, `retailer_stocks/${productToSell.supplierId}/supplied_retailers/${this.state.user.phone}/sales`);
-                        await window.fb.addDoc(salesSubcollectionRef, saleDataForWholesaler);
-                    }
                 } catch (error) {
                     console.error("Failed to sync manual sale to Firebase:", error);
                 }
@@ -3029,8 +3485,40 @@ document.addEventListener('DOMContentLoaded', () => {
             await this.renderProducts();
         },
 
+        // "Recorded by you" / "Recorded by Chidi": shown when a sale is swiped to the left
+        _recordedByText(sale) {
+            const me = this.state.user && this.state.user.phone;
+            if (!sale.recordedBy || sale.recordedBy === me) return 'Recorded by you';
+            return `Recorded by ${sale.recordedByName || 'a salesperson'}`;
+        },
+
+        // Every sale sits in a row: small labels beside it (Edited, Credit, Transferred) and, hidden behind it, who recorded it
+        _appendSaleEl(container, saleEl, sale) {
+            const { right, left } = this._saleSideLabels(sale);
+            const row = document.createElement('div');
+            row.className = 'sale-row';
+            const by = document.createElement('div');
+            by.className = 'sale-by';
+            const byText = document.createElement('span');
+            byText.textContent = this._recordedByText(sale);
+            by.appendChild(byText);
+            row.appendChild(by);
+            row.appendChild(saleEl);
+            [[right, 'right'], [left, 'left']].forEach(([label, side]) => {
+                if (!label) return;
+                const tag = document.createElement('span');
+                tag.className = `sale-tag ${side} ${label.cls}`;
+                tag.textContent = label.text;
+                row.appendChild(tag);
+            });
+            container.appendChild(row);
+        },
+
         addSaleItemEventListeners(element, sale) {
+            this._bindSaleSwipe(element);
             element.addEventListener('click', (e) => {
+                if (Date.now() - (element._swipedAt || 0) < 400) return; // the end of a swipe is not a tap
+                if (element.classList.contains('revealed')) { this._closeSwipe(element); return; }
                 if (e.target.classList.contains('sale-item-overlay')) return;
                 if (!this.state.isSelectionMode) {
                     this.enterSelectionMode(element, sale);
@@ -3038,6 +3526,64 @@ document.addEventListener('DOMContentLoaded', () => {
                     this.toggleSaleSelection(element, sale);
                 }
             });
+        },
+
+        // Drag a sale to the left to see who recorded it; it slides back by itself after a moment
+        _bindSaleSwipe(element) {
+            const REVEAL = 124;
+            let startX = 0, startY = 0, base = 0, pointer = null, tracking = false, horizontal = false;
+            const move = (x) => element.style.setProperty('--swipe', `${x}px`);
+            const row = () => element.parentElement;
+            element.addEventListener('pointerdown', (e) => {
+                if (e.pointerType === 'mouse' && e.button !== 0) return;
+                startX = e.clientX; startY = e.clientY; pointer = e.pointerId;
+                tracking = true; horizontal = false;
+                base = element.classList.contains('revealed') ? -REVEAL : 0;
+            });
+            element.addEventListener('pointermove', (e) => {
+                if (!tracking || e.pointerId !== pointer) return;
+                const dx = e.clientX - startX, dy = e.clientY - startY;
+                if (!horizontal) {
+                    if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { tracking = false; return; } // the page is being scrolled
+                    if (Math.abs(dx) < 10) return;
+                    horizontal = true;
+                    this._closeOtherSwipes(element);
+                    clearTimeout(element._swipeTimer);
+                    element.classList.add('swiping');
+                    if (row()) row().classList.add('peek');
+                    try { element.setPointerCapture(pointer); } catch (err) { /* not every browser lets the sale keep the pointer */ }
+                }
+                move(Math.max(-REVEAL, Math.min(0, base + dx)));
+            });
+            const finish = (e) => {
+                if (!tracking || e.pointerId !== pointer) return;
+                tracking = false;
+                if (!horizontal) return;
+                element._swipedAt = Date.now();
+                element.classList.remove('swiping');
+                const x = parseFloat(element.style.getPropertyValue('--swipe')) || 0;
+                if (x < -REVEAL / 2) {
+                    element.classList.add('revealed');
+                    move(-REVEAL);
+                    element._swipeTimer = setTimeout(() => this._closeSwipe(element), 3500);
+                } else {
+                    this._closeSwipe(element);
+                }
+            };
+            element.addEventListener('pointerup', finish);
+            element.addEventListener('pointercancel', finish);
+        },
+
+        _closeSwipe(element) {
+            clearTimeout(element._swipeTimer);
+            element.classList.remove('revealed', 'swiping');
+            element.style.setProperty('--swipe', '0px');
+            const row = element.parentElement;
+            if (row) setTimeout(() => { if (!element.classList.contains('revealed') && !element.classList.contains('swiping')) row.classList.remove('peek'); }, 250);
+        },
+
+        _closeOtherSwipes(except) {
+            document.querySelectorAll('.sale-item.revealed').forEach(el => { if (el !== except) this._closeSwipe(el); });
         },
 
         triggerRestrictedFeedback(element) {
@@ -3082,7 +3628,7 @@ document.addEventListener('DOMContentLoaded', () => {
         PRODUCT_EDIT_MARK_MS: 45 * 60 * 1000,
 
         isSaleEditable(sale) {
-            if (!sale || sale.edited || sale.sharedAsLog || sale.pendingTransfer) return false;
+            if (!sale || sale.edited || sale.sharedAsLog || sale.pendingTransfer || sale.moneyConfirmed) return false;
             const age = Date.now() - new Date(sale.timestamp).getTime();
             return age >= 0 && age < this.EDIT_WINDOW_MS;
         },
@@ -3507,8 +4053,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const targetPhone = this.elements.transferPhoneInput.value.trim();
             if (targetPhone.length !== 11) return;
 
-            if (targetPhone === this.state.user.phone) {
-                this._setTransferState('error', "You can't transfer products to yourself.");
+            if (targetPhone === this.state.user.phone || targetPhone === this._businessPhone()) {
+                this._setTransferState('error', targetPhone === this.state.user.phone ? "You can't transfer products to yourself." : "You can't transfer products to your own business.");
                 return;
             }
 
@@ -3527,6 +4073,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 const userData = userSnap.data();
+                if (userData.type === 'Salesperson') {
+                    this._setTransferState('error', "You can't transfer products to a salesperson.");
+                    return;
+                }
                 const userName = userData.name || userData.phone || "Unknown";
                 const userBusiness = userData.business || "N/A";
 
@@ -3558,44 +4108,32 @@ document.addEventListener('DOMContentLoaded', () => {
                 const aggregatedSaleObjects = Object.values(groupedSales);
                 const allProducts = await DB.getAllProducts();
 
+                const sender = this._sender();
                 const logData = {
                     pikaLogVersion: 2,
-                    senderStore: this.state.user.business,
-                    senderId: this.state.user.phone,
-                    senderRole: this.state.user.type,
+                    senderStore: sender.store,
+                    senderId: sender.id,
+                    senderRole: sender.role,
+                    ...(this._isSalesperson() ? { sentBy: this.state.user.phone, sentByName: this.state.user.name } : {}),
                     targetPhone: targetPhone,
                     claimed: false,
                     saleIds: selectedSaleObjects.map(s => s.id),
                     timestamp: window.fb.serverTimestamp(),
                     items: aggregatedSaleObjects.map(sale => {
                         const product = allProducts.find(p => p.id === sale.productId);
-                        const isSalespersonSharingCarton = this.state.user.type === 'Salesperson' && product && product.unit === 'cartons';
-
-                        if (isSalespersonSharingCarton) {
-                            return {
-                                name: product.originalName || product.name,
-                                price: product.wholesalerPrice,
-                                quantity: sale.quantity,
-                                unit: 'cartons',
-                                barcode: product.barcode,
-                                subUnitType: product.subUnitType,
-                                subUnitQuantity: product.subUnitQuantity
-                            };
-                        } else {
-                            const item = {
-                                name: sale.productName,
-                                price: sale.price,
-                                quantity: sale.quantity,
-                                unit: product ? product.unit : 'pieces',
-                                barcode: product ? product.barcode : null
-                            };
-                            if (product && product.unit === 'cartons') {
-                                item.subUnitType = product.subUnitType;
-                                item.subUnitQuantity = product.subUnitQuantity;
-                            }
-                            Object.assign(item, this._settlementFields(selectedSaleObjects.filter(s => s.productId === sale.productId)));
-                            return item;
+                        const item = {
+                            name: sale.productName,
+                            price: sale.price,
+                            quantity: sale.quantity,
+                            unit: product ? product.unit : 'pieces',
+                            barcode: product ? product.barcode : null
+                        };
+                        if (product && product.unit === 'cartons') {
+                            item.subUnitType = product.subUnitType;
+                            item.subUnitQuantity = product.subUnitQuantity;
                         }
+                        Object.assign(item, this._settlementFields(selectedSaleObjects.filter(s => s.productId === sale.productId)));
+                        return item;
                     })
                 };
 
@@ -3710,86 +4248,6 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (e) { return null; }
         },
 
-        async handleAddSalesperson() {
-            const newPhone = document.getElementById('new-salesperson-phone').value.trim();
-            if(newPhone.length < 10) {
-                say("Enter a valid phone number.", "Check the number");
-                return;
-            }
-            
-            if(!this.state.firebaseReady) {
-                say("You need internet to add a salesperson.", "No internet");
-                return;
-            }
-            
-            // Check max 5 salespeople
-            try {
-                const retailersRef = window.fb.collection(window.fb.db, `retailer_stocks/${this.state.user.phone}/supplied_retailers`);
-                const q = window.fb.query(retailersRef);
-                const querySnapshot = await window.fb.getDocs(q);
-                let salespersonCount = 0;
-                querySnapshot.forEach(doc => {
-                    const data = doc.data();
-                    if(data.products && Object.values(data.products).some(p => p.isSalesperson)) {
-                        salespersonCount++;
-                    }
-                });
-                
-                // Wait, some salespeople might not have recorded products yet. 
-                // We should check 'users' collection or rely on the query above.
-                // Assuming we query 'users' where wholesalerPhone == this.state.user.phone
-                const usersRef = window.fb.collection(window.fb.db, 'users');
-                const spQuery = window.fb.query(usersRef, window.fb.where('wholesalerPhone', '==', this.state.user.phone));
-                const spSnap = await window.fb.getDocs(spQuery);
-                if (spSnap.size >= 5) {
-                    say("You can add up to 5 salespeople.", "Limit reached");
-                    return;
-                }
-                
-                // Generate 6 character code
-                const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-                let uniqueCode = '';
-                for (let i = 0; i < 6; i++) {
-                    uniqueCode += chars.charAt(Math.floor(Math.random() * chars.length));
-                }
-                
-                // Create user doc
-                const newUserRef = window.fb.doc(window.fb.db, 'users', newPhone);
-                await window.fb.setDoc(newUserRef, {
-                    phone: newPhone,
-                    type: 'Salesperson',
-                    wholesalerPhone: this.state.user.phone,
-                    wholesalerName: this.state.user.business,
-                    business: this.state.user.business,
-                    location: this.state.user.location,
-                    uniqueCode: uniqueCode,
-                    pin: null, // Indicates they haven't signed up yet
-                    createdAt: window.fb.serverTimestamp()
-                });
-                
-                // Create dummy product in retailer_stocks to make them show up immediately in the UI
-                const spStockRef = window.fb.doc(window.fb.db, `retailer_stocks/${this.state.user.phone}/supplied_retailers/${newPhone}`);
-                await window.fb.setDoc(spStockRef, {
-                    retailerName: "Pending Salesperson",
-                    retailerPhone: newPhone,
-                    businessName: this.state.user.business,
-                    products: {
-                        "_setup": { stock: 0, unit: '', isSalesperson: true }
-                    },
-                    lastUpdate: window.fb.serverTimestamp()
-                }, { merge: true });
-                
-                this.hideModal();
-                this.elements.addSalespersonForm.reset();
-                this.elements.generatedSalespersonCode.textContent = uniqueCode;
-                this.showModal('salesperson-code-modal');
-                
-            } catch (e) {
-                console.error("Error adding salesperson", e);
-                say("The salesperson was not added. Please try again.", "Something went wrong");
-            }
-        },
-
         async handleLogShared(logId, targetPhone) {
             this.hideModal();
             const allSales = await DB.getAllSales();
@@ -3877,6 +4335,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             await this.updateDashboard();
             if (this.state.currentView === 'all-sales-view') await this.renderAllSales();
+            // The celebration is for whoever recorded the sale
+            if (!affected.some(sale => !sale.recordedBy || sale.recordedBy === this.state.user.phone)) return;
 
             let name = logData.claimedByName;
             let business = logData.claimedByBusiness;
@@ -4415,6 +4875,7 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         async renderRetailerStocks() {
+            if (this._isSalesperson()) { this._renderSalespersonCustomers(); return; }
             if (!navigator.onLine) {
                 this.elements.internetNotice.style.display = 'flex';
                 this.elements.retailerStockView.innerHTML = '';
@@ -4423,30 +4884,16 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             this.elements.internetNotice.style.display = 'none';
 
-            if (this.state.user && this.state.user.type === 'Salesperson') {
-                const spTab = document.querySelector('[data-filter="salespeople"]');
-                if (spTab) spTab.style.display = 'none';
-
-                this.elements.stockViewFilterTabs.style.display = 'none';
-                this.elements.retailerStockView.style.display = 'block';
-                this.elements.salespeopleView.style.display = 'none';
-                if(document.getElementById('add-salesperson-fab')) document.getElementById('add-salesperson-fab').style.display = 'none';
-            } else {
-                this.elements.stockViewFilterTabs.style.display = 'flex';
-                if (this.state.stockViewFilter === 'customers') {
-                    this.elements.retailerStockView.style.display = 'block';
-                    this.elements.salespeopleView.style.display = 'none';
-                    if(document.getElementById('add-salesperson-fab')) document.getElementById('add-salesperson-fab').style.display = 'none';
-                } else {
-                    this.elements.retailerStockView.style.display = 'none';
-                    this.elements.salespeopleView.style.display = 'block';
-                    if(document.getElementById('add-salesperson-fab')) document.getElementById('add-salesperson-fab').style.display = 'block';
-                }
-            }
-
-
-            this.elements.retailerStockView.innerHTML = '<div class="spinner"></div>';
-            this.elements.salespeopleView.innerHTML = '<div class="spinner"></div>';
+            const onSalespeople = this.state.stockViewFilter === 'salespeople';
+            document.querySelectorAll('#stock-view-filter-tabs .filter-tab-btn').forEach(btn => {
+                btn.style.display = '';
+                btn.classList.toggle('active', btn.dataset.filter === this.state.stockViewFilter);
+            });
+            this.elements.stockViewFilterTabs.style.display = 'flex';
+            this.elements.retailerStockView.style.display = onSalespeople ? 'none' : 'block';
+            this.elements.salespeopleView.style.display = onSalespeople ? 'block' : 'none';
+            const fab = document.getElementById('add-salesperson-fab');
+            if (fab) fab.style.display = onSalespeople ? 'block' : 'none';
 
             if (!this.state.firebaseReady || !this.state.user.phone) {
                 const errorHtml = `<p class="empty-state">Could not connect to online services.</p>`;
@@ -4454,83 +4901,91 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.salespeopleView.innerHTML = errorHtml;
                 return;
             }
+            if (onSalespeople) this._renderSalespeople();
+            else this._renderCustomers();
+        },
 
+        // A salesperson's Customers tab: who owes on the credit sales they recorded
+        async _renderSalespersonCustomers() {
+            this.elements.internetNotice.style.display = 'none';
+            this.elements.stockViewFilterTabs.style.display = 'none';
+            this.elements.retailerStockView.style.display = 'block';
+            this.elements.salespeopleView.style.display = 'none';
+            const fab = document.getElementById('add-salesperson-fab');
+            if (fab) fab.style.display = 'none';
+            const credit = (await DB.getAllSales())
+                .filter(s => s.saleType === 'credit' && !s.creditSettled)
+                .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+            if (!this.state.user) return; // logged out while this was loading
+            this.elements.retailerStockView.innerHTML = credit.length
+                ? credit.map(sale => this.buildCreditCard(sale, null)).join('')
+                : '<p class="empty-state">Customers who owe you on credit show here.</p>';
+            this.addDeleteEventListeners();
+        },
+
+        _renderCustomers() {
+            const view = this.elements.retailerStockView;
+            if (this.state.linksListener) { this.state.linksListener(); this.state.linksListener = null; }
+            if (this.state.retailerListener) { this.state.retailerListener(); this.state.retailerListener = null; }
+            view.innerHTML = '<div class="spinner"></div>';
             try {
-                if (this.state.retailerListener) {
-                    this.state.retailerListener();
-                }
                 const retailersRef = window.fb.collection(window.fb.db, `retailer_stocks/${this.state.user.phone}/supplied_retailers`);
-                const q = window.fb.query(retailersRef);
-
-                this.state.retailerListener = window.fb.onSnapshot(q, async (querySnapshot) => {
-                    const allSales = await DB.getAllSales();
-                    const creditSales = allSales.filter(s => s.saleType === 'credit' && !s.creditSettled);
-
-                    let customersHtml = '';
-                    let salespeopleHtml = '';
-                    const retailersData = [];
-                    querySnapshot.forEach(doc => retailersData.push({ id: doc.id, ...doc.data({ serverTimestamps: 'estimate' }) }));
-
-                    if (retailersData.length === 0 && creditSales.length === 0) {
-                        const isRetailer = this.state.user && this.state.user.type === 'Retailer';
-                        const emptyHtmlRetailer = isRetailer
-                            ? `<p class="empty-state">Make credit sales to see customers owing you here.</p>`
-                            : `<p class="empty-state">Sell and transfer products to the purchasing retailer or make credit sales to see customers here.</p>`;
-                        const emptyHtmlSalespeople = `<p class="empty-state">Add your salespeople and see their daily sales summary here.</p>`;
-                        this.elements.retailerStockView.innerHTML = emptyHtmlRetailer;
-                        this.elements.salespeopleView.innerHTML = emptyHtmlSalespeople;
-                        return;
-                    }
-
-                    retailersData.sort((a, b) => (b.lastUpdate?.toDate() || 0) - (a.lastUpdate?.toDate() || 0));
-                    creditSales.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-
-                    const renderedCreditCustomers = new Set();
-                    const customerCards = []; // { time, html } - newest first, whatever kind of card it is
-
-                    for (const sale of creditSales) {
-                        const matchedRetailer = sale.customerPhone ? retailersData.find(r => r.id === sale.customerPhone) : null;
-                        customerCards.push({ time: new Date(sale.timestamp).getTime() || 0, html: this.buildCreditCard(sale, matchedRetailer) });
-                        if (matchedRetailer) {
-                            renderedCreditCustomers.add(matchedRetailer.id);
-                        }
-                    }
-
-                    for (const retailer of retailersData) {
-                        const isSalesperson = Object.values(retailer.products || {}).some(p => p.isSalesperson);
-
-                        if (isSalesperson) {
-                            salespeopleHtml += await this.buildSalespersonCard(retailer);
-                        } else {
-                            if (!renderedCreditCustomers.has(retailer.id)) {
-                                // when they first came on board (older customers fall back to their last activity)
-                                const joined = (retailer.joinedAt && retailer.joinedAt.toDate && retailer.joinedAt.toDate()) ||
-                                    (retailer.lastUpdate && retailer.lastUpdate.toDate && retailer.lastUpdate.toDate());
-                                customerCards.push({ time: joined ? joined.getTime() : 0, html: this.buildCustomerCard(retailer) });
-                            }
-                        }
-                    }
-                    customerCards.sort((a, b) => b.time - a.time);
-                    customersHtml = customerCards.map(card => card.html).join('');
-
-                    this.elements.retailerStockView.innerHTML = customersHtml || `<p class="empty-state">No customers added yet.</p>`;
-                    this.elements.salespeopleView.innerHTML = salespeopleHtml || `<p class="empty-state">No salespeople added yet. Tap the "+" button to add salespeople</p>`;
-
-                    this.addDeleteEventListeners();
-                    this.addSalespersonEventListeners();
-
+                this.state.retailerListener = window.fb.onSnapshot(window.fb.query(retailersRef), (querySnapshot) => {
+                    const retailers = [];
+                    querySnapshot.forEach(doc => retailers.push({ id: doc.id, ...doc.data({ serverTimestamps: 'estimate' }) }));
+                    this.state.retailersData = retailers;
+                    this._drawCustomers();
                 }, (error) => {
                     console.error("Error fetching retailer stocks in real-time:", error);
-                    const errorHtml = `<p class="empty-state">Error loading data.</p>`;
-                    this.elements.retailerStockView.innerHTML = errorHtml;
-                    this.elements.salespeopleView.innerHTML = errorHtml;
+                    view.innerHTML = `<p class="empty-state">Error loading data.</p>`;
                 });
             } catch (error) {
                 console.error("Error setting up retailer stocks listener:", error);
-                const errorHtml = `<p class="empty-state">Error loading data.</p>`;
-                this.elements.retailerStockView.innerHTML = errorHtml;
-                this.elements.salespeopleView.innerHTML = errorHtml;
+                view.innerHTML = `<p class="empty-state">Error loading data.</p>`;
             }
+        },
+
+        // The customers: everyone who owes on a credit sale (whoever recorded it) and the customers who accepted a transfer
+        async _drawCustomers() {
+            const retailersData = (this.state.retailersData || []).filter(r => !Object.values(r.products || {}).some(p => p.isSalesperson));
+            const allSales = await DB.getAllSales();
+            if (!this.state.user) return; // logged out while this was loading
+            const creditSales = allSales.filter(s => s.saleType === 'credit' && !s.creditSettled);
+
+            if (retailersData.length === 0 && creditSales.length === 0) {
+                const isRetailer = this.state.user && this.state.user.type === 'Retailer';
+                this.elements.retailerStockView.innerHTML = isRetailer
+                    ? `<p class="empty-state">Make credit sales to see customers owing you here.</p>`
+                    : `<p class="empty-state">Sell and transfer products to the purchasing retailer or make credit sales to see customers here.</p>`;
+                return;
+            }
+
+            retailersData.sort((a, b) => (b.lastUpdate?.toDate() || 0) - (a.lastUpdate?.toDate() || 0));
+            creditSales.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+            const renderedCreditCustomers = new Set();
+            const customerCards = []; // { time, html } - newest first, whatever kind of card it is
+
+            for (const sale of creditSales) {
+                const matchedRetailer = sale.customerPhone ? retailersData.find(r => r.id === sale.customerPhone) : null;
+                customerCards.push({ time: new Date(sale.timestamp).getTime() || 0, html: this.buildCreditCard(sale, matchedRetailer) });
+                if (matchedRetailer) {
+                    renderedCreditCustomers.add(matchedRetailer.id);
+                }
+            }
+
+            for (const retailer of retailersData) {
+                if (!renderedCreditCustomers.has(retailer.id)) {
+                    // when they first came on board (older customers fall back to their last activity)
+                    const joined = (retailer.joinedAt && retailer.joinedAt.toDate && retailer.joinedAt.toDate()) ||
+                        (retailer.lastUpdate && retailer.lastUpdate.toDate && retailer.lastUpdate.toDate());
+                    customerCards.push({ time: joined ? joined.getTime() : 0, html: this.buildCustomerCard(retailer) });
+                }
+            }
+            customerCards.sort((a, b) => b.time - a.time);
+
+            this.elements.retailerStockView.innerHTML = customerCards.map(card => card.html).join('') || `<p class="empty-state">No customers added yet.</p>`;
+            this.addDeleteEventListeners();
         },
 
         buildCustomerCard(retailer) {
@@ -4616,6 +5071,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const paid = Number(sale.total) || 0; // part payment is saved as the sale's total
             const owed = Math.max(0, worth - paid);
             const paidPercent = worth > 0 ? Math.min(100, Math.round(paid / worth * 100)) : 0;
+            const byName = (sale.recordedBy && sale.recordedBy !== this.state.user.phone) ? (sale.recordedByName || 'a salesperson') : '';
 
             return `
                 <div class="card credit-card" data-credit-id="${sale.id}" data-customer-name="${e(sale.customerName)}">
@@ -4623,6 +5079,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="credit-who">
                             <h4><span class="credit-name">${e(sale.customerName)}</span><span class="credit-pill">Credit</span></h4>
                             <p class="credit-when">${this.formatCreditDate(sale.timestamp)}</p>
+                            ${byName ? `<p class="credit-by">Recorded by ${e(byName)}</p>` : ''}
                         </div>
                         ${callButton}
                     </div>
@@ -4635,220 +5092,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             `;
         },
-
-        async buildSalespersonCard(retailer) {
-            const salesData = await this.getSalespersonSales(retailer.id);
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-
-            const todaysSales = salesData.filter(s => new Date(s.timestamp) >= today);
-            const totalSalesToday = todaysSales.reduce((sum, s) => sum + s.total, 0);
-
-            let todaysSalesHtml = '<p class="empty-state" style="font-size: 0.8rem; padding: 5px 0;">No sales for today yet.</p>';
-            if (todaysSales.length > 0) {
-                const salesByProduct = todaysSales.reduce((acc, sale) => {
-                    if (!acc[sale.productName]) {
-                        acc[sale.productName] = { quantity: 0, unit: sale.unit || 'pieces' };
-                    }
-                    acc[sale.productName].quantity += sale.quantity;
-                    return acc;
-                }, {});
-
-                todaysSalesHtml = Object.entries(salesByProduct)
-                    .map(([name, data]) => `<div class="sales-day-item"><span>${name}</span> <span>${this.formatNumber(data.quantity)} ${data.unit} sold</span></div>`)
-                    .join('');
-            }
-
-            const previousSalesByDay = this.groupSalesByDate(
-                salesData.filter(s => new Date(s.timestamp) < today)
-            );
-
-            let previousDaysHtml = '';
-            for (const date in previousSalesByDay) {
-                const dayData = previousSalesByDay[date];
-                const safeDateKey = date.split(', ')[1] ? new Date(date.split(', ')[1] + ' ' + new Date().getFullYear()).toLocaleDateString('en-NG', { year: 'numeric', month: 'short', day: 'numeric' }).replace(/[^a-zA-Z0-9]/g, '_') : date.replace(/[^a-zA-Z0-9]/g, '_');
-
-                if (!retailer.acknowledgedSales || !retailer.acknowledgedSales[safeDateKey]) {
-                    const total = dayData.reduce((sum, s) => sum + s.total, 0);
-                    previousDaysHtml += `
-                        <div class="sales-day">
-                            <div class="sales-day-header">
-                                <strong>${date}</strong>
-                                <span>Total: ₦${this.formatNumber(total)}</span>
-                            </div>
-                            <div class="sales-day-actions">
-                                <label>Received payment?</label>
-                                <div class="sales-day-buttons">
-                                    <button class="btn-yes" data-date="${date}" data-total="${total}">YES</button>
-                                    <button class="btn-no" data-date="${date}">NO</button>
-                                </div>
-                            </div>
-                        </div>`;
-                }
-            }
-
-            const infoIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>`;
-            const deleteIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
-            const status = this.formatTimeAgo(retailer.lastUpdate?.toDate());
-
-            return `
-                <div class="card salesperson-card" data-retailer-id="${retailer.id}" data-retailer-name="${retailer.retailerName}">
-                    <div class="retailer-header">
-                        <div style="flex-grow: 1;">
-                            <h4>${retailer.retailerName} (${retailer.businessName || ''})</h4>
-                            <p class="retailer-status ${status.className}">${status.text}</p>
-                        </div>
-                        <button class="info-btn" title="View Stock">${infoIcon}</button>
-                    </div>
-                    <div class="salesperson-summary">
-                        <div class="sales-section">
-                            <h5>Today's Sales (${today.toLocaleDateString('en-NG', { month: 'short', day: 'numeric' })})</h5>
-                            <div class="sales-today-details">${todaysSalesHtml}</div>
-                            ${todaysSales.length > 0 ? `<div class="sales-today-total">Total for today: ₦${this.formatNumber(totalSalesToday)}</div>` : ''}
-                        </div>
-                        <div class="sales-section">
-                            <h5>Previous Unconfirmed Sales</h5>
-                            ${previousDaysHtml || '<p class="empty-state" style="font-size: 0.8rem; padding: 5px 0;">No previous unconfirmed sales.</p>'}
-                        </div>
-                    </div>
-                     <div class="card-footer">
-                        <button class="delete-retailer-btn">${deleteIcon}</button>
-                    </div>
-                </div>`;
-        },
-
-        getRecentSalesDays(sales, count) {
-            const salesByDay = {};
-            sales.forEach(sale => {
-                const saleDate = new Date(sale.timestamp).toLocaleDateString('en-NG', { year: 'numeric', month: 'short', day: 'numeric' });
-                if (!salesByDay[saleDate]) {
-                    salesByDay[saleDate] = { total: 0, date: saleDate, timestamp: new Date(sale.timestamp).setHours(0, 0, 0, 0) };
-                }
-                salesByDay[saleDate].total += sale.total;
-            });
-
-            return Object.values(salesByDay)
-                .sort((a, b) => b.timestamp - a.timestamp)
-                .slice(0, count);
-        },
-
-        async getSalespersonSales(salespersonId) {
-            if (!this.state.firebaseReady || !this.state.user.phone) return [];
-            try {
-                const salesRef = window.fb.collection(window.fb.db, `retailer_stocks/${this.state.user.phone}/supplied_retailers/${salespersonId}/sales`);
-                const q = window.fb.query(salesRef);
-                const querySnapshot = await window.fb.getDocs(q);
-                const sales = [];
-                querySnapshot.forEach(doc => {
-                    const data = doc.data();
-                    sales.push({ ...data, timestamp: data.timestamp.toDate() });
-                });
-                return sales.sort((a, b) => b.timestamp - a.timestamp);
-            } catch (error) {
-                console.error("Error fetching salesperson sales:", error);
-                return [];
-            }
-        },
-
-        addSalespersonEventListeners() {
-            document.querySelectorAll('.info-btn').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    const card = e.target.closest('.card');
-                    const retailerId = card.dataset.retailerId;
-                    this.showSalespersonStockModal(retailerId);
-                });
-            });
-
-            document.querySelectorAll('.btn-yes').forEach(button => {
-                button.addEventListener('click', async (e) => {
-                    const card = e.target.closest('.card');
-                    const retailerId = card.dataset.retailerId;
-                    const date = e.target.dataset.date;
-                    const total = e.target.dataset.total;
-
-                    if (await ask({ title: 'Confirm payment', text: `Did you receive ₦${this.formatNumber(total)} for ${date}? You cannot undo this.`, ok: 'Yes, received', cancel: 'Cancel' })) {
-                        this.acknowledgeSales(retailerId, date);
-                    }
-                });
-            });
-
-            document.querySelectorAll('.btn-no').forEach(button => {
-                button.addEventListener('click', (e) => {
-                    // When "No" is clicked, we just remove the action buttons for that day for this session.
-                    // It will reappear on next refresh if not confirmed.
-                    e.target.closest('.sales-day-actions').style.display = 'none';
-                });
-            });
-        },
-
-        async showSalespersonStockModal(retailerId) {
-            if (!this.state.firebaseReady) {
-                this.showToast("Not connected to online services.");
-                return;
-            }
-            try {
-                const docRef = window.fb.doc(window.fb.db, `retailer_stocks/${this.state.user.phone}/supplied_retailers/${retailerId}`);
-                const docSnap = await window.fb.getDoc(docRef);
-
-                if (docSnap.exists()) {
-                    const retailer = docSnap.data();
-                    let productsHtml = '';
-                    if (retailer.products && Object.keys(retailer.products).length > 0) {
-                        for (const productName in retailer.products) {
-                            const product = retailer.products[productName];
-                            const stockClass = product.stock <= 0 ? 'out-of-stock' : (product.stock < 10 ? 'restock-now' : '');
-                            productsHtml += `<div class="retailer-product-item ${stockClass}"><span>${productName}</span><strong>${this._esc(this.formatStockRange(product.stock, product.unit))}</strong></div>`;
-                        }
-                    } else {
-                        productsHtml = `<p class="empty-state">No product data available.</p>`;
-                    }
-
-                    // For simplicity, using a generic modal. You could create a dedicated one.
-                    this.elements.confirmLogTitle.textContent = `${retailer.retailerName}'s Stock`;
-                    this.elements.confirmLogContent.innerHTML = `<div class="retailer-product-list" style="padding: 0;">${productsHtml}</div>`;
-                    this.elements.rejectLogBtn.textContent = "Close";
-                    this.elements.acceptLogBtn.style.display = 'none';
-                    this.showModal('confirm-log-modal');
-
-                    // Reset modal for next use
-                    this.elements.rejectLogBtn.onclick = () => {
-                        this.hideModal();
-                        // Reset to default state
-                        this.elements.rejectLogBtn.textContent = "Reject";
-                        this.elements.acceptLogBtn.style.display = 'inline-block';
-                        this.elements.rejectLogBtn.onclick = null;
-                    };
-                } else {
-                    this.showToast("Could not find salesperson data.");
-                }
-            } catch (error) {
-                console.error("Error fetching salesperson stock:", error);
-                this.showToast("Failed to load stock data.");
-            }
-        },
-
-        async acknowledgeSales(retailerId, date) {
-            if (!this.state.firebaseReady || !this.state.user || !this.state.user.phone) {
-                this.showToast("Failed to acknowledge payment: Not connected.");
-                return;
-            }
-            try {
-                const docRef = window.fb.doc(window.fb.db, `retailer_stocks/${this.state.user.phone}/supplied_retailers/${retailerId}`);
-                const updateData = {};
-                const safeDateKey = date.split(', ')[1] ? new Date(date.split(', ')[1] + ' ' + new Date().getFullYear()).toLocaleDateString('en-NG', { year: 'numeric', month: 'short', day: 'numeric' }).replace(/[^a-zA-Z0-9]/g, '_') : date.replace(/[^a-zA-Z0-9]/g, '_');
-                updateData[`acknowledgedSales.${safeDateKey}`] = {
-                    acknowledged: true,
-                    wholesalerName: this.state.user.business
-                };
-
-                await window.fb.updateDoc(docRef, updateData);
-                this.showToast(`Payment for ${date} acknowledged.`);
-            } catch (error) {
-                console.error("Error acknowledging sales:", error);
-                this.showToast("Failed to acknowledge payment.");
-            }
-        },
-
 
         addDeleteEventListeners() {
             document.querySelectorAll('.delete-retailer-btn').forEach(btn => {
@@ -4872,6 +5115,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             document.querySelectorAll('.delete-credit-btn').forEach(btn => {
                 btn.addEventListener('click', async () => {
+                    if (this._isSalesperson()) { say('Only your admin can mark a credit as fully repaid.', 'Admin only'); return; }
                     const card = btn.closest('.card');
                     const creditId = Number(card.dataset.creditId);
                     const customerName = card.dataset.customerName || 'this customer';
@@ -4985,7 +5229,7 @@ document.addEventListener('DOMContentLoaded', () => {
         async showProfileModal() {
             if (this.state.user) {
                 this.elements.profileName.textContent = this.state.user.name;
-                this.elements.profileBusiness.textContent = this.state.user.business;
+                this.elements.profileBusiness.textContent = this._isSalesperson() ? (this.state.user.businessName || '') : this.state.user.business;
                 this.elements.profileLocation.textContent = this.state.user.location;
                 this.elements.profilePhone.textContent = this.state.user.phone || this.state.user.phone; // Handle both cases
                 this.elements.profileRole.textContent = this.state.user.type;
@@ -5016,31 +5260,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 rewardText = 'Record sales for free airtime';
             }
             this.elements.scanReward.textContent = rewardText;
-        },
-
-        async fetchAcknowledgedSales() {
-            if (this.state.user.type !== 'Salesperson' || !this.state.firebaseReady) return;
-
-            const allProducts = await DB.getAllProducts();
-            const productWithSupplier = allProducts.find(p => p.supplierId);
-            if (!productWithSupplier) {
-                this.state.acknowledgedSalesData = {};
-                return;
-            }
-            const supplierId = productWithSupplier.supplierId;
-
-            try {
-                const docRef = window.fb.doc(window.fb.db, `retailer_stocks/${supplierId}/supplied_retailers/${this.state.user.phone}`);
-                const docSnap = await window.fb.getDoc(docRef);
-                if (docSnap.exists() && docSnap.data().acknowledgedSales) {
-                    this.state.acknowledgedSalesData = docSnap.data().acknowledgedSales;
-                } else {
-                    this.state.acknowledgedSalesData = {};
-                }
-            } catch (error) {
-                console.error("Error fetching acknowledged sales data:", error);
-                this.state.acknowledgedSalesData = {};
-            }
         },
     };
 

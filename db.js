@@ -2,7 +2,11 @@ const DB = {
     db: null,
     dbName: 'PikaShotDB',
     dbVersion: 5,
-    userPhone: null, // Track the current user's phone for cloud paths
+    userPhone: null, // this person's own account (their user document)
+    dataPhone: null, // whose products and sales these are: a salesperson works on their admin's
+    _salesBy: null, // a salesperson only reads (and keeps) the sales they recorded themselves
+    // Kept on this phone only: they say which business confirmed a salesperson, and the cloud copy of that is its own record
+    LOCAL_ONLY_USER_FIELDS: ['businessPhone', 'businessName', 'businessType'],
     unsubscribeProducts: null,
     unsubscribeSales: null,
 
@@ -19,9 +23,7 @@ const DB = {
                 this.db = event.target.result;
                 console.log("Database opened successfully");
                 // Try to load user to get phone number for cloud sync
-                this.getUser().then(user => {
-                    if (user && user.phone) this.userPhone = user.phone;
-                });
+                this.getUser().then(user => this.setIdentity(user));
                 resolve();
             };
 
@@ -46,6 +48,24 @@ const DB = {
                 if (!db.objectStoreNames.contains('scan_counts')) db.createObjectStore('scan_counts', { keyPath: 'date' });
             };
         });
+    },
+
+    // Who this phone belongs to, and whose products and sales it works on. Call whenever the user or their business changes.
+    setIdentity(user) {
+        this.userPhone = (user && user.phone) || null;
+        const salesperson = !!user && user.type === 'Salesperson';
+        this.dataPhone = !user ? null : (salesperson ? (user.businessPhone || null) : user.phone);
+        this._salesBy = salesperson ? user.phone : null;
+    },
+
+    _dataRoot() {
+        return this.dataPhone || this.userPhone;
+    },
+
+    // All the sales, or for a salesperson only the ones they recorded
+    _salesRef(root) {
+        const ref = window.fb.collection(window.fb.db, `users/${root}/sales`);
+        return this._salesBy ? window.fb.query(ref, window.fb.where('recordedBy', '==', this._salesBy)) : ref;
     },
 
     _getStore(storeName, mode) {
@@ -90,8 +110,9 @@ const DB = {
     },
 
     _syncToCloud(collectionName, docId, data) {
-        if (!this.userPhone || !window.fb) return Promise.resolve(); // Need user phone to know where to save
-        const path = `users/${this.userPhone}${collectionName ? '/' + collectionName : ''}`;
+        const root = collectionName ? this._dataRoot() : this.userPhone;
+        if (!root || !window.fb) return Promise.resolve(); // Need the phone to know where to save
+        const path = `users/${root}${collectionName ? '/' + collectionName : ''}`;
 
         try {
             const ref = docId
@@ -120,16 +141,19 @@ const DB = {
         this.userPhone = phoneNumber;
 
         try {
-            // 1. Sync User Profile
+            // 1. Sync User Profile (what only this phone knows about the business stays)
             const userRef = window.fb.doc(window.fb.db, 'users', phoneNumber);
             const userSnap = await window.fb.getDoc(userRef);
             if (userSnap.exists()) {
                 const cloudUserData = userSnap.data();
+                const existing = await this.getUser();
+                this.LOCAL_ONLY_USER_FIELDS.forEach(k => { if (existing && existing[k] !== undefined) cloudUserData[k] = existing[k]; });
                 await this.saveUser(cloudUserData, false); // false = don't sync back to cloud
             }
 
             // 2. Get ALL Products (always fetch all to avoid sync gaps)
-            const productsRef = window.fb.collection(window.fb.db, `users/${phoneNumber}/products`);
+            const root = this._dataRoot();
+            const productsRef = window.fb.collection(window.fb.db, `users/${root}/products`);
             const prodSnaps = await window.fb.getDocs(productsRef);
             await new Promise((resolve, reject) => {
                 const prodTx = this.db.transaction('products', 'readwrite');
@@ -152,8 +176,7 @@ const DB = {
             });
 
             // 3. Get ALL Sales (always fetch all to avoid sync gaps)
-            const salesRef = window.fb.collection(window.fb.db, `users/${phoneNumber}/sales`);
-            const saleSnaps = await window.fb.getDocs(salesRef);
+            const saleSnaps = await window.fb.getDocs(this._salesRef(root));
             await new Promise((resolve, reject) => {
                 const saleTx = this.db.transaction('sales', 'readwrite');
                 const store = saleTx.objectStore('sales');
@@ -175,10 +198,11 @@ const DB = {
     },
 
     // --- REALTIME SYNC ---
+    // `phoneNumber` is whose data to follow: the user's own, or for a salesperson their admin's
     setupRealtimeListeners(phoneNumber, onProductsChange, onSalesChange) {
         if (!window.fb || !phoneNumber) return;
         this.stopRealtimeListeners(); // Ensure clean slate
-        this.userPhone = phoneNumber;
+        this.dataPhone = phoneNumber;
         this._realtimePhone = phoneNumber;
         this._realtimeCallbacks = { onProductsChange, onSalesChange };
 
@@ -227,8 +251,7 @@ const DB = {
 
     _startSalesListener(phoneNumber, onSalesChange, retryDelay) {
         if (this._realtimePhone !== phoneNumber) return; // User changed, don't reconnect
-        const salesRef = window.fb.collection(window.fb.db, `users/${phoneNumber}/sales`);
-        this.unsubscribeSales = window.fb.onSnapshot(salesRef, (snapshot) => {
+        this.unsubscribeSales = window.fb.onSnapshot(this._salesRef(phoneNumber), (snapshot) => {
             const tx = this.db.transaction('sales', 'readwrite');
             const store = tx.objectStore('sales');
             let hasChanges = false;
@@ -260,10 +283,9 @@ const DB = {
 
     // Re-fetch all sales from cloud (used on visibility change)
     async resyncSalesFromCloud() {
-        if (!window.fb || !this.userPhone) return;
+        if (!window.fb || !this._dataRoot()) return;
         try {
-            const salesRef = window.fb.collection(window.fb.db, `users/${this.userPhone}/sales`);
-            const saleSnaps = await window.fb.getDocs(salesRef);
+            const saleSnaps = await window.fb.getDocs(this._salesRef(this._dataRoot()));
             await new Promise((resolve, reject) => {
                 const saleTx = this.db.transaction('sales', 'readwrite');
                 const store = saleTx.objectStore('sales');
@@ -299,7 +321,9 @@ const DB = {
         const user = { id: 1, ...userData };
         if (sync && userData.phone) {
             this.userPhone = userData.phone;
-            this._syncToCloud(null, null, userData); // Save to users/{phone}
+            const cloudCopy = { ...userData };
+            this.LOCAL_ONLY_USER_FIELDS.forEach(k => delete cloudCopy[k]);
+            this._syncToCloud(null, null, cloudCopy); // Save to users/{phone}
         }
         return this._requestToPromise(store.put(user));
     },
@@ -313,6 +337,8 @@ const DB = {
         productsStore.clear();
         salesStore.clear();
         this.userPhone = null;
+        this.dataPhone = null;
+        this._salesBy = null;
         return this._requestToPromise(store.clear());
     },
 
@@ -322,9 +348,12 @@ const DB = {
     },
 
     // --- PRODUCTS ---
-    saveProduct(product) {
+    // `stockDelta` (a salesperson's sale): the cloud copy only moves the stock by that much, so two phones selling the same
+    // product at once never overwrite each other, and the rest of the admin's product is left exactly as it is.
+    saveProduct(product, stockDelta) {
         const store = this._getStore('products', 'readwrite');
-        this._syncToCloud('products', product.id, product);
+        const cloudData = typeof stockDelta === 'number' ? { stock: window.fb.increment(stockDelta) } : product;
+        this._syncToCloud('products', product.id, cloudData);
         return this._requestToPromise(store.put(product));
     },
 
@@ -355,8 +384,8 @@ const DB = {
 
     deleteProduct(id) {
         const store = this._getStore('products', 'readwrite');
-        if (this.userPhone) {
-            window.fb.deleteDoc(window.fb.doc(window.fb.db, `users/${this.userPhone}/products`, String(id))).catch(e => console.error(e));
+        if (this._dataRoot()) {
+            window.fb.deleteDoc(window.fb.doc(window.fb.db, `users/${this._dataRoot()}/products`, String(id))).catch(e => console.error(e));
         }
         return this._requestToPromise(store.delete(id));
     },
@@ -374,6 +403,13 @@ const DB = {
         const store = this._getStore('sales', 'readwrite');
         this._syncToCloud('sales', sale.id, sale);
         return this._requestToPromise(store.put(sale));
+    },
+
+    // Changes only these fields of a sale (here and in the cloud), leaving the rest as the other phone last wrote it
+    async patchSale(id, fields) {
+        const sale = await this._requestToPromise(this._getStore('sales', 'readonly').get(id));
+        if (sale) await this._requestToPromise(this._getStore('sales', 'readwrite').put({ ...sale, ...fields }));
+        return this._syncToCloud('sales', id, fields);
     },
 
     getAllSales() {
