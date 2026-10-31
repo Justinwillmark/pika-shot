@@ -6,7 +6,7 @@ const DB = {
     dataPhone: null, // whose products and sales these are: a salesperson works on their admin's
     _salesBy: null, // a salesperson only reads (and keeps) the sales they recorded themselves
     // Kept on this phone only: they say which business confirmed a salesperson, and the cloud copy of that is its own record
-    LOCAL_ONLY_USER_FIELDS: ['businessPhone', 'businessName', 'businessType'],
+    LOCAL_ONLY_USER_FIELDS: ['businessPhone', 'businessName', 'businessType', 'businessLowStock'],
     unsubscribeProducts: null,
     unsubscribeSales: null,
 

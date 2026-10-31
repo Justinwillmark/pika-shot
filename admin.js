@@ -83,12 +83,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // On phones the dashboard is only the sign-up verification tool
     const PHONE_ONLY = window.matchMedia('(max-width: 699px)');
     const CODE_TTL_MS = 20 * 60 * 1000; // must match the app
+    const VERIFIED_TTL_MS = 60 * 60 * 1000; // after a number is confirmed the person has this long to finish, then they verify again
     const REPLIES = {
-        verified: 'Verified. Please return to PikaShot to create your account now. Thanks',
-        verifiedReset: 'Verified. Please return to PikaShot to set your new PIN now. Thanks',
+        verified: 'Verified. Please return to PikaShot within 1 hour to create your account. Thanks',
+        verifiedReset: 'Verified. Please return to PikaShot within 1 hour to set your new PIN. Thanks',
         missing: 'We couldn\'t find a PikaShot sign-up for this number. Please open PikaShot, enter this WhatsApp number, tap "Verify on WhatsApp" and send the message. Thanks',
         mismatch: 'That message doesn\'t match your sign-up. Please open PikaShot, tap "Verify on WhatsApp" and send the message without changing it. Thanks',
-        expired: 'That request has expired. Please open PikaShot, tap "Try again", then "Verify on WhatsApp" and send the message. Thanks'
+        expired: 'That request has expired. Please open PikaShot, tap "Try again", then "Verify on WhatsApp" and send the message. Thanks',
+        lapsed: 'That confirmation is more than 1 hour old. Please open PikaShot, verify your number again and send the message. Thanks'
     };
     // +234 803 123 4567, 2348031234567 and 08031234567 all become 08031234567, the form the app saves
     const localPhone = (v) => {
@@ -231,10 +233,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 let result;
                 if (!d) result = { ok: false, title: 'No request from this number', reply: REPLIES.missing };
                 else if (String(d.code) !== code) result = { ok: false, title: 'The code does not match', reply: REPLIES.mismatch };
+                else if (d.verified && toMs(d.verifiedAt) && Date.now() - toMs(d.verifiedAt) > VERIFIED_TTL_MS) result = { ok: false, title: 'Confirmed over 1 hour ago', reply: REPLIES.lapsed };
                 else if (d.verified) result = { ok: true, title: 'Already verified', reply: done };
                 else if (age > CODE_TTL_MS) result = { ok: false, title: 'This code has expired', reply: REPLIES.expired };
                 else {
-                    await fb.setDoc(ref, { verified: true, verifiedAt: fb.Timestamp.fromMillis(Date.now()) }, { merge: true });
+                    await fb.setDoc(ref, { verified: true, verifiedAt: fb.serverTimestamp() }, { merge: true });
                     result = { ok: true, title: 'Verified', reply: done };
                 }
                 this.showVerifyResult({ ...result, purpose }, phone);

@@ -77,6 +77,7 @@ document.addEventListener('DOMContentLoaded', () => {
             productSearchContainer: document.getElementById('product-search-container'),
             productSearchInput: document.getElementById('product-search-input'),
             productFilterTabs: document.querySelectorAll('#products-view .product-filter-tabs .filter-tab-btn'),
+            lowStockSettingsBtn: document.getElementById('low-stock-settings-btn'),
             addNewProductBtn: document.getElementById('add-new-product-btn'),
             cameraView: document.getElementById('camera-view'),
             cancelScanBtn: document.getElementById('cancel-scan-btn'),
@@ -174,20 +175,10 @@ document.addEventListener('DOMContentLoaded', () => {
             cancelInviteBtn: document.getElementById('cancel-invite-btn'),
             sendInviteBtn: document.getElementById('send-invite-btn'),
             entryChoiceModal: document.getElementById('entry-choice-modal'),
-            entryChoiceTitle: document.getElementById('entry-choice-title'),
-            entryChoiceParagraph: document.getElementById('entry-choice-p'),
             cancelEntryChoiceBtn: document.getElementById('cancel-entry-choice-btn'),
-            manualEntryBtn: document.getElementById('manual-entry-btn'),
             retrySellScanBtn: document.getElementById('retry-sell-scan-btn'),
             selectFromProductsBtn: document.getElementById('select-from-products-btn'),
             scanSelectFromProductsBtn: document.getElementById('scan-select-from-products-btn'),
-            manualSaleModal: document.getElementById('manual-sale-modal'),
-            manualSaleForm: document.getElementById('manual-sale-form'),
-            cancelManualSaleBtn: document.getElementById('cancel-manual-sale-btn'),
-            manualProductName: document.getElementById('manual-product-name'),
-            manualProductPrice: document.getElementById('manual-product-price'),
-            manualSaleQuantity: document.getElementById('manual-sale-quantity'),
-            manualProductUnit: document.getElementById('manual-product-unit'),
             confirmLogModal: document.getElementById('confirm-log-modal'),
             confirmLogTitle: document.getElementById('confirm-log-title'),
             confirmLogContent: document.getElementById('confirm-log-content'),
@@ -541,6 +532,13 @@ document.addEventListener('DOMContentLoaded', () => {
             spCode.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); this.handleSalespersonCode(); } });
             document.getElementById('sp-code-btn').addEventListener('click', () => this.handleSalespersonCode());
             document.getElementById('sp-logout-btn').addEventListener('click', () => this.handleLogout());
+            // How few left counts as "Low stock"
+            this.elements.lowStockSettingsBtn.addEventListener('click', () => this.openLowStockSettings());
+            document.getElementById('low-stock-cancel').addEventListener('click', () => this.hideModal());
+            document.getElementById('low-stock-save').addEventListener('click', () => this.handleSaveLowStock());
+            const lowInput = document.getElementById('low-stock-input');
+            lowInput.addEventListener('input', (e) => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 4); });
+            lowInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); this.handleSaveLowStock(); } });
             this.elements.salespeopleView.addEventListener('click', (e) => {
                 const el = e.target.closest('[data-act]');
                 const card = el && el.closest('.sp-card');
@@ -599,10 +597,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.pinConfirmCancelBtn.addEventListener('click', () => this._finishPin(false));
             this.elements.productSearchInput.addEventListener('input', (e) => this.renderProducts(e.target.value));
             this.elements.cancelEntryChoiceBtn.addEventListener('click', () => this.hideModal());
-            this.elements.manualEntryBtn.addEventListener('click', () => { this.hideModal(); this.elements.manualSaleForm.reset(); this.showModal('manual-sale-modal'); });
             this.elements.retrySellScanBtn.addEventListener('click', () => { this.hideModal(); this.startSellScan(); });
-            this.elements.cancelManualSaleBtn.addEventListener('click', () => this.hideModal());
-            this.elements.manualSaleForm.addEventListener('submit', this.handleManualSale.bind(this));
             this.elements.selectFromProductsBtn.addEventListener('click', this.showProductSelection.bind(this));
             if (this.elements.scanSelectFromProductsBtn) {
                 this.elements.scanSelectFromProductsBtn.addEventListener('click', () => {
@@ -655,22 +650,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
 
-            this.elements.productFilterTabs.forEach(btn => btn.addEventListener('click', (e) => {
+            this.elements.productFilterTabs.forEach(btn => btn.addEventListener('click', () => {
                 this.elements.productFilterTabs.forEach(b => b.classList.remove('active'));
-                e.target.classList.add('active');
-                this.state.productFilter = e.target.dataset.filter;
+                btn.classList.add('active');
+                this.state.productFilter = btn.dataset.filter;
                 this.renderProducts(this.elements.productSearchInput.value);
             }));
 
-            this.elements.stockFilterTabs.forEach(btn => btn.addEventListener('click', (e) => {
+            this.elements.stockFilterTabs.forEach(btn => btn.addEventListener('click', () => {
                 this.elements.stockFilterTabs.forEach(b => b.classList.remove('active'));
-                e.target.classList.add('active');
-                this.state.stockViewFilter = e.target.dataset.filter;
+                btn.classList.add('active');
+                this.state.stockViewFilter = btn.dataset.filter;
                 this.renderRetailerStocks();
             }));
 
             const fieldsToFormat = [
-                this.elements.productPriceInput, this.elements.manualProductPrice,
+                this.elements.productPriceInput,
                 this.elements.cartonSubunitQuantityInput,
                 this.elements.discountAmountInput // Added discount input
             ];
@@ -685,7 +680,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             // Stock and quantities can end in ".5" for "and a half" (1.5); any other decimal is ignored
-            [this.elements.productStockInput, this.elements.saleQuantityInput, this.elements.manualSaleQuantity].forEach(input => {
+            [this.elements.productStockInput, this.elements.saleQuantityInput].forEach(input => {
                 input.addEventListener('input', (e) => {
                     const formatted = this._formatHalves(e.target.value, e.data);
                     if (e.target.value !== formatted) e.target.value = formatted;
@@ -792,6 +787,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // which marks signup_verifications/{phone} as verified and opens Create Account here.
         WA_NUMBER: '2347089319883',
         CODE_TTL_MS: 20 * 60 * 1000,
+        VERIFIED_TTL_MS: 60 * 60 * 1000, // after the dashboard confirms a number they have this long to finish; then they verify again
 
         _pendingVerification() {
             try { return JSON.parse(localStorage.getItem('pika_signup_code')); } catch (e) { return null; }
@@ -803,10 +799,28 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (e) { /* private mode: the code just isn't remembered */ }
         },
         _verifiedOnThisPhone(phone) {
+            const m = this._verifiedMem;
+            if (m && m.phone === phone && Date.now() - m.at < this.VERIFIED_TTL_MS) return true;
             try {
                 const v = JSON.parse(localStorage.getItem('pika_verified_phone'));
-                return !!v && v.phone === phone && Date.now() - v.at < 24 * 3600000;
+                return !!v && v.phone === phone && Date.now() - v.at < this.VERIFIED_TTL_MS;
             } catch (e) { return false; }
+        },
+        // Confirmed on the dashboard, and not too long ago
+        _verifiedFresh(d) {
+            if (!d || !d.verified) return false;
+            return Date.now() - DB._normalizeTimestamp(d.verifiedAt).getTime() < this.VERIFIED_TTL_MS;
+        },
+        // They took more than an hour after being confirmed: tell them, and start a new check
+        async _verificationExpired(phone, purpose) {
+            this._verifiedMem = null;
+            try { localStorage.removeItem('pika_verified_phone'); } catch (e) { /* fine */ }
+            this._savePending(null);
+            say('Your number check expired after 1 hour. Please verify again.', 'Verify again');
+            this.showLoader();
+            try { await this.startPhoneVerification(phone, purpose); }
+            catch (error) { console.error('Could not start a new number check:', error); this.showView('onboarding-step-1'); }
+            finally { this.hideLoader(); }
         },
         _verificationRef(phone) { return window.fb.doc(window.fb.db, 'signup_verifications', phone); },
 
@@ -817,8 +831,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (pending) {
                 const snap = await window.fb.getDoc(this._verificationRef(phone));
                 const d = snap.exists() ? snap.data() : null;
-                if (d && d.verified && d.code === pending.code) { this._pending = pending; return this._phoneVerified(phone); }
-                if (!d || d.code !== pending.code) pending = null; // replaced since: start over
+                if (d && d.verified && d.code === pending.code && this._verifiedFresh(d)) { this._pending = pending; return this._phoneVerified(phone); }
+                if (!d || d.code !== pending.code || d.verified) pending = null; // replaced, or confirmed too long ago: start over
             }
             if (!pending) pending = await this._newSignupCode(phone, purpose);
             this._showVerification(pending);
@@ -851,7 +865,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (this._waUnsub) this._waUnsub();
             this._waUnsub = window.fb.onSnapshot(this._verificationRef(pending.phone), (snap) => {
                 const d = snap.exists() ? snap.data() : null;
-                if (d && d.verified && d.code === pending.code) this._phoneVerified(pending.phone);
+                if (d && d.verified && d.code === pending.code && this._verifiedFresh(d)) this._phoneVerified(pending.phone);
             }, (error) => console.error('Could not watch the number check:', error));
         },
 
@@ -878,6 +892,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!reset) {
                 this._pending = null;
                 this._savePending(null);
+                this._verifiedMem = { phone, at: Date.now() };
                 try { localStorage.setItem('pika_verified_phone', JSON.stringify({ phone, at: Date.now() })); } catch (e) { /* fine */ }
             } // a PIN reset keeps its record until the new PIN is saved, so closing the app here loses nothing
             const status = document.getElementById('wa-status');
@@ -920,6 +935,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.showView('onboarding-step-1');
                 return;
             }
+            try {
+                const check = await window.fb.getDoc(this._verificationRef(phone));
+                const confirmed = check.exists() ? check.data() : null;
+                if (!confirmed || confirmed.code !== pending.code || !this._verifiedFresh(confirmed)) { await this._verificationExpired(phone, 'reset'); return; }
+            } catch (e) { /* offline: saving below says so */ }
             this.showLoader();
             try {
                 const userRef = window.fb.doc(window.fb.db, 'users', phone);
@@ -965,11 +985,16 @@ document.addEventListener('DOMContentLoaded', () => {
         async _restorePhoneVerification() {
             const p = this._pendingVerification();
             if (!p || !p.phone) return;
-            if (Date.now() - p.createdAt > this.CODE_TTL_MS * 3) { this._savePending(null); return; }
+            if (Date.now() - p.createdAt > this.CODE_TTL_MS + this.VERIFIED_TTL_MS) { this._savePending(null); return; } // too old to still be good, confirmed or not
             try {
                 const snap = await window.fb.getDoc(this._verificationRef(p.phone));
                 const d = snap.exists() ? snap.data() : null;
-                if (d && d.verified && d.code === p.code) { this._pending = p; this._phoneVerified(p.phone); return; }
+                if (d && d.verified && d.code === p.code) {
+                    if (this._verifiedFresh(d)) { this._pending = p; this._phoneVerified(p.phone); return; }
+                    this._savePending(null); // confirmed more than an hour ago: they start again
+                    say('Your number check expired after 1 hour. Please verify again.', 'Verify again');
+                    return;
+                }
             } catch (e) { /* offline: show the code anyway */ }
             this._showVerification(p);
         },
@@ -1016,7 +1041,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         _applyLink(link) {
             const user = this.state.user;
-            ['businessPhone', 'businessName', 'businessType'].forEach(k => { delete user[k]; });
+            ['businessPhone', 'businessName', 'businessType', 'businessLowStock'].forEach(k => { delete user[k]; });
             if (link && link.businessPhone) {
                 user.businessPhone = link.businessPhone;
                 user.businessName = link.businessName || '';
@@ -1035,6 +1060,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 const hadBusiness = !!user.businessPhone;
                 const link = snap.exists() ? snap.data() : null;
                 this._applyLink(link);
+                if (link && link.businessPhone) {
+                    try { // the admin's own low stock level, for the labels on the products they see
+                        const business = await window.fb.getDoc(window.fb.doc(window.fb.db, 'users', link.businessPhone));
+                        const level = business.exists() ? Number(business.data().lowStockLevel) : 0;
+                        if (level >= 1) user.businessLowStock = level;
+                    } catch (e) { /* the usual level of 7 applies */ }
+                }
                 await DB.saveUser(user, false);
                 if (link && link.businessPhone) return 'linked';
                 return hadBusiness ? 'removed' : 'waiting';
@@ -1501,6 +1533,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     : (!business && type !== 'Salesperson') ? e.businessNameInput : !type ? document.getElementById('business-type-options') : e.createPinInput;
                 await this._needs(missing, missing === e.createPinInput ? 'Your PIN must be 6 numbers.' : 'Fill in every box.', 'Check your details'); return;
             }
+            if (!this._verifiedOnThisPhone(this.state.tempPhone)) { await this._verificationExpired(this.state.tempPhone, 'signup'); return; }
 
             this.showLoader();
             const uid = window.fb.auth.currentUser ? window.fb.auth.currentUser.uid : null;
@@ -2383,8 +2416,13 @@ document.addEventListener('DOMContentLoaded', () => {
             let filteredProducts = allProducts;
 
             // Apply tab filter first
+            const lowLevel = this._lowStockLevel();
+            const isLow = (p) => p.stock > 0 && p.stock < lowLevel;
+            this._setTabCount('restock', 'Low stock', allProducts.filter(isLow).length);
+            this._setTabCount('outofstock', 'Out of stock', allProducts.filter(p => p.stock <= 0).length);
+            this.elements.lowStockSettingsBtn.style.display = this._isSalesperson() ? 'none' : ''; // only the admin sets it
             if (filterType === 'restock') {
-                filteredProducts = allProducts.filter(p => p.stock > 0 && p.stock < 7);
+                filteredProducts = allProducts.filter(isLow);
             } else if (filterType === 'outofstock') {
                 filteredProducts = allProducts.filter(p => p.stock <= 0);
             }
@@ -2396,11 +2434,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (allProducts.length > 0) {
                 this.elements.productSearchContainer.style.display = 'block';
-                document.querySelector('#products-view .product-filter-tabs').style.display = 'flex';
+                document.getElementById('product-tabs-row').style.display = 'flex';
                 this.elements.productSkuCount.style.display = 'block';
             } else {
                 this.elements.productSearchContainer.style.display = 'none';
-                document.querySelector('#products-view .product-filter-tabs').style.display = 'none';
+                document.getElementById('product-tabs-row').style.display = 'none';
                 this.elements.productSkuCount.style.display = 'none';
             }
 
@@ -2410,7 +2448,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else if (searchText) {
                     this.elements.productGrid.innerHTML = '<p class="empty-state">No products match your search.</p>';
                 } else if (filterType === 'restock') {
-                    this.elements.productGrid.innerHTML = '<p class="empty-state">No products below 7 units yet</p>';
+                    this.elements.productGrid.innerHTML = `<p class="empty-state">No products below ${lowLevel} units yet</p>`;
                 } else if (filterType === 'outofstock') {
                     this.elements.productGrid.innerHTML = '<p class="empty-state">No products currently out of stock</p>';
                 } else if (filterType !== 'all') {
@@ -2431,7 +2469,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (product.stock <= 0) {
                     badgeHtml = '<div class="out-of-stock-badge">Out of Stock</div>';
                 } else if (this._isSalesperson()) {
-                    if (product.stock < 7) badgeHtml = '<div class="restock-badge">Low stock!</div>';
+                    if (isLow(product)) badgeHtml = '<div class="restock-badge">Low stock!</div>';
                 } else if (product.isSalesperson) {
                     // a salesperson's only setup step is the picture, which usually arrives with the transfer now
                     if (!product.image) {
@@ -2445,7 +2483,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     badgeHtml = '<div class="setup-badge">Add barcode & price</div>';
                 } else if (product.needsSetup === 'price') {
                     badgeHtml = '<div class="setup-badge">New: Add price</div>';
-                } else if (product.stock < 7) {
+                } else if (isLow(product)) {
                     badgeHtml = '<div class="restock-badge">Low stock!</div>';
                 }
 
@@ -2484,6 +2522,48 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 this.elements.productGrid.appendChild(card);
             });
+        },
+
+        // --- Low stock level: how few units left makes a product "Low stock" (the admin sets it; a salesperson sees theirs) ---
+        _lowStockLevel() {
+            const u = this.state.user || {};
+            const level = Number(u.type === 'Salesperson' ? u.businessLowStock : u.lowStockLevel);
+            return level >= 1 ? Math.floor(level) : 7;
+        },
+
+        // "Low stock" / "Out of stock" tabs show how many products are in them
+        _setTabCount(filter, label, count) {
+            const btn = document.querySelector(`#product-filter-tabs [data-filter="${filter}"]`);
+            if (!btn) return;
+            btn.textContent = `${label} `;
+            const badge = document.createElement('span');
+            badge.className = 'tab-count';
+            badge.textContent = String(count);
+            btn.appendChild(badge);
+        },
+
+        openLowStockSettings() {
+            const input = document.getElementById('low-stock-input');
+            input.value = String(this._lowStockLevel());
+            this.showModal('low-stock-modal');
+            setTimeout(() => { input.focus(); input.select(); }, 150);
+        },
+
+        async handleSaveLowStock() {
+            const input = document.getElementById('low-stock-input');
+            const level = parseInt(input.value, 10);
+            if (!(level >= 1)) { await this._needs(input, 'Enter a number from 1 up, like 7.', 'Check your entry'); return; }
+            const user = this.state.user;
+            user.lowStockLevel = level;
+            this.hideModal();
+            try {
+                await DB.saveUser(user, false);
+                if (this.state.firebaseReady) await window.fb.setDoc(window.fb.doc(window.fb.db, 'users', user.phone), { lowStockLevel: level }, { merge: true });
+            } catch (error) {
+                console.error('Could not save the low stock level:', error);
+            }
+            await this.renderProducts(this.elements.productSearchInput.value);
+            this.showToast(`Low stock now shows below ${level}.`);
         },
 
         // `fallbackData` is the older, smaller shape: used when the database rules refuse the richer one,
@@ -2835,15 +2915,6 @@ document.addEventListener('DOMContentLoaded', () => {
             );
         },
 
-        showNewSaleEntryChoice() {
-            this.hideModal();
-            this.elements.entryChoiceTitle.textContent = 'New Sale Entry';
-            this.elements.entryChoiceParagraph.textContent = 'How would you like to log this sale?';
-            this.elements.manualEntryBtn.style.display = this._isSalesperson() ? 'none' : 'block'; // a salesperson sells only the admin's products
-            this.elements.retrySellScanBtn.style.display = 'none';
-            this.showModal('entry-choice-modal');
-        },
-
         handleSellScanNotFound(isTimeout) {
             this._logToFirestore('scan_logs', null, {
                 userId: this.state.user.phone,
@@ -2856,10 +2927,6 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.scanFeedback.textContent = 'Product not found.';
             setTimeout(() => {
                 if (this.state.isScanCanceled) return;
-                this.elements.entryChoiceTitle.textContent = 'Not Found';
-                this.elements.entryChoiceParagraph.textContent = 'This item is not in your products.';
-                this.elements.manualEntryBtn.style.display = 'none';
-                this.elements.retrySellScanBtn.style.display = 'block';
                 this.showModal('entry-choice-modal');
             }, isTimeout ? 0 : 1000); // Show modal immediately on timeout
         },
@@ -3415,55 +3482,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         },
 
-        async handleManualSale(e) {
-            e.preventDefault();
-            if (this._isSalesperson()) { say('Pick a product from your admin\'s products.', 'Products only'); return; }
-            const name = this.elements.manualProductName.value.trim();
-            const price = this.unformatNumber(this.elements.manualProductPrice.value);
-            const quantity = this.unformatNumber(this.elements.manualSaleQuantity.value);
-            const unit = this.elements.manualProductUnit.value;
-            if (!name) { await this._needs(this.elements.manualProductName, 'Add the product name.', 'Check your entry'); return; }
-            if (this.elements.manualProductPrice.value.trim() === '' || isNaN(price)) { await this._needs(this.elements.manualProductPrice, 'Add the price.', 'Check your entry'); return; }
-            if (isNaN(quantity) || quantity <= 0) { await this._needs(this.elements.manualSaleQuantity, 'Add how many.', 'Check your entry'); return; }
-
-            const allProducts = await DB.getAllProducts();
-            let productToSell = allProducts.find(p => p.name.toLowerCase() === name.toLowerCase());
-            if (productToSell) {
-                if (productToSell.stock < quantity) {
-                    await this._needs(this.elements.manualSaleQuantity, `Only ${this.formatNumber(productToSell.stock)} ${productToSell.unit} of ${name} left.`, 'Not enough stock');
-                    return;
-                }
-                productToSell.stock -= quantity;
-            } else {
-                productToSell = { id: Date.now(), name, price, stock: 0, unit, image: null, barcode: null, createdAt: new Date(), supplierId: null };
-                this.showToast(`${name} is new. It was added to your products with 0 stock.`);
-            }
-
-            await DB.saveProduct(productToSell);
-            const sale = { id: Date.now() + 1, productId: productToSell.id, productName: name, quantity, price, total: Math.round(price * quantity), timestamp: new Date(), image: productToSell.image, sharedAsLog: false, unit };
-            await DB.addSale(sale);
-            this._logSale(sale, productToSell);
-
-            if (this.state.firebaseReady && productToSell.supplierId && this.state.user.phone && productToSell.stockVisible !== false) {
-                try {
-                    const retailerDocRef = window.fb.doc(window.fb.db, `retailer_stocks/${productToSell.supplierId}/supplied_retailers/${this.state.user.phone}`);
-                    const updateData = {};
-                    const firebaseProductName = productToSell.originalName || productToSell.name;
-                    updateData[`products.${firebaseProductName}.stock`] = productToSell.stock;
-                    updateData[`products.${firebaseProductName}.lastSaleTimestamp`] = window.fb.serverTimestamp();
-                    updateData.lastUpdate = window.fb.serverTimestamp();
-
-                    await window.fb.updateDoc(retailerDocRef, updateData);
-                } catch (error) {
-                    console.error("Failed to sync manual sale to Firebase:", error);
-                }
-            }
-
-            this.hideModal();
-            await this.updateDashboard();
-            await this.renderProducts();
-            this.navigateTo('home-view');
-        },
         async showProductSelection() {
             this.hideModal();
             this.state.productSelectionMode = true;
