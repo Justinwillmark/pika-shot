@@ -1717,11 +1717,11 @@ button:focus { outline: none; }
 .reg-segment button { min-height: 40px; }
 a.privacy-link-trigger { display: inline-block; padding: 8px 2px; margin: -8px 0; }
 
-/* Products: the filter tabs, their counts and colours, and the low stock setting beside them */
-.product-tabs-row { display: flex; align-items: center; gap: 8px; padding: 0 20px 12px; }
-.product-tabs-row .product-filter-tabs { flex: 1; min-width: 0; padding: 0; justify-content: flex-start; }
-.tabs-settings-btn { flex: none; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 1.5px solid var(--border-color); border-radius: 50%; background: var(--surface-color); color: var(--text-light); cursor: pointer; transition: background-color 0.2s, color 0.2s; }
-.tabs-settings-btn:active { background: #f0f0f0; color: var(--primary-color); }
+/* Products: the low stock setting sits quietly inside the search bar; the filter tabs keep their centred row, with counts and colours */
+.search-field { position: relative; margin-bottom: 12px; }
+.search-field #product-search-input { margin-bottom: 0; padding-right: 44px; }
+.search-settings-btn { position: absolute; top: 50%; right: 5px; transform: translateY(-50%); width: 34px; height: 34px; padding: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 50%; background: transparent; color: #b4bbc2; cursor: pointer; transition: color 0.2s; -webkit-tap-highlight-color: transparent; }
+.search-settings-btn:hover, .search-settings-btn:active, .search-settings-btn:focus-visible { color: var(--primary-color); outline: none; }
 .tab-count { display: inline-block; min-width: 1.4em; margin-left: 2px; padding: 0 6px; border-radius: 999px; background: rgba(0, 0, 0, 0.07); font-size: 0.72rem; font-weight: 700; line-height: 1.5; text-align: center; font-variant-numeric: tabular-nums; }
 .filter-tab-btn[data-filter="restock"] .tab-count { background: rgba(240, 173, 78, 0.22); color: #9a6100; }
 .filter-tab-btn[data-filter="outofstock"] .tab-count { background: rgba(208, 2, 27, 0.1); color: var(--danger-color); }
@@ -1729,9 +1729,8 @@ a.privacy-link-trigger { display: inline-block; padding: 8px 2px; margin: -8px 0
 .filter-tab-btn[data-filter="outofstock"].active { background-color: var(--danger-color); border-color: var(--danger-color); color: #fff; }
 .filter-tab-btn.active .tab-count { background: rgba(255, 255, 255, 0.3); color: #fff; }
 @media (max-width: 360px) {
-    .product-tabs-row { padding: 0 12px 12px; }
-    .product-tabs-row .product-filter-tabs { gap: 6px; }
-    .product-tabs-row .filter-tab-btn { padding: 6px 9px; font-size: 0.8rem; }
+    #product-filter-tabs { gap: 6px; padding: 0 12px 12px; }
+    #product-filter-tabs .filter-tab-btn { padding: 6px 9px; font-size: 0.8rem; }
     .tab-count { padding: 0 5px; font-size: 0.7rem; }
 }
 

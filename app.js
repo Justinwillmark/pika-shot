@@ -1230,13 +1230,35 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         },
 
+        // How far this phone's clock is ahead of the online clock (behind is negative), as last measured. Times that every phone
+        // must agree on, like the "recently edited" line, use the online clock, so they match even when a phone's own clock is off.
+        _clockOffsetMs() {
+            if (typeof this._clockOffset !== 'number') {
+                let saved = 0;
+                try { saved = Number(localStorage.getItem('pika_clock_offset')) || 0; } catch (e) { /* nothing saved */ }
+                this._clockOffset = Math.abs(saved) < 86400000 ? saved : 0;
+            }
+            return this._clockOffset;
+        },
+        _serverNow() { return Date.now() - this._clockOffsetMs(); },
+        _setClockOffset(off) {
+            if (!Number.isFinite(off) || Math.abs(off) >= 86400000) return;
+            const before = this._clockOffsetMs();
+            this._clockOffset = off;
+            try { localStorage.setItem('pika_clock_offset', String(Math.round(off))); } catch (e) { /* the next open measures it again */ }
+            // lines drawn with the older figure are drawn again
+            if (Math.abs(off - before) > 2000 && this.state.user && this.elements.productSearchInput) this.renderProducts(this.elements.productSearchInput.value);
+        },
+
         // Sales are stamped with the phone's clock, so a wrong clock would put them on the wrong day on every phone
         async _checkClock(ref) {
             try {
                 const snap = await window.fb.getDocFromServer(ref);
                 const server = DB._stampMs(snap.exists() ? snap.data().lastSeen : null);
                 const off = Date.now() - server;
-                if (!server || Math.abs(off) < 5 * 60000) return;
+                if (!server) return;
+                this._setClockOffset(off);
+                if (Math.abs(off) < 5 * 60000) return;
                 if (Date.now() - (Number(localStorage.getItem('pika_clock_warned')) || 0) < 24 * 3600000) return;
                 localStorage.setItem('pika_clock_warned', String(Date.now()));
                 const minutes = Math.round(Math.abs(off) / 60000);
@@ -2699,11 +2721,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (allProducts.length > 0) {
                 this.elements.productSearchContainer.style.display = 'block';
-                document.getElementById('product-tabs-row').style.display = 'flex';
+                document.getElementById('product-filter-tabs').style.display = 'flex';
                 this.elements.productSkuCount.style.display = 'block';
             } else {
                 this.elements.productSearchContainer.style.display = 'none';
-                document.getElementById('product-tabs-row').style.display = 'none';
+                document.getElementById('product-filter-tabs').style.display = 'none';
                 this.elements.productSkuCount.style.display = 'none';
             }
 
@@ -2796,11 +2818,12 @@ document.addEventListener('DOMContentLoaded', () => {
             return level >= 1 ? Math.floor(level) : 7;
         },
 
-        // "Low stock" / "Out of stock" tabs show how many products are in them
+        // "Low stock" / "Out of stock" tabs show how many products are in them (nothing when there are none)
         _setTabCount(filter, label, count) {
             const btn = document.querySelector(`#product-filter-tabs [data-filter="${filter}"]`);
             if (!btn) return;
-            btn.textContent = `${label} `;
+            btn.textContent = count > 0 ? `${label} ` : label;
+            if (!(count > 0)) return;
             const badge = document.createElement('span');
             badge.className = 'tab-count';
             badge.textContent = String(count);
@@ -3340,7 +3363,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 needsSetup: null,
             };
 
-            if (isEditing) productData.editedAt = Date.now(); // every edit starts the product's "recently edited" line afresh
+            if (isEditing) productData.editedAt = this._serverNow(); // every edit starts the product's "recently edited" line afresh (online time, so every phone agrees)
 
             const form = this.elements;
             if (!productData.name) { await this._needs(form.productNameInput, 'Add the product name.', 'Check your entry'); return; }
@@ -4042,9 +4065,10 @@ document.addEventListener('DOMContentLoaded', () => {
         _productEditMarkHtml(product) {
             const editedAt = Number(product.editedAt);
             if (!editedAt) return '';
-            const elapsed = Date.now() - editedAt;
-            if (elapsed >= this.PRODUCT_EDIT_MARK_MS || elapsed < -60000) return ''; // expired, or from a badly set clock
-            return `<div class="product-edit-timer" data-expires="${editedAt + this.PRODUCT_EDIT_MARK_MS}" style="animation-duration: ${this.PRODUCT_EDIT_MARK_MS / 1000}s; animation-delay: -${(Math.max(0, elapsed) / 1000).toFixed(2)}s"></div>`;
+            const elapsed = this._serverNow() - editedAt; // both on the online clock
+            if (elapsed >= this.PRODUCT_EDIT_MARK_MS || elapsed < -60000) return ''; // expired, or stamped far in the future
+            const expires = Date.now() + (this.PRODUCT_EDIT_MARK_MS - Math.max(0, elapsed)); // on this phone's own clock, for the tick that removes it
+            return `<div class="product-edit-timer" data-expires="${Math.round(expires)}" style="animation-duration: ${this.PRODUCT_EDIT_MARK_MS / 1000}s; animation-delay: -${(Math.max(0, elapsed) / 1000).toFixed(2)}s"></div>`;
         },
 
         tickEditWindows() {
