@@ -3,7 +3,7 @@
 ## Publishing
 - Quick way (as before): publish the project folder as it is.
 - Faster, harder-to-copy way: `npm install` once, then `npm run deploy`. It shrinks and scrambles the scripts into `dist/` and publishes that.
-- Every release: change `CACHE_NAME` in `serviceworker.js` (v27 -> v28 ...) so phones fetch the new files.
+- Every release: change `CACHE_NAME` in `serviceworker.js` (v31 -> v32 ...) so phones fetch the new files.
 
 ## Settings in one place (`config.js`)
 | Setting | What it does |
@@ -56,10 +56,53 @@ clearing browsing data or switching phones the picture comes back from the thumb
 - The one message in the Profile card comes from `nudges.js`. All the words, and when each one applies, are in the `CATALOG` list at the top of that file.
 - Three kinds take turns, never the same kind twice in a row: free airtime, business insights, motivation (light Pidgin is only used in motivation).
 - It changes after every 5 actions (sales, scans, transfers, receipts shared or printed, in any mix). Each person gets their own shuffled order.
-- Two exceptions change it straight away: a kind nudge when the app opens after a day or more without a sale, and a welcome after the first sale.
-- Keep each message to 8 words or fewer with one emoji.
-- "Need money for stock? Get help" is shown (at most once every 3 days, and never right after another insight) to anyone with more than 4 products low or out of stock, and to a top seller whose sales fell: 3 of the 7 days before had 100+ sales, yesterday and the day before were each under 50, and more than 2 products have been low or out of stock for more than 2 days. Tapping it opens Pika's WhatsApp line (`WA_NUMBER` in `app.js`) with the words "I'm a PikaShot top seller and need money for stock."
-- When a new message arrives by itself (the 5th action, a welcome, or the nudge on app open) the homepage capsule shakes for 30 seconds, or until the Profile is opened.
+- Keep each message to 8 words or fewer with one emoji, in plain words.
+- When a new message arrives by itself (the 5th action, a welcome, or a nudge on app open) the menu (hamburger) button gets a warm dot and its three lines ripple for 30 seconds.
+  The dot stays until the Profile is opened.
+- A soft double beep goes with it, in two strengths (`_playNudgeChime` in `app.js`; the numbers are in one place if you want them louder or quieter):
+  - **Important** messages beep clearly: money owed, stock running out or customers short, "Need money for stock", a win (a record day, a customer paying back) and the welcome
+    (`chime: true` in `CATALOG`, about 1 message in 5). At most 4 a day, at least 15 minutes after the last important one.
+  - **All the other** messages (tips, encouragement) beep about 5 times softer (14 dB down). At most 6 a day, at least 10 minutes after the last beep of any kind, so a quiet one never follows an important one closely.
+  - An important beep is never held back by quiet ones. Both wait until the person is out of the scanner (so they never sit on top of scan beeps; if both kinds are waiting, the important one plays),
+    and neither plays, nor is counted, if the phone has not been touched since the app opened (browsers do not allow sound before a tap).
+- These change straight away instead of waiting for 5 actions: a kind nudge when the app opens after a day or more without a sale, the welcome after a first sale,
+  and a credit reminder (below) when the app opens.
+
+**Things people can act on** (they go first, but never two insights in a row, and not while someone is serving customers: 4 or more sales in the last half hour)
+- A customer owes on credit: after 3 days unpaid, "{name} owes {amount} since {day}", then again every 3 days until "Fully repaid?" is pressed (each customer has their own 3 days, the biggest debt first, never late at night).
+  A tap opens Customers at that credit card. When the app opens and a reminder is due, it is said then (once a day).
+- "You're running low on {product}" (best seller first, each product at most every 2 days), and "{product} is out of stock. Restock soon" (only for products that sold in the last 30 days). A tap opens My Products on the Low stock or Out of stock tab, at that product.
+- Wholesalers and their salespeople: "{customer} is low on / out of {product}" (nothing left first, each customer at most every 3 days), and "{n} customers need stock" when 3 or more are low. A tap opens Customers at that customer.
+  "Low" means under 10 units, the same line where the customer card turns red.
+- "Need money for stock? Get help" is shown (at most once every 3 days) to anyone with more than 4 products low or out of stock, and to a top seller whose sales fell: 3 of the 7 days before had 100+ sales, yesterday and the day before were each under 50, and more than 2 products have been low or out of stock for more than 2 days. Tapping it opens Pika's WhatsApp line (`WA_NUMBER` in `app.js`) with the words "I'm a PikaShot top seller and need money for stock."
+
+**How the rest is chosen** (weights in `CATALOG` and `kindWeight` in `nudges.js`)
+- New accounts (first week, or under 15 sales) hear more about how to earn; a slow day or a long break gets more encouragement; a fresh win (a record day, a customer paying back, 15+ sales) gets celebrated first.
+- Closer to a goal counts for more (5 sales from 100, "tomorrow makes 7 days in a row"); a streak about to break says so; evenings give the day's summary; Mondays and the start of a month give a fresh-start message.
+- The more often a message has been shown the less often it comes up, and the last 8 are not repeated straight away.
+- "Request product transfer when you restock" is for wholesalers and retailers (not salespeople) and comes up more when stock is low.
+- Customers' stock for these messages is kept on the phone (`pika_custstock_<business phone>`), refreshed whenever the Customers tab is open and, in the background, at most every 12 hours when the app opens (one read of that business's customer list, only for wholesalers and their salespeople). Anything older than 3 days is ignored.
+
+## Sounds (all made in `app.js`, no sound files)
+- Good scan: one short, soft blip (`_playScanBeep`): a pure E6 with a faint octave below for warmth and above for sparkle, starting gently and fading smoothly. It replaced a sharp 2300 Hz square-wave beep.
+- Transfer accepted: a rising four-note chime (`_playTransferChime`).
+- New profile message: the double beep described above (`_playNudgeChime`).
+- To change how a sound feels, edit the notes in its function: `freq` (pitch), `vol` (loudness), `attack` (how gently it starts) and `release` (how long it fades).
+
+## Offline banner
+- When the phone has no internet, the teal part of the home page shows "You're offline. Reconnect to use PikaShot and see new records". When it comes back it says "You're back online" for 2 seconds, then goes. It follows the phone's own online/offline signal, so a Wi-Fi connection with no data behind it still counts as online.
+- The teal part scrolls away with the page; the banner stays pinned at the top (on its own teal strip) while the page scrolls under it.
+
+## The Profile
+- Activity card (today's scans out of 100+, and the one message), then an "Account" row that is folded away every time the Profile opens. Opening it shows Name, Business, Location, Phone, Type and Logout. Cancel and Get help sit lower while it is folded.
+
+## The phone's Back button
+- A modal has a step of its own in the browser's history, so Back closes it (by pressing its own Close / Cancel button, so anything waiting on it, such as a PIN prompt, is let go) instead of leaving the page. A message or question pop-up closes on Back too, and nothing behind it moves.
+- Back with nothing open goes to the page before, as it always did. A modal that can not be closed (a salesperson waiting to be confirmed) lets Back go on past it.
+- When adding a modal: give its Close / Cancel button a `data-back` attribute (in `index.html`), and open and close it with `showModal` / `hideModal`. In code, use `this._back()` instead of `history.back()`.
+
+## Salespeople and customers
+- A salesperson's Customers tab now also lists the customers' stock cards of their business (read only: no "Remove from list"), as well as the credit they recorded. It reads the customer list once and reuses it for 10 minutes (Refresh reads it again). Firestore rules already allowed this.
 
 ## Dashboard: reading GPS
 - The Users tab and the users CSV turn each GPS point into the nearest Lagos area (the 20 areas people choose at sign-up), say whether it fits the place they chose,

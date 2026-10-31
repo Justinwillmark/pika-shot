@@ -616,34 +616,48 @@ button:focus { outline: none; }
 
 /* Home View / Dashboard Styles */
 #home-view, #all-sales-view { user-select: none; -webkit-user-select: none; }
-#home-view.page { padding-bottom: 80px; background: linear-gradient(180deg, var(--primary-color) 200px, var(--background-color) 200px); }
+@property --teal-h { syntax: '<length>'; inherits: false; initial-value: 200px; }
+#home-view.page { --teal-h: 200px; padding-bottom: 80px; background: linear-gradient(180deg, var(--primary-color) var(--teal-h), var(--background-color) var(--teal-h)); background-attachment: local; transition: --teal-h 0.3s ease; } /* (local: the teal scrolls away with the page) */
+#home-view.page.is-offline { --teal-h: 290px; } /* the teal grows to hold the offline banner */
+
+/* Offline banner, at the top of the teal part of the home page. It stays put while the page scrolls under it (its strip is teal, so it joins the teal above). */
+.offline-banner { position: sticky; top: 0; z-index: 8; padding: 14px 20px 8px; background: var(--primary-color); }
+.offline-banner[hidden] { display: none; }
+.offline-banner-inner { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 14px; color: #fff; background: rgba(255, 255, 255, 0.16); border: 1px solid rgba(255, 255, 255, 0.28); backdrop-filter: blur(4px); animation: offline-in 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.offline-icon { flex-shrink: 0; box-sizing: border-box; width: 36px; height: 36px; padding: 8px; border-radius: 50%; background: rgba(255, 255, 255, 0.2); }
+.offline-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.offline-text strong { font-size: 0.95rem; font-weight: 700; }
+.offline-text span { font-size: 0.78rem; line-height: 1.3; opacity: 0.88; }
+.offline-banner.is-back .offline-banner-inner { background: rgba(255, 255, 255, 0.94); color: var(--primary-dark); border-color: transparent; }
+.offline-banner.is-back .offline-icon { background: rgba(0, 140, 149, 0.12); }
+@keyframes offline-in { from { opacity: 0; transform: translateY(-10px) scale(0.98); } to { opacity: 1; transform: none; } }
 .home-header { padding: 24px 20px; color: white; display: flex; justify-content: space-between; align-items: flex-start; }
 .home-header p { font-size: clamp(0.85rem, 2.5vw, 0.9rem); opacity: 0.8; }
 .home-header h2 { font-size: clamp(1.5rem, 5vw, 1.75rem); font-weight: 700; margin-top: 4px; }
 
-.scan-emoji {
-    display: inline-block;
-    font-size: 0.75rem;
+/* A message you have not read yet: a warm dot on the menu button. It springs in, gives off a soft ring and the three lines ripple
+   for 30 seconds; after that it stays as a quiet dot until the Profile is opened. */
+.menu-btn svg line { transform-box: fill-box; transform-origin: left center; }
+.menu-btn.has-nudge::after {
+    content: ''; position: absolute; top: 0; right: -1px; box-sizing: content-box; width: 9px; height: 9px;
+    border: 2px solid var(--surface-color); border-radius: 50%; background: linear-gradient(135deg, #ffb347, #ff5f4e);
+    animation: nudge-dot-in 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
-.home-scan-menu-trigger {
-    display: flex; align-items: center; gap: 3px; cursor: pointer; padding: 5px 8px; border-radius: 10px; background: rgba(255,255,255,0.15); backdrop-filter: blur(4px); transition: background 0.2s;
+.menu-btn.has-nudge.nudge-live::after { animation: nudge-dot-in 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) both, nudge-ring 2.4s ease-out 0.7s infinite; }
+.menu-btn.nudge-live svg line:nth-child(2) { animation: nudge-wave 2.6s ease-in-out infinite; }
+.menu-btn.nudge-live svg line:nth-child(1) { animation: nudge-wave 2.6s ease-in-out 0.12s infinite; }
+.menu-btn.nudge-live svg line:nth-child(3) { animation: nudge-wave 2.6s ease-in-out 0.24s infinite; }
+@keyframes nudge-dot-in { 0% { transform: scale(0); } 100% { transform: scale(1); } }
+@keyframes nudge-ring { 0% { box-shadow: 0 0 0 0 rgba(255, 95, 78, 0.55); } 70%, 100% { box-shadow: 0 0 0 9px rgba(255, 95, 78, 0); } }
+@keyframes nudge-wave { 0%, 34%, 100% { transform: scaleX(1); } 10% { transform: scaleX(0.55); } 22% { transform: scaleX(1.04); } }
+@media (prefers-reduced-motion: reduce) {
+    .menu-btn.has-nudge::after, .menu-btn.has-nudge.nudge-live::after { animation: none; }
+    .menu-btn.nudge-live svg line { animation: none; }
 }
-.home-scan-menu-trigger:active { background: rgba(255,255,255,0.25); }
-/* A new profile message has arrived: a gentle wiggle, then a rest, again and again (the app stops it after 30 seconds) */
-.home-scan-menu-trigger.nudge-shake { animation: nudge-wiggle 2.6s ease-in-out infinite; transform-origin: 50% 50%; }
-@keyframes nudge-wiggle {
-    0%, 28%, 100% { transform: none; }
-    3% { transform: rotate(-9deg) translateX(-1px); }
-    7% { transform: rotate(8deg) translateX(1px); }
-    11% { transform: rotate(-6deg); }
-    15% { transform: rotate(5deg); }
-    19% { transform: rotate(-3deg); }
-    23% { transform: rotate(2deg); }
-}
-@media (prefers-reduced-motion: reduce) { .home-scan-menu-trigger.nudge-shake { animation: none; } }
-.home-scan-menu-trigger span#home-scan-count {
-    font-size: 0.7rem; font-weight: 400; color: #fff;
-}
+
+/* The customer or product a message took you to */
+.focus-flash { animation: focus-flash 2.4s ease-out 1; border-radius: var(--border-radius); }
+@keyframes focus-flash { 0%, 50% { outline: 3px solid rgba(0, 140, 149, 0.9); outline-offset: 3px; } 100% { outline: 3px solid rgba(0, 140, 149, 0); outline-offset: 7px; } }
 
 .home-content { padding: 0 20px; }
 .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
@@ -1172,42 +1186,55 @@ button:focus { outline: none; }
 
 /* Profile Modal: a title, the airtime card, a plain list of details, two buttons. Small text stays light. */
 .profile-modal { padding: 10px 20px 20px; }
-.profile-bar { display: grid; grid-template-columns: 36px 1fr 36px; align-items: center; margin: 0 -10px 10px; }
+.profile-bar { display: grid; grid-template-columns: 36px 1fr 36px; align-items: center; margin: 0 -10px 16px; }
 .profile-bar-gap { width: 36px; }
 .profile-icon-btn { width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: #9aa2a9; display: flex; align-items: center; justify-content: center; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .profile-icon-btn:active { background: #f0f0f0; color: var(--primary-color); }
 .modal-content h2.profile-title { margin: 0; text-align: center; font-size: 1.1rem; font-weight: 700; color: var(--text-color); }
 
-.scan-tracker-container { padding: 14px; border-radius: 14px; background: #f5f8f8; text-align: left; }
-.airtime-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
-.airtime-title { font-size: 0.875rem; font-weight: 600; color: var(--text-color); }
-.airtime-count { font-size: 0.8rem; color: var(--text-light); font-variant-numeric: tabular-nums; }
+.scan-tracker-container { padding: 20px 18px 18px; border-radius: 16px; background: #f5f8f8; text-align: left; }
+.airtime-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+.airtime-title { font-size: 0.95rem; font-weight: 700; color: var(--text-color); }
+.airtime-count { font-size: 0.78rem; color: var(--text-light); font-variant-numeric: tabular-nums; }
 .airtime-count span { font-weight: 600; color: var(--text-color); }
-.scan-progress-bar { width: 100%; height: 6px; background-color: #e2eaea; border-radius: 3px; overflow: hidden; }
-.scan-progress { width: 0%; height: 100%; background: var(--primary-color); border-radius: 3px; transition: width 0.5s ease-out; }
+.scan-progress-bar { width: 100%; height: 8px; background-color: #e2eaea; border-radius: 4px; overflow: hidden; }
+.scan-progress { width: 0%; height: 100%; background: var(--primary-color); border-radius: 4px; transition: width 0.5s ease-out; }
 .scan-reward.is-link { cursor: pointer; justify-content: space-between; }
 .scan-reward.is-link::after { content: "\203A"; flex: none; margin-left: 8px; font-size: 1.4rem; line-height: 1; opacity: 0.6; }
-.scan-reward { display: flex; align-items: center; min-height: 2.7em; margin-top: 8px; font-size: 1rem; font-weight: 700; line-height: 1.35; color: var(--primary-color); animation: reward-in 0.45s ease-out; }
+.scan-reward { display: flex; align-items: center; min-height: 2.8em; margin-top: 18px; font-size: 1rem; font-weight: 700; line-height: 1.4; color: var(--primary-color); animation: reward-in 0.45s ease-out; }
 @keyframes reward-in {
     0% { transform: translateY(6px) scale(0.96); opacity: 0; }
     100% { transform: none; opacity: 1; }
 }
 @media (prefers-reduced-motion: reduce) { .scan-reward { animation: none; } }
 
-.profile-details { display: flex; flex-direction: column; margin: 12px 0 0; }
+/* The account details fold away (closed each time the profile opens); Logout lives inside */
+.profile-account { margin-top: 16px; border: 1px solid #e8edee; border-radius: 14px; overflow: hidden; }
+.profile-account-toggle { width: 100%; display: flex; align-items: center; gap: 10px; padding: 14px 16px; border: 0; background: transparent; font: inherit; text-align: left; color: var(--text-color); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.profile-account-toggle:active { background: #f5f8f8; }
+.profile-account-title { flex: none; font-size: 0.92rem; font-weight: 600; }
+.profile-account-name { flex: 1; min-width: 0; margin-left: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.85rem; color: #8c9399; text-align: right; }
+.profile-chevron { flex: none; color: #9aa2a9; transition: transform 0.25s ease; }
+.profile-account.open .profile-chevron { transform: rotate(180deg); }
+.profile-account-panel { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.28s ease; }
+.profile-account.open .profile-account-panel { grid-template-rows: 1fr; }
+.profile-account-body { min-height: 0; overflow: hidden; padding: 0 16px; }
+.profile-account.open .profile-account-body { padding-bottom: 16px; }
+.profile-details { display: flex; flex-direction: column; margin: 0 0 12px; border-top: 1px solid #eef0f1; }
 .profile-item { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 10px 0; border-top: 1px solid #eef0f1; }
 .profile-item:first-child { border-top: 0; }
 .profile-label { flex: none; font-size: 0.85rem; font-weight: 400; color: #8c9399; }
 .profile-value { min-width: 0; font-size: 0.95rem; font-weight: 600; color: var(--text-color); text-align: right; overflow-wrap: anywhere; }
+#logout-btn { width: 100%; min-height: 44px; padding: 10px 14px; font-size: 0.95rem; font-weight: 600; background: transparent; border: 1.5px solid rgba(208, 2, 27, 0.35); color: var(--danger-color); }
+#logout-btn:active { background: #ffebee; }
+@media (prefers-reduced-motion: reduce) { .profile-account-panel, .profile-chevron, .profile-actions { transition: none; } }
 
-.profile-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
-.profile-actions-row { display: flex; gap: 10px; }
-.profile-actions .btn { flex: 1; min-height: 44px; padding: 10px 14px; font-size: 0.95rem; font-weight: 600; display: flex; align-items: center; justify-content: center; text-decoration: none; }
-.profile-actions > .btn { flex: none; }
+/* Cancel and Get help sit lower while the account section is folded, so the card does not feel cramped */
+.profile-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 32px; transition: margin-top 0.28s ease; }
+.profile-modal.account-open .profile-actions { margin-top: 18px; }
+.profile-actions .btn { flex: none; min-height: 44px; padding: 10px 14px; font-size: 0.95rem; font-weight: 600; display: flex; align-items: center; justify-content: center; text-decoration: none; }
 #get-help-btn { background: var(--primary-color); color: #fff; }
 #get-help-btn:active { background: var(--primary-dark); }
-#logout-btn { background: transparent; border: 1.5px solid rgba(208, 2, 27, 0.35); color: var(--danger-color); }
-#logout-btn:active { background: #ffebee; }
 
 /* Receipt & Log Modals */
 .receipt-modal {

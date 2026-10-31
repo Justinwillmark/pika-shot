@@ -233,7 +233,7 @@
         </div>
 
         <header id="app-header" class="app-header" style="display: none;">
-            <button id="menu-btn" class="menu-btn">
+            <button id="menu-btn" class="menu-btn" aria-label="Menu">
                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
             </button>
             <button id="back-arrow-btn" class="back-btn" style="display: none;">
@@ -255,14 +255,19 @@
         <main id="main-content" class="main-content" style="display: none;">
 
             <div id="home-view" class="view page">
+                <div id="offline-banner" class="offline-banner" role="status" aria-live="polite" hidden>
+                    <div class="offline-banner-inner">
+                        <svg class="offline-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="1" y1="1" x2="23" y2="23"></line><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"></path><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"></path><path d="M10.71 5.05A16 16 0 0 1 22.58 9"></path><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg>
+                        <div class="offline-text">
+                            <strong id="offline-title">You're offline</strong>
+                            <span id="offline-sub">Reconnect to use PikaShot and see new records</span>
+                        </div>
+                    </div>
+                </div>
                 <div class="home-header">
                     <div>
                         <p id="welcome-date"></p>
                         <h2 id="welcome-name">Welcome!</h2>
-                    </div>
-                    <div id="home-scan-menu-trigger" class="home-scan-menu-trigger">
-                        <span class="scan-emoji">🎊</span>
-                        <span id="home-scan-count">0/100+</span>
                     </div>
                 </div>
 
@@ -436,7 +441,7 @@
             <h2>Product not found</h2>
             <p>No barcode was detected. Please ensure the barcode is clear and well-lit.</p>
             <div class="modal-actions modal-actions-inline">
-                <button id="cancel-add-scan-btn" class="btn btn-secondary">Cancel</button>
+                <button id="cancel-add-scan-btn" class="btn btn-secondary" data-back>Cancel</button>
                 <button id="retry-add-scan-btn" class="btn btn-primary">Try Again</button>
             </div>
         </div>
@@ -445,7 +450,7 @@
             <h2>Product Exists</h2>
             <p id="product-exists-message">This product is already in your inventory.</p>
             <div class="modal-actions">
-                <button id="product-exists-ok-btn" class="btn btn-primary">OK</button>
+                <button id="product-exists-ok-btn" class="btn btn-primary" data-back>OK</button>
             </div>
         </div>
 
@@ -454,7 +459,7 @@
             <img id="captured-image-preview" src="" alt="Captured product image">
             <div class="modal-actions">
                 <div class="modal-actions-inline">
-                    <button id="cancel-picture-btn" class="btn btn-secondary">Cancel</button>
+                    <button id="cancel-picture-btn" class="btn btn-secondary" data-back>Cancel</button>
                     <button id="retake-picture-btn" class="btn btn-secondary">Try Again</button>
                 </div>
                 <button id="confirm-picture-btn" class="btn btn-primary">Confirm</button>
@@ -493,7 +498,7 @@
                     <div class="form-group stock-group"><label for="product-stock">Stock</label><input type="text" id="product-stock" inputmode="decimal" placeholder="e.g., 24 or 2.5" enterkeyhint="done" required></div>
                 </div>
                  <div class="modal-actions modal-actions-inline">
-                    <button type="button" id="cancel-product-form-btn" class="btn btn-secondary">Cancel</button>
+                    <button type="button" id="cancel-product-form-btn" class="btn btn-secondary" data-back>Cancel</button>
                     <button type="submit" id="save-product-btn" class="btn btn-primary">Save Product</button>
                 </div>
             </form>
@@ -519,7 +524,7 @@
                     <input type="text" id="carton-subunit-quantity" inputmode="numeric" placeholder="e.g., 12" enterkeyhint="done" required>
                 </div>
                 <div class="modal-actions modal-actions-inline">
-                     <button type="button" id="cancel-carton-details-btn" class="btn btn-secondary">Cancel</button>
+                     <button type="button" id="cancel-carton-details-btn" class="btn btn-secondary" data-back>Cancel</button>
                      <button type="submit" class="btn btn-primary">Confirm</button>
                 </div>
             </form>
@@ -574,7 +579,7 @@
             </div>
             <p id="sale-offline-notice" class="offline-notice" style="display: none;">Please connect to the internet to confirm this sale.</p>
             <div class="modal-actions modal-actions-inline">
-                <button id="cancel-sale-btn" class="btn btn-secondary">Cancel</button>
+                <button id="cancel-sale-btn" class="btn btn-secondary" data-back>Cancel</button>
                 <button id="confirm-sale-btn" class="btn btn-primary">Confirm Sale</button>
             </div>
         </div>
@@ -590,7 +595,7 @@
             <div class="receipt-modal-actions">
                 <button id="share-log-btn" class="btn btn-primary" style="display: none;">Transfer Products</button>
                 <div class="receipt-modal-row">
-                    <button id="close-receipt-btn" class="btn btn-secondary">Close</button>
+                    <button id="close-receipt-btn" class="btn btn-secondary" data-back>Close</button>
                     <button id="print-receipt-btn" class="btn btn-secondary">Print</button>
                     <button id="share-receipt-btn" class="btn btn-secondary">Share</button>
                 </div>
@@ -604,7 +609,7 @@
                 <button id="retry-sell-scan-btn" class="btn btn-secondary">Try Again</button>
                 <button id="select-from-products-btn" class="btn btn-primary">Select from Products</button>
             </div>
-             <button type="button" id="cancel-entry-choice-btn" class="btn btn-secondary" style="margin-top: 12px;">Cancel</button>
+             <button type="button" id="cancel-entry-choice-btn" class="btn btn-secondary" style="margin-top: 12px;" data-back>Cancel</button>
         </div>
 
         <div id="phone-transfer-modal" class="modal-content transfer-modal" style="display:none;">
@@ -638,7 +643,7 @@
             </div>
 
             <div class="modal-actions modal-actions-inline">
-                <button id="cancel-phone-transfer-btn" class="btn btn-secondary">Cancel</button>
+                <button id="cancel-phone-transfer-btn" class="btn btn-secondary" data-back>Cancel</button>
                 <button id="confirm-phone-transfer-btn" class="btn btn-primary" disabled>Send</button>
             </div>
         </div>
@@ -647,7 +652,7 @@
             <h2>Invite Customer</h2>
             <p>Let's get this customer started. Should we send them a Pika App download link?</p>
             <div class="modal-actions modal-actions-inline">
-                <button id="cancel-invite-btn" class="btn btn-secondary">Cancel</button>
+                <button id="cancel-invite-btn" class="btn btn-secondary" data-back>Cancel</button>
                 <button id="send-invite-btn" class="btn btn-primary">Yes</button>
             </div>
         </div>
@@ -664,7 +669,7 @@
             </div>
             <p id="pin-confirm-error" class="pin-error" aria-live="polite"></p>
             <div class="modal-actions modal-actions-inline">
-                <button id="pin-confirm-cancel-btn" class="btn btn-secondary">Cancel</button>
+                <button id="pin-confirm-cancel-btn" class="btn btn-secondary" data-back>Cancel</button>
                 <button id="pin-confirm-ok-btn" class="btn btn-primary" disabled>Confirm</button>
             </div>
         </div>
@@ -679,7 +684,7 @@
             </div>
             <div class="receipt-modal-actions">
                 <div class="receipt-modal-row">
-                    <button id="decline-transfer-btn" class="btn btn-secondary">Decline</button>
+                    <button id="decline-transfer-btn" class="btn btn-secondary" data-back>Decline</button>
                     <button id="accept-transfer-btn" class="btn btn-primary">Accept</button>
                 </div>
             </div>
@@ -689,7 +694,7 @@
             <h2 id="confirm-log-title">Accept Transfer?</h2>
             <div id="confirm-log-content"></div>
             <div class="modal-actions modal-actions-inline">
-                <button id="reject-log-btn" class="btn btn-secondary">Decline</button>
+                <button id="reject-log-btn" class="btn btn-secondary" data-back>Decline</button>
                 <button id="accept-log-btn" class="btn btn-primary">Add to my products</button>
             </div>
         </div>
@@ -727,7 +732,7 @@
                     </ul>
                 </div>
                 <div class="modal-actions modal-actions-inline">
-                    <button type="button" id="sp-add-cancel" class="btn btn-secondary">Cancel</button>
+                    <button type="button" id="sp-add-cancel" class="btn btn-secondary" data-back>Cancel</button>
                     <button type="button" id="sp-add-go" class="btn btn-primary">Get code</button>
                 </div>
             </div>
@@ -740,7 +745,7 @@
                     <button type="button" id="sp-copy" class="btn btn-primary">Copy code</button>
                     <div class="modal-actions-inline">
                         <button type="button" id="sp-new" class="btn btn-secondary">New code</button>
-                        <button type="button" id="sp-done" class="btn btn-secondary">Done</button>
+                        <button type="button" id="sp-done" class="btn btn-secondary" data-back>Done</button>
                     </div>
                 </div>
             </div>
@@ -754,7 +759,7 @@
                 <input type="text" id="low-stock-input" inputmode="numeric" maxlength="4" placeholder="7" enterkeyhint="done">
             </div>
             <div class="modal-actions modal-actions-inline">
-                <button type="button" id="low-stock-cancel" class="btn btn-secondary">Cancel</button>
+                <button type="button" id="low-stock-cancel" class="btn btn-secondary" data-back>Cancel</button>
                 <button type="button" id="low-stock-save" class="btn btn-primary">Save</button>
             </div>
         </div>
@@ -797,7 +802,7 @@
                 <p>By using PikaShot you agree to this policy. If we change it, the latest version will always be here.</p>
             </div>
             <div class="modal-actions">
-                <button id="privacy-ok-btn" class="btn btn-primary">Got it</button>
+                <button id="privacy-ok-btn" class="btn btn-primary" data-back>Got it</button>
             </div>
         </div>
 
@@ -811,42 +816,51 @@
             </div>
             <div id="scan-tracker-container" class="scan-tracker-container">
                 <div class="airtime-head">
-                    <span class="airtime-title">Today's scans</span>
-                    <span class="airtime-count"><span id="scan-count">0</span>/100+</span>
+                    <span class="airtime-title">Activity</span>
+                    <span class="airtime-count"><span id="scan-count">0</span>/100+ scans today</span>
                 </div>
                 <div class="scan-progress-bar">
                     <div id="scan-progress" class="scan-progress"></div>
                 </div>
                 <div id="scan-reward" class="scan-reward"></div>
             </div>
-            <div class="profile-details">
-                <div class="profile-item">
-                    <span class="profile-label">Name</span>
-                    <span id="profile-name" class="profile-value"></span>
-                </div>
-                <div class="profile-item">
-                    <span class="profile-label">Business</span>
-                    <span id="profile-business" class="profile-value"></span>
-                </div>
-                <div class="profile-item">
-                    <span class="profile-label">Location</span>
-                    <span id="profile-location" class="profile-value"></span>
-                </div>
-                <div class="profile-item">
-                    <span class="profile-label">Phone</span>
-                    <span id="profile-phone" class="profile-value"></span>
-                </div>
-                <div class="profile-item">
-                    <span class="profile-label">Type</span>
-                    <span id="profile-role" class="profile-value"></span>
+            <div id="profile-account" class="profile-account">
+                <button type="button" id="profile-account-toggle" class="profile-account-toggle" aria-expanded="false" aria-controls="profile-account-panel">
+                    <span class="profile-account-title">Account</span>
+                    <span id="profile-account-name" class="profile-account-name"></span>
+                    <svg class="profile-chevron" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                </button>
+                <div id="profile-account-panel" class="profile-account-panel" inert>
+                    <div class="profile-account-body">
+                        <div class="profile-details">
+                            <div class="profile-item">
+                                <span class="profile-label">Name</span>
+                                <span id="profile-name" class="profile-value"></span>
+                            </div>
+                            <div class="profile-item">
+                                <span class="profile-label">Business</span>
+                                <span id="profile-business" class="profile-value"></span>
+                            </div>
+                            <div class="profile-item">
+                                <span class="profile-label">Location</span>
+                                <span id="profile-location" class="profile-value"></span>
+                            </div>
+                            <div class="profile-item">
+                                <span class="profile-label">Phone</span>
+                                <span id="profile-phone" class="profile-value"></span>
+                            </div>
+                            <div class="profile-item">
+                                <span class="profile-label">Type</span>
+                                <span id="profile-role" class="profile-value"></span>
+                            </div>
+                        </div>
+                        <button id="logout-btn" class="btn">Logout</button>
+                    </div>
                 </div>
             </div>
             <div class="profile-actions">
-                <button id="cancel-profile-btn" class="btn btn-secondary">Cancel</button>
-                <div class="profile-actions-row">
-                    <a href="tel:07089319883" id="get-help-btn" class="btn">Get help</a>
-                    <button id="logout-btn" class="btn">Logout</button>
-                </div>
+                <button id="cancel-profile-btn" class="btn btn-secondary" data-back>Cancel</button>
+                <a href="tel:07089319883" id="get-help-btn" class="btn">Get help</a>
             </div>
         </div>
     </div>

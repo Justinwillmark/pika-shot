@@ -13,8 +13,8 @@ document.addEventListener('DOMContentLoaded', () => {
             menuBtn: document.getElementById('menu-btn'),
             backArrowBtn: document.getElementById('back-arrow-btn'),
             welcomeName: document.getElementById('welcome-name'),
-            homeScanMenuTrigger: document.getElementById('home-scan-menu-trigger'),
-            homeScanCount: document.getElementById('home-scan-count'),
+            homeView: document.getElementById('home-view'),
+            offlineBanner: document.getElementById('offline-banner'),
             todaysSalesCard: document.getElementById('todays-sales-card'),
             itemsSoldCard: document.getElementById('items-sold-card'),
             welcomeDate: document.getElementById('welcome-date'),
@@ -218,6 +218,11 @@ document.addEventListener('DOMContentLoaded', () => {
             profileLocation: document.getElementById('profile-location'),
             profilePhone: document.getElementById('profile-phone'),
             profileRole: document.getElementById('profile-role'),
+            profileModal: document.getElementById('profile-modal'),
+            profileAccount: document.getElementById('profile-account'),
+            profileAccountToggle: document.getElementById('profile-account-toggle'),
+            profileAccountPanel: document.getElementById('profile-account-panel'),
+            profileAccountName: document.getElementById('profile-account-name'),
             getHelpBtn: document.getElementById('get-help-btn'),
             logoutBtn: document.getElementById('logout-btn'),
             cancelProfileBtn: document.getElementById('cancel-profile-btn'),
@@ -264,9 +269,12 @@ document.addEventListener('DOMContentLoaded', () => {
             this.registerServiceWorker();
             this.handleOnlineStatusChange = this.handleOnlineStatusChange.bind(this);
             window.addEventListener('online', () => {
+                this._showConnection(true);
                 if (!this.state.user) return;
                 this.ensureFirebase().then(() => { this.checkIncomingTransfers(); this.watchPendingTransfers(); });
             });
+            window.addEventListener('offline', () => this._showConnection(false));
+            this._showConnection(navigator.onLine, true);
             this.setupEventListeners();
 
             try {
@@ -316,16 +324,13 @@ document.addEventListener('DOMContentLoaded', () => {
         // --- EVENT LISTENERS ---
         setupEventListeners() {
             this.elements.menuBtn.addEventListener('click', this.showProfileModal.bind(this));
-            if (this.elements.homeScanMenuTrigger) {
-                this.elements.homeScanMenuTrigger.addEventListener('click', this.showProfileModal.bind(this));
-            }
             if (this.elements.todaysSalesCard) {
                 this.elements.todaysSalesCard.addEventListener('click', () => this.navigateTo('all-sales-view'));
             }
             if (this.elements.itemsSoldCard) {
                 this.elements.itemsSoldCard.addEventListener('click', () => this.navigateTo('all-sales-view'));
             }
-            this.elements.backArrowBtn.addEventListener('click', () => history.back());
+            this.elements.backArrowBtn.addEventListener('click', () => this._back());
             window.addEventListener('popstate', this.handlePopState.bind(this));
 
             // Onboarding Listeners
@@ -409,7 +414,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.productForm.addEventListener('submit', this.handleSaveProduct.bind(this));
             this.elements.deleteProductBtn.addEventListener('click', this.handleDeleteProduct.bind(this));
             this.elements.cancelProductFormBtn.addEventListener('click', () => this.hideModal());
-            this.elements.cancelScanBtn.addEventListener('click', () => { this.state.isScanCanceled = true; Camera.stop(); history.back(); });
+            this.elements.cancelScanBtn.addEventListener('click', () => { this.state.isScanCanceled = true; Camera.stop(); this._back(); });
             this.elements.retakePictureBtn.addEventListener('click', this.handleRetakePicture.bind(this));
             this.elements.confirmPictureBtn.addEventListener('click', this.handleConfirmPicture.bind(this));
             this.elements.addChangePictureBtn.addEventListener('click', this.handleAddOrChangePicture.bind(this));
@@ -647,15 +652,13 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.cancelAddScanBtn.addEventListener('click', () => this.hideModal());
             this.elements.productExistsOkBtn.addEventListener('click', () => this.hideModal());
             this.elements.seeStockLevelsBtn.addEventListener('click', () => this.navigateTo('stock-levels-view'));
-            this.elements.refreshStocksBtn.addEventListener('click', this.renderRetailerStocks.bind(this));
+            this.elements.refreshStocksBtn.addEventListener('click', () => { this.state.retailersAt = 0; this.renderRetailerStocks(); }); // (a salesperson's list is read again, not reused)
             this.elements.cartonDetailsForm.addEventListener('submit', this.handleSaveCartonDetails.bind(this));
             this.elements.cancelCartonDetailsBtn.addEventListener('click', () => { this.hideModal(); this.showModal('product-form-modal'); });
             this.elements.logoutBtn.addEventListener('click', this.handleLogout.bind(this));
             this.elements.cancelProfileBtn.addEventListener('click', () => this.hideModal());
-            this.elements.scanReward.addEventListener('click', () => { // "Tap to see" (customers who owe) or "Get help" (money for stock)
-                if (this._nudgeGo === 'customers') { this.hideModal(); this.navigateTo('stock-levels-view'); }
-                else if (this._nudgeGo === 'funding') window.open(`https://wa.me/${this.WA_NUMBER}?text=${encodeURIComponent("I'm a PikaShot top seller and need money for stock.")}`, '_blank', 'noopener');
-            });
+            this.elements.profileAccountToggle.addEventListener('click', () => this._setAccountOpen(!this.elements.profileAccount.classList.contains('open')));
+            this.elements.scanReward.addEventListener('click', () => this._nudgeTap());
 
             this.elements.cartonSubunitTypeInput.addEventListener('input', (e) => {
                 const selectedUnit = e.target.value;
@@ -1133,11 +1136,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }, (error) => console.error('Could not follow the account:', error));
         },
 
-        // Today's scans, added up across all the phones, on the home screen and in the profile
+        // Today's scans, added up across all the phones, shown in the profile
         async _refreshScanCount() {
             if (!this.state.user) return;
             const count = await DB.getScanCountForToday();
-            if (this.elements.homeScanCount) this.elements.homeScanCount.textContent = `${count}/100+`;
             this.updateScanTracker();
         },
 
@@ -1860,12 +1862,14 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.bottomNav.style.display = 'flex';
 
             const initialView = window.location.hash.substring(1) || 'home-view';
+            this._modalStale = false;
             history.replaceState({ view: initialView }, '', `#${initialView}`);
             this.navigateTo(initialView, true);
 
             await this.updateDashboard();
             await this.renderProducts();
             this._backfillGeo();
+            this._refreshCustomerStock();
             this._nudgeOnOpen();
         },
 
@@ -1998,6 +2002,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (document.visibilityState === 'visible' && this.state.user) {
                         this.ensureFirebase().then(() => this.checkIncomingTransfers());
                         await DB.catchUp(); // only what changed while away
+                        this._refreshCustomerStock();
                         this._nudgeOnOpen();
                         this.updateDashboard();
                         this.renderProducts(this.elements.productSearchInput.value);
@@ -2035,10 +2040,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     this._visibilityHandler = null;
                 }
                 this.state.user = null;
+                this._nudgeShake(); // (takes the dot off the menu button)
                 this.state.tempPhone = null;
                 this.state.tempUserCloudData = null;
                 this.state.stockViewFilter = 'customers';
                 this.state.retailersData = null;
+                this.state.retailersAt = 0;
+                this.state.focusCustomer = null;
+                this.state.focusProduct = null;
                 this.state.salespeople = null;
                 ['recentSalesList', 'allSalesList', 'productGrid', 'retailerStockView', 'salespeopleView'].forEach(key => { if (this.elements[key]) this.elements[key].innerHTML = ''; });
                 this.hideModal();
@@ -2070,7 +2079,19 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (this.toggleOnboardingTooltip) this.toggleOnboardingTooltip();
         },
-        showModal(modalId) { this.elements.modalContainer.style.display = 'flex'; this.elements.modalContainer.querySelectorAll('.modal-content').forEach(m => m.style.display = 'none'); const modalToShow = document.getElementById(modalId); if (modalToShow) { modalToShow.style.display = 'flex'; } this._followKeyboard(true); },
+        // A modal has a step of its own in the browser's history, so the phone's Back button closes it instead of leaving the page.
+        //   _modalLive:  a modal is showing and its step is the newest one
+        //   _modalStale: the modal has been closed but its step is still the newest one: the next view takes its place, or the next Back goes past it
+        showModal(modalId) {
+            this.elements.modalContainer.style.display = 'flex';
+            this.elements.modalContainer.querySelectorAll('.modal-content').forEach(m => m.style.display = 'none');
+            const modalToShow = document.getElementById(modalId);
+            if (modalToShow) { modalToShow.style.display = 'flex'; }
+            this._followKeyboard(true);
+            if (this._modalStale) this._modalStale = false; // (the step of the modal before is used again)
+            else if (!this._modalLive) this._pushStep({ modal: true });
+            this._modalLive = true;
+        },
         // PikaShot's own pop-up for messages and questions. It sits above any open modal (that one stays as it was).
         // Resolves true for the main button, false for cancel, Esc, back or a tap outside.
         _dialog({ title = '', text = '', ok = 'OK', cancel = '', danger = false }) {
@@ -2091,17 +2112,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     layer.style.display = 'none';
                     layer.onclick = okBtn.onclick = cancelBtn.onclick = null;
                     document.removeEventListener('keydown', onKey, true);
-                    window.removeEventListener('popstate', onBack);
                     this._closeDialog = null;
                     resolve(answer);
                 };
                 const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); finish(false); } };
-                const onBack = () => finish(false);
                 okBtn.onclick = () => finish(true);
                 cancelBtn.onclick = () => finish(false);
                 layer.onclick = (e) => { if (e.target === layer) finish(false); };
                 document.addEventListener('keydown', onKey, true);
-                window.addEventListener('popstate', onBack);
                 this._closeDialog = finish;
                 (danger && cancel ? cancelBtn : okBtn).focus({ preventScroll: true }); // a risky question starts on "Cancel"
             });
@@ -2122,7 +2140,47 @@ document.addEventListener('DOMContentLoaded', () => {
             setTimeout(() => target.classList.remove('input-error-shake'), 1200);
         },
         _ask(options) { return this._dialog(options); },
-        hideModal() { this.elements.modalContainer.style.display = 'none'; this.elements.modalContainer.querySelectorAll('.modal-content').forEach(m => m.style.display = 'none'); this._followKeyboard(false); },
+        hideModal() {
+            this._hideModalBox();
+            if (this._modalLive) { this._modalLive = false; this._modalStale = true; }
+        },
+        _hideModalBox() { this.elements.modalContainer.style.display = 'none'; this.elements.modalContainer.querySelectorAll('.modal-content').forEach(m => m.style.display = 'none'); this._followKeyboard(false); },
+
+        // Adds a step to the history, but only once a step back that is still on its way has arrived (a step added before then would be lost in it)
+        _pushStep(extra) {
+            const push = () => { const view = this.state.currentView; history.pushState(Object.assign({ view }, extra), '', view ? `#${view}` : undefined); };
+            if (this._backPending > 0) (this._stepQueue = this._stepQueue || []).push(push); else push();
+        },
+        _runSteps() { const queue = this._stepQueue || []; this._stepQueue = []; queue.forEach(fn => fn()); },
+        // One step back in the history (an open modal is closed first: its step goes with it)
+        _back() {
+            if (this._modalLive) { this._hideModalBox(); this._modalLive = false; this._modalStale = true; }
+            this._rawBack();
+        },
+        _rawBack() {
+            this._backPending = (this._backPending || 0) + 1;
+            clearTimeout(this._backGuard);
+            this._backGuard = setTimeout(() => { this._backPending = 0; this._runSteps(); }, 800); // (in case no step comes back, as on the first page)
+            history.back();
+        },
+        // The Back button was pressed with a modal open: its own Close / Cancel button is pressed for it, so whatever waits on it is let go
+        _backClosesModal(landed) {
+            const view = this.state.currentView;
+            this._modalLive = false; // the browser has taken its step away
+            if (landed.view && landed.view !== view) history.pushState({ view }, '', view ? `#${view}` : undefined); // (the step below belonged to another view: this one is put back)
+            const open = Array.from(this.elements.modalContainer.querySelectorAll('.modal-content')).find(m => m.style.display !== 'none');
+            const button = open && Array.from(open.querySelectorAll('[data-back]')).find(b => b.offsetParent !== null);
+            if (!open) { this._hideModalBox(); return; }
+            if (!button) { this._rawBack(); return; } // it cannot be closed (a salesperson waiting to be confirmed): Back goes on as if it were not there
+            button.click();
+            const closed = open.style.display === 'none' || this.elements.modalContainer.style.display === 'none';
+            if (!closed) { this._modalLive = true; this._pushStep({ modal: true }); } // it stayed open (it was busy): its step goes back
+        },
+        // A pop-up (message or question) closes by itself on Back; the page behind it must not move, so the step Back took is put back
+        _restoreStep() {
+            const view = this.state.currentView;
+            history.pushState(this._modalLive ? { view, modal: true } : { view }, '', view ? `#${view}` : undefined);
+        },
 
         // While on, the modal layer is sized to the part of the screen that is not under the on-screen keyboard,
         // so a centered modal always sits fully above it.
@@ -2251,7 +2309,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (this.state.currentView === viewId && !isBackNavigation) return;
 
             if (!isBackNavigation) {
-                history.pushState({ view: viewId }, '', `#${viewId}`);
+                if (this._modalStale) { history.replaceState({ view: viewId }, '', `#${viewId}`); this._modalStale = false; } // (the closed modal's step becomes this view's)
+                else history.pushState({ view: viewId }, '', `#${viewId}`);
             }
 
             if (this.state.productSelectionMode && viewId !== 'products-view') {
@@ -2282,9 +2341,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (viewId === 'products-view' && !this.state.productSelectionMode) {
                 this.elements.productSearchInput.value = '';
-                this.state.productFilter = 'all';
+                const tab = this.state.openProductsOn || 'all'; // a message can open it on the Low stock or Out of stock tab
+                this.state.openProductsOn = null;
+                this.state.productFilter = tab;
                 this.elements.productFilterTabs.forEach(btn => {
-                    btn.classList.toggle('active', btn.dataset.filter === 'all');
+                    btn.classList.toggle('active', btn.dataset.filter === tab);
                 });
                 this.renderProducts();
             }
@@ -2295,6 +2356,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (viewId === 'home-view') {
                 this.elements.menuBtn.style.display = 'block';
                 this.elements.backArrowBtn.style.display = 'none';
+                if (this._chimeWaiting) { const loud = this._chimeWaiting === 'loud'; this._chimeWaiting = false; setTimeout(() => this._nudgeChime(loud), 600); } // a message came while scanning: now it can be heard (if it still fits the limits)
             } else {
                 this.elements.menuBtn.style.display = 'none';
                 this.elements.backArrowBtn.style.display = 'block';
@@ -2307,9 +2369,41 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         handlePopState(event) {
-            if (this._isWaiting()) return;
-            const viewId = (event.state && event.state.view) || 'home-view';
-            this.navigateTo(viewId, true);
+            const byApp = this._backPending > 0; // a step back the app asked for itself (not the Back button)
+            if (byApp) this._backPending--;
+            try {
+                const landed = event.state || {};
+                if (!byApp && this._closeDialog) { const close = this._closeDialog; this._restoreStep(); close(false); return; } // Back with a pop-up open closes the pop-up; nothing else moves
+                if (!byApp && this._modalLive) { this._backClosesModal(landed); return; } // Back with a modal open closes the modal
+                if (this._modalStale) { this._modalStale = false; this._rawBack(); return; } // the closed modal's step: on to the one before
+                if (landed.modal) { this._rawBack(); return; } // the step of a modal closed long ago
+                if (this._isWaiting()) return;
+                this.navigateTo(landed.view || 'home-view', true);
+            } finally {
+                if (!(this._backPending > 0)) this._runSteps();
+            }
+        },
+
+        // The teal part of the home page says so when there is no internet (and, for a moment, when it is back)
+        _showConnection(online, atStart) {
+            const banner = this.elements.offlineBanner, home = this.elements.homeView;
+            if (!banner || !home) return;
+            clearTimeout(this._backTimer);
+            const title = document.getElementById('offline-title'), sub = document.getElementById('offline-sub');
+            if (!online) {
+                title.textContent = "You're offline";
+                sub.textContent = 'Reconnect to use PikaShot and see new records';
+                sub.style.display = '';
+                banner.classList.remove('is-back');
+                banner.hidden = false;
+                home.classList.add('is-offline');
+                return;
+            }
+            if (banner.hidden || atStart) { banner.hidden = true; home.classList.remove('is-offline'); return; } // it was never offline: nothing to say
+            title.textContent = "You're back online";
+            sub.style.display = 'none';
+            banner.classList.add('is-back');
+            this._backTimer = setTimeout(() => { banner.hidden = true; banner.classList.remove('is-back'); home.classList.remove('is-offline'); }, 2200);
         },
 
         handleOnlineStatusChange() {
@@ -2364,11 +2458,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const date = new Date();
             this.elements.welcomeDate.textContent = date.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
-
-            const scanCount = await DB.getScanCountForToday();
-            if (this.elements.homeScanCount) {
-                this.elements.homeScanCount.textContent = `${scanCount}/100+`;
-            }
 
             const todaysSales = await DB.getSalesToday();
             const totalSales = todaysSales.reduce((sum, sale) => sum + sale.total, 0);
@@ -2773,6 +2862,7 @@ document.addEventListener('DOMContentLoaded', () => {
             products.forEach(product => {
                 const card = document.createElement('div');
                 card.className = 'product-card';
+                card.dataset.productId = product.id;
                 const imageUrl = product.image ? URL.createObjectURL(product.image) : (this._safeImageUrl(product.thumb) || 'icons/icon-192.png');
 
                 let badgeHtml = '';
@@ -2832,6 +2922,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 this.elements.productGrid.appendChild(card);
             });
+            this._flashCard('focusProduct', `[data-product-id="${CSS.escape(String((this.state.focusProduct || {}).id))}"]`);
+        },
+
+        // Scrolls to a card a message pointed at and lets it flash. `what` names where the target is kept in state: it is waited for
+        // up to 15 seconds, and once it has flashed it is kept for 4 more, so a list drawn again a moment later (a second update) flashes it again.
+        _flashCard(what, selector) {
+            const target = this.state[what];
+            if (!target) return;
+            if (Date.now() > target.until) { this.state[what] = null; return; }
+            const card = document.querySelector(selector);
+            if (!card) return;
+            if (!target.at) { // the first time: scroll to it
+                target.at = Date.now();
+                target.until = target.at + 4000;
+                card.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            }
+            card.classList.remove('focus-flash');
+            void card.offsetWidth;
+            card.classList.add('focus-flash');
+            setTimeout(() => card.classList.remove('focus-flash'), 2600);
         },
 
         // --- Low stock level: how few units left makes a product "Low stock" (the admin sets it; a salesperson sees theirs) ---
@@ -3074,7 +3184,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 onError: (message) => {
                     say(message, 'Camera problem');
                     this.state.isScanCanceled = true;
-                    history.back();
+                    this._back();
                 }
             };
         },
@@ -3112,16 +3222,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!ctx) return;
                 const schedule = () => {
                     const base = ctx.currentTime + 0.05; // small lead-in so the very start of the sound is never clipped
-                    notes.forEach(({ freq, start, dur, type, vol, release }) => {
+                    notes.forEach(({ freq, start, dur, type, vol, release, attack }) => {
                         const osc = ctx.createOscillator();
                         const gain = ctx.createGain();
                         const t0 = base + start;
                         const peak = vol || 0.15;
+                        const rise = attack || 0.01; // how gently the note starts
                         osc.type = type || 'sine';
                         osc.frequency.value = freq;
                         gain.gain.setValueAtTime(0.0001, t0);
-                        gain.gain.linearRampToValueAtTime(peak, t0 + 0.01);
-                        gain.gain.setValueAtTime(peak, t0 + Math.max(0.011, dur - (release || 0.09))); // hold, then release
+                        gain.gain.linearRampToValueAtTime(peak, t0 + rise);
+                        gain.gain.setValueAtTime(peak, t0 + Math.max(rise + 0.001, dur - (release || 0.09))); // hold, then release
                         gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
                         osc.connect(gain);
                         gain.connect(ctx.destination);
@@ -3145,9 +3256,18 @@ document.addEventListener('DOMContentLoaded', () => {
             ]);
         },
 
+        // One short, clean blip for a good scan: a pure E6 (clear on a phone speaker) with a soft octave below for warmth and a faint octave above
+        // for sparkle. It starts gently and dies away at once, with no hard edges (the old one was a sharp 2300 Hz square wave).
+        _playScanBeep() {
+            this._playNotes([
+                { freq: 1318.5, start: 0, dur: 0.26, vol: 0.17, attack: 0.012, release: 0.2 },
+                { freq: 659.25, start: 0, dur: 0.28, vol: 0.045, attack: 0.014, release: 0.22 },
+                { freq: 2637, start: 0, dur: 0.18, vol: 0.022, attack: 0.012, release: 0.14 }
+            ]);
+        },
+
         async _handleSuccessfulScan() {
-            // one crisp checkout-scanner beep
-            this._playNotes([{ freq: 2300, start: 0, dur: 0.17, type: 'square', vol: 0.1, release: 0.03 }]);
+            this._playScanBeep();
             await DB.incrementScanCount();
             this._nudgeAct('scan');
             this._pendingScans = (this._pendingScans || 0) + 1;
@@ -3179,7 +3299,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         timestamp: window.fb.serverTimestamp()
                     });
                     setTimeout(() => {
-                        history.back();
+                        this._back();
                         this.showModal('add-product-failed-modal');
                     }, 500);
                 },
@@ -3199,7 +3319,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             switch (result.type) {
                 case 'barcode':
-                    history.back();
+                    this._back();
                     const existingProduct = await DB.getProductByBarcode(result.data);
                     if (existingProduct) {
                         this.elements.productExistsMessage.textContent = `Product already exists as "${existingProduct.name}" in inventory.`;
@@ -3214,12 +3334,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     break;
                 case 'qrlog':
                     this._handleSuccessfulScan();
-                    history.back();
+                    this._back();
                     this.handlePikaLogScanned(result.data);
                     break;
                 case 'qrlog_id':
                     this._handleSuccessfulScan();
-                    history.back();
+                    this._back();
                     this.handlePikaLogIdScanned(result.data);
                     break;
             }
@@ -3266,7 +3386,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         timestamp: window.fb.serverTimestamp()
                     });
 
-                    history.back();
+                    this._back();
                     if (result.type === 'barcode') {
                         const product = await DB.getProductByBarcode(result.data);
                         if (product) {
@@ -3285,7 +3405,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 },
                 () => { // onTimeout
                     if (this.state.isScanCanceled) return;
-                    history.back();
+                    this._back();
                     this.handleSellScanNotFound(true);
                 },
                 this.elements.scanTimerDisplay,
@@ -3628,7 +3748,7 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const { blob } = await Camera.capturePhoto(this.elements.scanTimerDisplay, this.elements.scanFeedback);
                 if (attempt !== this._photoAttempt) return; // a newer picture was started meanwhile
-                if (this.state.currentView === 'camera-view') history.back(); // Cancel has already gone back once
+                if (this.state.currentView === 'camera-view') this._back(); // Cancel has already gone back once
                 if (blob) {
                     this.state.capturedBlob = blob;
                     this.elements.capturedImagePreview.src = URL.createObjectURL(blob);
@@ -3637,7 +3757,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (error) {
                 console.error("Error capturing image:", error);
                 say("The photo did not work. Please try again.", "Photo failed");
-                if (this.state.currentView === 'camera-view') history.back();
+                if (this.state.currentView === 'camera-view') this._back();
             }
         },
 
@@ -3651,7 +3771,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 () => {
                     this.elements.scanFeedback.textContent = 'Product not found.';
                     setTimeout(() => {
-                        history.back();
+                        this._back();
                         this.showModal('product-form-modal');
                         say('No barcode found. Hold the phone steady and try again.', 'Not found');
                     }, 500);
@@ -3662,7 +3782,7 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         async handleBarcodeAssignmentResult(result) {
-            history.back();
+            this._back();
             if (result.type !== 'barcode') return;
 
             this._logToFirestore('scan_logs', null, {
@@ -5431,14 +5551,63 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.salespeopleView.style.display = 'none';
             const fab = document.getElementById('add-salesperson-fab');
             if (fab) fab.style.display = 'none';
-            const credit = (await DB.getAllSales())
-                .filter(s => s.saleType === 'credit' && !s.creditSettled)
-                .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+            if (!this.elements.retailerStockView.innerHTML.trim()) this.elements.retailerStockView.innerHTML = '<div class="spinner"></div>';
+            await this._loadBusinessCustomers(); // a wholesaler's customers and their stock, as the admin sees them (read again only after 10 minutes)
             if (!this.state.user) return; // logged out while this was loading
-            this.elements.retailerStockView.innerHTML = credit.length
-                ? credit.map(sale => this.buildCreditCard(sale, null)).join('')
-                : '<p class="empty-state">Customers who owe you on credit show here.</p>';
-            this.addDeleteEventListeners();
+            await this._drawCustomers();
+        },
+
+        // A wholesaler's customers (the ones who accepted their transfers): read once and kept for 10 minutes. A salesperson sees their business's.
+        async _loadBusinessCustomers(force) {
+            const u = this.state.user, biz = this._businessPhone();
+            if (!u || !biz || !(u.type === 'Wholesaler' || (u.type === 'Salesperson' && u.businessType === 'Wholesaler'))) return;
+            if (!this.state.firebaseReady || !navigator.onLine) return;
+            if (!force && this.state.retailersData && Date.now() - (this.state.retailersAt || 0) < 600000) return;
+            try {
+                const snap = await window.fb.getDocs(window.fb.collection(window.fb.db, `retailer_stocks/${biz}/supplied_retailers`));
+                const list = [];
+                snap.forEach(d => list.push({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) }));
+                if (!this.state.user) return;
+                this.state.retailersData = list;
+                this.state.retailersAt = Date.now();
+                this._saveCustomerStock(list);
+            } catch (error) { console.error('Could not load customers:', error); }
+        },
+
+        // What the profile messages need to know about customers running short. Kept on the phone, so asking costs nothing.
+        _custStockKey() { return `pika_custstock_${this._businessPhone()}`; },
+        _saveCustomerStock(retailers) {
+            try {
+                const list = [];
+                (retailers || []).forEach(r => {
+                    const products = r.products || {};
+                    if (Object.values(products).some(p => p && p.isSalesperson)) return; // (a salesperson's own stock is not a customer's)
+                    const items = [];
+                    Object.keys(products).forEach(name => { const p = products[name]; if (p && Number(p.stock) < 10) items.push({ name, stock: Number(p.stock) }); }); // (10: where the customer card turns red)
+                    if (items.length && r.retailerName) list.push({ id: r.id, name: r.retailerName, items });
+                });
+                localStorage.setItem(this._custStockKey(), JSON.stringify({ at: Date.now(), list }));
+            } catch (e) { /* the messages simply leave customers out */ }
+        },
+        _customerStock() {
+            try {
+                const saved = JSON.parse(localStorage.getItem(this._custStockKey()));
+                if (saved && Date.now() - saved.at < 3 * 86400000) return saved.list || []; // older than 3 days: not trusted
+            } catch (e) { /* none */ }
+            return [];
+        },
+        // Opening the app (at most every 12 hours, in the background): bring that list up to date
+        _refreshCustomerStock() {
+            let at = 0;
+            try { at = (JSON.parse(localStorage.getItem(this._custStockKey())) || {}).at || 0; } catch (e) { /* never read */ }
+            if (Date.now() - at < 12 * 3600000) return;
+            this._loadBusinessCustomers(true).catch(() => { /* next time */ });
+        },
+
+        _flashCustomer() {
+            const t = this.state.focusCustomer;
+            if (!t) return;
+            this._flashCard('focusCustomer', t.sale ? `[data-credit-id="${CSS.escape(String(t.sale))}"]` : `[data-retailer-id="${CSS.escape(String(t.customer))}"]`);
         },
 
         _renderCustomers() {
@@ -5452,6 +5621,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     const retailers = [];
                     querySnapshot.forEach(doc => retailers.push({ id: doc.id, ...doc.data({ serverTimestamps: 'estimate' }) }));
                     this.state.retailersData = retailers;
+                    this.state.retailersAt = Date.now();
+                    this._saveCustomerStock(retailers);
                     this._drawCustomers();
                 }, (error) => {
                     console.error("Error fetching retailer stocks in real-time:", error);
@@ -5472,9 +5643,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (retailersData.length === 0 && creditSales.length === 0) {
                 const isRetailer = this.state.user && this.state.user.type === 'Retailer';
-                this.elements.retailerStockView.innerHTML = isRetailer
-                    ? `<p class="empty-state">Make credit sales to see customers owing you here.</p>`
-                    : `<p class="empty-state">Sell and transfer products to the purchasing retailer or make credit sales to see customers here.</p>`;
+                this.elements.retailerStockView.innerHTML = this._isSalesperson()
+                    ? '<p class="empty-state">Customers who owe you on credit show here.</p>'
+                    : isRetailer
+                        ? `<p class="empty-state">Make credit sales to see customers owing you here.</p>`
+                        : `<p class="empty-state">Sell and transfer products to the purchasing retailer or make credit sales to see customers here.</p>`;
                 return;
             }
 
@@ -5504,6 +5677,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             this.elements.retailerStockView.innerHTML = customerCards.map(card => card.html).join('') || `<p class="empty-state">No customers added yet.</p>`;
             this.addDeleteEventListeners();
+            this._flashCustomer(); // a message may have sent them to one customer
         },
 
         buildCustomerCard(retailer) {
@@ -5539,7 +5713,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         ${callButton}
                     </div>
                     <div class="credit-stock">${productsHtml}</div>
-                    <button type="button" class="delete-retailer-btn">${deleteIcon}<span>Remove from list</span></button>
+                    ${this._isSalesperson() ? '' : `<button type="button" class="delete-retailer-btn">${deleteIcon}<span>Remove from list</span></button>`}
                 </div>
             `;
         },
@@ -5592,7 +5766,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const byName = (sale.recordedBy && sale.recordedBy !== this.state.user.phone) ? (sale.recordedByName || 'a salesperson') : '';
 
             return `
-                <div class="card credit-card" data-credit-id="${sale.id}" data-customer-name="${e(sale.customerName)}">
+                <div class="card credit-card" data-credit-id="${sale.id}" data-customer-name="${e(sale.customerName)}"${retailer ? ` data-retailer-id="${e(retailer.id)}"` : ''}>
                     <div class="credit-top">
                         <div class="credit-who">
                             <h4><span class="credit-name">${e(sale.customerName)}</span><span class="credit-pill">Credit</span></h4>
@@ -5751,12 +5925,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.profileLocation.textContent = this.state.user.location;
                 this.elements.profilePhone.textContent = this.state.user.phone || this.state.user.phone; // Handle both cases
                 this.elements.profileRole.textContent = this.state.user.type;
+                this.elements.profileAccountName.textContent = this.state.user.name;
+                this._setAccountOpen(false); // the account details start folded away every time
 
                 await this.updateScanTracker();
                 await this._renderNudge();
 
                 this.showModal('profile-modal');
             }
+        },
+
+        // Unfolds or folds the account details (Name ... Type, and Logout) in the profile
+        _setAccountOpen(open) {
+            this.elements.profileAccount.classList.toggle('open', open);
+            this.elements.profileModal.classList.toggle('account-open', open);
+            this.elements.profileAccountToggle.setAttribute('aria-expanded', String(open));
+            this.elements.profileAccountPanel.inert = !open; // (folded away: its buttons cannot be reached)
+            if (open) setTimeout(() => this.elements.profileAccount.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 320); // (on a short screen, bring the whole section into view)
         },
 
         async updateScanTracker() {
@@ -5796,20 +5981,81 @@ document.addEventListener('DOMContentLoaded', () => {
             const [sales, products] = await Promise.all([DB.getAllSales(), DB.getAllProducts()]);
             const lowLevel = this._lowStockLevel();
             PikaNudges.trackStock(state, products, lowLevel, now); // writes down how long products have been low or out
-            return PikaNudges.buildContext({ sales, products, user, now, lowLevel, acts: state.acts, lowSince: state.lowSince, canTransfer: user.type === 'Wholesaler', canFund: user.type !== 'Salesperson' });
+            return PikaNudges.buildContext({ sales, products, user, now, lowLevel, acts: state.acts, lowSince: state.lowSince, role: user.type, customers: this._customerStock(), canTransfer: user.type === 'Wholesaler', canFund: user.type !== 'Salesperson' });
         },
 
-        // A new message has arrived by itself: the homepage capsule shakes for 30 seconds, or until the profile is opened
+        // A message that has not been read: the menu button's lines ripple for 30 seconds and it keeps a dot until the profile is opened
         _nudgeShake() {
             clearTimeout(this._shakeTimer);
-            const chip = this.elements.homeScanMenuTrigger;
-            if (!chip) return;
+            const menu = this.elements.menuBtn;
+            if (!menu) return;
             let freshAt = 0;
-            try { if (this.state.user) freshAt = Number(this._nudgeLoad().freshAt) || 0; } catch (e) { /* no shake */ }
+            try { if (this.state.user) freshAt = Number(this._nudgeLoad().freshAt) || 0; } catch (e) { /* no dot */ }
             const left = freshAt + 30000 - Date.now();
-            const on = left > 0 && left <= 30000;
-            chip.classList.toggle('nudge-shake', on);
-            if (on) this._shakeTimer = setTimeout(() => chip.classList.remove('nudge-shake'), left);
+            const live = left > 0 && left <= 30000;
+            const unread = freshAt > 0;
+            menu.classList.toggle('has-nudge', unread);
+            menu.classList.toggle('nudge-live', live);
+            menu.setAttribute('aria-label', unread ? 'Menu, you have a new message' : 'Menu');
+            if (live) this._shakeTimer = setTimeout(() => menu.classList.remove('nudge-live'), left);
+        },
+
+        // A new message has arrived by itself: the menu button gets its dot and ripple, and a soft double beep plays:
+        // a clear one for messages worth stopping for (`loud`), a very quiet one for all the others
+        _nudgeAlert(loud) {
+            this._nudgeShake();
+            this._nudgeChime(!!loud);
+        },
+
+        // Two kinds of double beep, both kept within limits so they never become a nuisance. It waits until the person is out of the scanner,
+        // and a beep that did not play (see below) is not counted.
+        //   important (money owed, stock, a win): louder, at most 4 a day, at least 15 minutes after the last important one
+        //   all the others: very quiet, at most 6 a day, at least 10 minutes after the last beep of any kind
+        _nudgeChime(loud) {
+            if (!this.state.user) return;
+            if (this.state.currentView === 'camera-view') { if (loud || !this._chimeWaiting) this._chimeWaiting = loud ? 'loud' : 'quiet'; return; } // not over the scanner's own beeps: it plays once they are back home
+            const key = `pika_chime_${this.state.user.phone}`, today = PikaNudges.todayIndex(), now = Date.now();
+            let rec = {};
+            try { rec = JSON.parse(localStorage.getItem(key)) || {}; } catch (e) { rec = {}; }
+            if (rec.day !== today) rec = { day: today, n: 0, q: 0, at: rec.at || 0, last: rec.last || rec.at || 0 };
+            if (loud ? (rec.n || 0) >= 4 || now - (rec.at || 0) < 15 * 60000 : (rec.q || 0) >= 6 || now - (rec.last || rec.at || 0) < 10 * 60000) return;
+            if (!this._playNudgeChime(loud)) return;
+            if (loud) { rec.n = (rec.n || 0) + 1; rec.at = now; } else rec.q = (rec.q || 0) + 1;
+            rec.last = now;
+            try { localStorage.setItem(key, JSON.stringify(rec)); } catch (e) { /* the limits just start again */ }
+        },
+
+        // Warm, calm and a little excited: two soft notes going up (D5 then A5), each with a quiet octave above for sparkle.
+        // The important one is about 5 times louder than the other (14 dB). Says whether it played.
+        _playNudgeChime(loud) {
+            const ctx = this._getAudioCtx();
+            if (!ctx || ctx.state !== 'running') return false; // the phone has not been touched since the app opened (browsers do not allow sound before a tap): stay quiet rather than beep out of the blue later
+            const v = loud ? { a: 0.18, b: 0.2, sa: 0.03, sb: 0.032 } : { a: 0.035, b: 0.04, sa: 0.006, sb: 0.007 };
+            this._playNotes([
+                { freq: 587.33, start: 0, dur: 0.24, vol: v.a, release: 0.16 },
+                { freq: 1174.66, start: 0, dur: 0.24, vol: v.sa, release: 0.16 },
+                { freq: 880, start: 0.2, dur: 0.5, vol: v.b, release: 0.36 },
+                { freq: 1760, start: 0.2, dur: 0.5, vol: v.sb, release: 0.36 }
+            ]);
+            return true;
+        },
+
+        // A tap on the message goes where it points: money for stock opens WhatsApp, a customer opens their card, a product opens its tab
+        _nudgeTap() {
+            const go = this._nudgeGo, arg = this._nudgeArg;
+            if (go === 'funding') {
+                window.open(`https://wa.me/${this.WA_NUMBER}?text=${encodeURIComponent("I'm a PikaShot top seller and need money for stock.")}`, '_blank', 'noopener');
+            } else if (go === 'customers') {
+                this.hideModal();
+                this.state.focusCustomer = arg ? Object.assign({ until: Date.now() + 15000 }, arg) : null;
+                this.state.stockViewFilter = 'customers';
+                this.navigateTo('stock-levels-view');
+            } else if (go === 'product' && arg) {
+                this.hideModal();
+                this.state.focusProduct = { id: arg.id, until: Date.now() + 15000 };
+                this.state.openProductsOn = arg.tab;
+                this.navigateTo('products-view');
+            }
         },
 
         // One more thing done: a sale, a scan, a transfer, a receipt shared or printed. Every 5 of them (in any mix) bring a new message.
@@ -5818,19 +6064,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!this.state.user || !window.PikaNudges) return;
                 const state = this._nudgeLoad();
                 PikaNudges.act(state, kind, new Date());
-                let arrived = false;
+                let arrived = false, loud = false;
                 if (kind === 'sale' && !state.welcomed) { // the very first sale gets a welcome, straight away
                     const total = await DB.countSales();
-                    if (total === 1) { PikaNudges.welcome(state, null); arrived = true; }
+                    if (total === 1) { PikaNudges.welcome(state, null); arrived = true; loud = true; }
                     else if (total > 1) state.welcomed = true; // an account that was selling long before this existed
                 }
                 if (!arrived && state.actions >= PikaNudges.EVERY) { // the 5th action: the next message comes up now
-                    PikaNudges.show(state, await this._nudgeContext(state));
+                    loud = !!PikaNudges.show(state, await this._nudgeContext(state)).chime;
                     arrived = true;
                 }
                 if (arrived) state.freshAt = Date.now();
                 this._nudgeSave(state);
-                if (arrived) this._nudgeShake();
+                if (arrived) this._nudgeAlert(loud);
             });
         },
 
@@ -5841,9 +6087,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 const state = this._nudgeLoad();
                 if (state.openDay === PikaNudges.todayIndex()) { this._nudgeShake(); return; } // (a message that arrived a moment ago may still be shaking)
                 const ctx = await this._nudgeContext(state);
-                if (PikaNudges.onOpen(state, ctx)) state.freshAt = Date.now();
+                const arrived = PikaNudges.onOpen(state, ctx);
+                if (arrived) state.freshAt = Date.now();
                 this._nudgeSave(state);
-                this._nudgeShake();
+                if (arrived) this._nudgeAlert(PikaNudges.chimes(state.id)); else this._nudgeShake();
             });
         },
 
@@ -5863,6 +6110,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 el.textContent = view.text.replace(/ ([^ ]*)$/, '\u00A0$1').replace(/ ([^ ]*\u00A0[^ ]*)$/, '\u00A0$1'); // the last words stay with the emoji, so it never sits alone on a second line
                 el.classList.toggle('is-link', !!view.go);
                 this._nudgeGo = view.go || null;
+                this._nudgeArg = view.arg || null;
                 el.style.animation = 'none'; void el.offsetWidth; el.style.animation = ''; // plays the little entrance
                 this._nudgeShake();
             });
