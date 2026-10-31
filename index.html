@@ -19,7 +19,7 @@
             <h2 id="dialog-title"></h2>
             <p id="dialog-text"></p>
             <div class="modal-actions modal-actions-inline">
-                <button type="button" id="dialog-cancel" class="btn btn-secondary" hidden></button>
+                <button type="button" id="dialog-cancel" class="btn btn-secondary btn-cancel" hidden></button>
                 <button type="button" id="dialog-ok" class="btn btn-primary">OK</button>
             </div>
         </div>
@@ -404,7 +404,7 @@
         </nav>
 
         <div id="receipt-actions" class="receipt-actions">
-            <button id="cancel-selection-btn" class="btn btn-secondary">Cancel</button>
+            <button id="cancel-selection-btn" class="btn btn-secondary btn-cancel">Cancel</button>
             <button id="edit-sale-btn" class="btn btn-secondary btn-edit-sale" tabindex="-1" aria-hidden="true">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
                 <span>Edit</span>
@@ -429,7 +429,7 @@
                 <div id="scan-timer-display" class="scan-timer-display">3</div>
             </div>
             <div class="camera-actions" style="position: absolute; bottom: 30px; left: 0; right: 0; display: flex; justify-content: center; padding: 0 20px; z-index: 10;">
-                <button id="cancel-scan-btn" class="btn btn-secondary" style="flex: 0 0 30%;">Cancel</button>
+                <button id="cancel-scan-btn" class="btn btn-secondary btn-cancel" style="flex: 0 0 30%;">Cancel</button>
                 <button id="scan-select-from-products-btn" class="btn btn-primary" style="flex: 0 0 70%; margin-left: 10px;">Select from products</button>
             </div>
         </div>
@@ -442,7 +442,7 @@
             <h2>Product not found</h2>
             <p>No barcode was detected. Please ensure the barcode is clear and well-lit.</p>
             <div class="modal-actions modal-actions-inline">
-                <button id="cancel-add-scan-btn" class="btn btn-secondary" data-back>Cancel</button>
+                <button id="cancel-add-scan-btn" class="btn btn-secondary btn-cancel" data-back>Cancel</button>
                 <button id="retry-add-scan-btn" class="btn btn-primary">Try Again</button>
             </div>
         </div>
@@ -460,7 +460,7 @@
             <img id="captured-image-preview" src="" alt="Captured product image">
             <div class="modal-actions">
                 <div class="modal-actions-inline">
-                    <button id="cancel-picture-btn" class="btn btn-secondary" data-back>Cancel</button>
+                    <button id="cancel-picture-btn" class="btn btn-secondary btn-cancel" data-back>Cancel</button>
                     <button id="retake-picture-btn" class="btn btn-secondary">Try Again</button>
                 </div>
                 <button id="confirm-picture-btn" class="btn btn-primary">Confirm</button>
@@ -499,7 +499,7 @@
                     <div class="form-group stock-group"><label for="product-stock">Stock</label><input type="text" id="product-stock" inputmode="decimal" placeholder="e.g., 24 or 2.5" enterkeyhint="done" required></div>
                 </div>
                  <div class="modal-actions modal-actions-inline">
-                    <button type="button" id="cancel-product-form-btn" class="btn btn-secondary" data-back>Cancel</button>
+                    <button type="button" id="cancel-product-form-btn" class="btn btn-secondary btn-cancel" data-back>Cancel</button>
                     <button type="submit" id="save-product-btn" class="btn btn-primary">Save Product</button>
                 </div>
             </form>
@@ -525,7 +525,7 @@
                     <input type="text" id="carton-subunit-quantity" inputmode="numeric" placeholder="e.g., 12" enterkeyhint="done" required>
                 </div>
                 <div class="modal-actions modal-actions-inline">
-                     <button type="button" id="cancel-carton-details-btn" class="btn btn-secondary" data-back>Cancel</button>
+                     <button type="button" id="cancel-carton-details-btn" class="btn btn-secondary btn-cancel" data-back>Cancel</button>
                      <button type="submit" class="btn btn-primary">Confirm</button>
                 </div>
             </form>
@@ -580,7 +580,7 @@
             </div>
             <p id="sale-offline-notice" class="offline-notice" style="display: none;">Please connect to the internet to confirm this sale.</p>
             <div class="modal-actions modal-actions-inline">
-                <button id="cancel-sale-btn" class="btn btn-secondary" data-back>Cancel</button>
+                <button id="cancel-sale-btn" class="btn btn-secondary btn-cancel" data-back>Cancel</button>
                 <button id="confirm-sale-btn" class="btn btn-primary">Confirm Sale</button>
             </div>
         </div>
@@ -596,7 +596,7 @@
             <div class="receipt-modal-actions">
                 <button id="share-log-btn" class="btn btn-primary" style="display: none;">Transfer Products</button>
                 <div class="receipt-modal-row">
-                    <button id="close-receipt-btn" class="btn btn-secondary" data-back>Close</button>
+                    <button id="close-receipt-btn" class="btn btn-secondary btn-cancel" data-back>Close</button>
                     <button id="print-receipt-btn" class="btn btn-secondary">Print</button>
                     <button id="share-receipt-btn" class="btn btn-secondary">Share</button>
                 </div>
@@ -610,7 +610,7 @@
                 <button id="retry-sell-scan-btn" class="btn btn-secondary">Try Again</button>
                 <button id="select-from-products-btn" class="btn btn-primary">Select from Products</button>
             </div>
-             <button type="button" id="cancel-entry-choice-btn" class="btn btn-secondary" style="margin-top: 12px;" data-back>Cancel</button>
+             <button type="button" id="cancel-entry-choice-btn" class="btn btn-secondary btn-cancel" style="margin-top: 12px;" data-back>Cancel</button>
         </div>
 
         <div id="phone-transfer-modal" class="modal-content transfer-modal" style="display:none;">
@@ -644,7 +644,7 @@
             </div>
 
             <div class="modal-actions modal-actions-inline">
-                <button id="cancel-phone-transfer-btn" class="btn btn-secondary" data-back>Cancel</button>
+                <button id="cancel-phone-transfer-btn" class="btn btn-secondary btn-cancel" data-back>Cancel</button>
                 <button id="confirm-phone-transfer-btn" class="btn btn-primary" disabled>Send</button>
             </div>
         </div>
@@ -653,7 +653,7 @@
             <h2>Invite Customer</h2>
             <p>Let's get this customer started. Should we send them a Pika App download link?</p>
             <div class="modal-actions modal-actions-inline">
-                <button id="cancel-invite-btn" class="btn btn-secondary" data-back>Cancel</button>
+                <button id="cancel-invite-btn" class="btn btn-secondary btn-cancel" data-back>Cancel</button>
                 <button id="send-invite-btn" class="btn btn-primary">Yes</button>
             </div>
         </div>
@@ -670,7 +670,7 @@
             </div>
             <p id="pin-confirm-error" class="pin-error" aria-live="polite"></p>
             <div class="modal-actions modal-actions-inline">
-                <button id="pin-confirm-cancel-btn" class="btn btn-secondary" data-back>Cancel</button>
+                <button id="pin-confirm-cancel-btn" class="btn btn-secondary btn-cancel" data-back>Cancel</button>
                 <button id="pin-confirm-ok-btn" class="btn btn-primary" disabled>Confirm</button>
             </div>
         </div>
@@ -733,7 +733,7 @@
                     </ul>
                 </div>
                 <div class="modal-actions modal-actions-inline">
-                    <button type="button" id="sp-add-cancel" class="btn btn-secondary" data-back>Cancel</button>
+                    <button type="button" id="sp-add-cancel" class="btn btn-secondary btn-cancel" data-back>Cancel</button>
                     <button type="button" id="sp-add-go" class="btn btn-primary">Get code</button>
                 </div>
             </div>
@@ -760,7 +760,7 @@
                 <input type="text" id="low-stock-input" inputmode="numeric" maxlength="4" placeholder="7" enterkeyhint="done">
             </div>
             <div class="modal-actions modal-actions-inline">
-                <button type="button" id="low-stock-cancel" class="btn btn-secondary" data-back>Cancel</button>
+                <button type="button" id="low-stock-cancel" class="btn btn-secondary btn-cancel" data-back>Cancel</button>
                 <button type="button" id="low-stock-save" class="btn btn-primary">Save</button>
             </div>
         </div>
@@ -860,7 +860,7 @@
                 </div>
             </div>
             <div class="profile-actions">
-                <button id="cancel-profile-btn" class="btn btn-secondary" data-back>Cancel</button>
+                <button id="cancel-profile-btn" class="btn btn-secondary btn-cancel" data-back>Cancel</button>
                 <a href="tel:07089319883" id="get-help-btn" class="btn">Get help</a>
             </div>
         </div>

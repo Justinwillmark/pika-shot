@@ -510,6 +510,10 @@ button:focus { outline: none; }
 .btn-primary:active { background-color: var(--primary-dark); }
 .btn-secondary { background-color: var(--border-color); color: var(--text-color); }
 .btn-secondary:active { background-color: #ddd; }
+/* Every Cancel and Close button: a red line and red text, like Logout (and a white fill over the camera, so it can be read) */
+.btn.btn-cancel { background: transparent; color: var(--danger-color); border: 1.5px solid rgba(208, 2, 27, 0.35); }
+.btn.btn-cancel:active { background: #ffebee; }
+.camera-actions .btn.btn-cancel { background: rgba(255, 255, 255, 0.94); }
 .btn-danger { background-color: var(--danger-color); color: white; }
 .btn-icon {
     display: flex;
@@ -916,7 +920,19 @@ button:focus { outline: none; }
 .edit-btn-icon:hover { background: rgba(255, 255, 255, 0.8); }
 .edit-btn-icon svg { width: 100%; height: 100%; stroke: var(--text-color); }
 
-.selection-mode .product-card { cursor: pointer; border: 2px solid var(--primary-color); }
+/* Choosing a product to sell ("Select a Product"): the count, the worth and the settings are not needed here, and each card has a teal line that keeps moving around its edge.
+   The line is a bright arc on a spinning layer behind the card (only that layer turns, so it stays light even with many cards); a plain card-coloured layer covers all but the edge. */
+.selection-mode .product-header { display: none; }
+.selection-mode .search-settings-btn { display: none !important; }
+.selection-mode .search-field #product-search-input { padding-right: 14px; }
+.selection-mode .product-card { cursor: pointer; padding: 2px; isolation: isolate; }
+.selection-mode .product-card::before { content: ''; position: absolute; z-index: 0; left: -50%; top: -50%; width: 200%; height: 200%; pointer-events: none; will-change: transform;
+    background: conic-gradient(from 0deg, rgba(0, 140, 149, 0.16) 0deg, rgba(0, 140, 149, 0.16) 140deg, var(--primary-color) 345deg, rgba(0, 140, 149, 0.16) 360deg);
+    animation: card-line-spin 3.2s linear infinite; }
+.selection-mode .product-card::after { content: ''; position: absolute; z-index: 1; inset: 2px; border-radius: calc(var(--border-radius) - 2px); background: var(--surface-color); pointer-events: none; }
+.selection-mode .product-card-image-wrapper, .selection-mode .product-card-info { position: relative; z-index: 2; }
+@keyframes card-line-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .selection-mode .product-card::before { animation: none; background: var(--primary-color); } }
 .selection-mode .product-card:hover { transform: scale(1.03); box-shadow: 0 6px 15px rgba(0,0,0,0.12); }
 .selection-mode .edit-btn-icon { display: none !important; }
 

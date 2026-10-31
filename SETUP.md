@@ -3,7 +3,7 @@
 ## Publishing
 - Quick way (as before): publish the project folder as it is.
 - Faster, harder-to-copy way: `npm install` once, then `npm run deploy`. It shrinks and scrambles the scripts into `dist/` and publishes that.
-- Every release: change `CACHE_NAME` in `serviceworker.js` (v34 -> v35 ...) so phones fetch the new files.
+- Every release: change `CACHE_NAME` in `serviceworker.js` (v36 -> v37 ...) so phones fetch the new files.
 
 ## Settings in one place (`config.js`)
 | Setting | What it does |
@@ -102,9 +102,14 @@ clearing browsing data or switching phones the picture comes back from the thumb
 - A modal has a step of its own in the browser's history, so Back closes it (by pressing its own Close / Cancel button, so anything waiting on it, such as a PIN prompt, is let go) instead of leaving the page. A message or question pop-up closes on Back too, and nothing behind it moves.
 - Back with nothing open goes to the page before, as it always did. A modal that can not be closed (a salesperson waiting to be confirmed) lets Back go on past it.
 - When adding a modal: give its Close / Cancel button a `data-back` attribute (in `index.html`), and open and close it with `showModal` / `hideModal`. In code, use `this._back()` instead of `history.back()`.
+- Every Cancel and Close button has the class `btn-cancel` (a red line and red text, like Logout; over the camera it keeps a white fill so it can be read). Add `btn-cancel` to the next one too. Other buttons (Decline, Done, OK, Try Again) keep their own look.
 
 ## Salespeople and customers
 - A salesperson's Customers tab now also lists the customers' stock cards of their business (read only: no "Remove from list"), as well as the credit they recorded. It reads the customer list once and reuses it for 10 minutes (Refresh reads it again). Firestore rules already allowed this.
+
+## Select a Product
+- When choosing a product to sell, My Products shows no product count, no inventory worth and no low-stock settings gear, only the search, the three tabs and the cards. All of that is CSS under `.selection-mode` in `style.css`.
+- Each card has a teal line that keeps moving around its edge (a bright arc, 3.2 seconds a lap; people whose phone is set to reduce motion get a plain teal line). It is a spinning layer behind the card, so it stays light with many cards. Change the speed in `card-line-spin`.
 
 ## Dashboard: reading GPS
 - The Users tab and the users CSV turn each GPS point into the nearest Lagos area (the 20 areas people choose at sign-up), say whether it fits the place they chose,
