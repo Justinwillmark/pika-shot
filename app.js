@@ -966,7 +966,7 @@ document.addEventListener('DOMContentLoaded', () => {
             status.classList.remove('ok');
             status.textContent = expired
                 ? 'This request expired. Tap Try again.'
-                : `Then come back here. This screen continues by itself (${Math.ceil(left / 60000)} min left).`;
+                : `Then come back here after verification. This screen continues by itself (${Math.ceil(left / 60000)} min left).`;
         },
 
         _phoneVerified(phone) {

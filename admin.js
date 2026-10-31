@@ -115,8 +115,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const CODE_TTL_MS = 20 * 60 * 1000; // must match the app
     const VERIFIED_TTL_MS = 60 * 60 * 1000; // after a number is confirmed the person has this long to finish, then they verify again
     const REPLIES = {
-        verified: 'Verified. Please return to PikaShot within 1 hour to create your account. Thanks',
-        verifiedReset: 'Verified. Please return to PikaShot within 1 hour to set your new PIN. Thanks',
+        verified: 'Verified. Expires in 1 hour. Please return to PikaShot to create your account. Thanks',
+        verifiedReset: 'Verified. Expires in 1 hour. Please return to PikaShot to set your new PIN. Thanks',
         missing: 'We couldn\'t find a PikaShot sign-up for this number. Please open PikaShot, enter this WhatsApp number, tap "Verify on WhatsApp" and send the message. Thanks',
         mismatch: 'That message doesn\'t match your sign-up. Please open PikaShot, tap "Verify on WhatsApp" and send the message without changing it. Thanks',
         expired: 'That request has expired. Please open PikaShot, tap "Try again", then "Verify on WhatsApp" and send the message. Thanks',
