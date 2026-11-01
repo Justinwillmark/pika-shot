@@ -103,11 +103,13 @@ document.addEventListener('DOMContentLoaded', () => {
             productFormTitle: document.getElementById('product-form-title'),
             productIdInput: document.getElementById('product-id'),
             addChangePictureBtn: document.getElementById('add-change-picture-btn'),
-            scanNewBarcodeBtn: document.getElementById('scan-new-barcode-btn'),
             productNameInput: document.getElementById('product-name'),
             productPriceInput: document.getElementById('product-price'),
             productStockInput: document.getElementById('product-stock'),
             productUnitInput: document.getElementById('product-unit'),
+            unitBtn: document.getElementById('product-unit-btn'),
+            unitMenu: document.getElementById('unit-menu'),
+            unitAsk: document.getElementById('unit-ask'),
             cancelProductFormBtn: document.getElementById('cancel-product-form-btn'),
             saveProductBtn: document.getElementById('save-product-btn'),
             confirmSaleModal: document.getElementById('confirm-sale-modal'),
@@ -201,14 +203,7 @@ document.addEventListener('DOMContentLoaded', () => {
             salespeopleView: document.getElementById('salespeople-view'),
             refreshStocksBtn: document.getElementById('refresh-stocks-btn'),
             internetNotice: document.getElementById('internet-notice'),
-            cartonDetailsModal: document.getElementById('carton-details-modal'),
-            cartonDetailsForm: document.getElementById('carton-details-form'),
-            cancelCartonDetailsBtn: document.getElementById('cancel-carton-details-btn'),
             allSalesTimeFilter: document.getElementById('all-sales-time-filter'),
-            cartonProductNameLabel: document.getElementById('carton-product-name-label'),
-            cartonSubunitTypeInput: document.getElementById('carton-subunit-type'),
-            cartonSubunitQuantityInput: document.getElementById('carton-subunit-quantity'),
-            cartonQuantityLabel: document.getElementById('carton-quantity-label'),
             privacyLink: document.getElementById('privacy-link'), // Original link
             privacyLinkTriggers: document.querySelectorAll('.privacy-link-trigger'), // New class for multiple links
             privacyOkBtn: document.getElementById('privacy-ok-btn'),
@@ -258,7 +253,6 @@ document.addEventListener('DOMContentLoaded', () => {
             longPressTimer: null,
             firebaseReady: false,
             retailerListener: null,
-            tempProductDataForCarton: null,
             productFilter: 'all',
             stockViewFilter: 'customers',
         },
@@ -421,8 +415,11 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.retakePictureBtn.addEventListener('click', this.handleRetakePicture.bind(this));
             this.elements.confirmPictureBtn.addEventListener('click', this.handleConfirmPicture.bind(this));
             this.elements.addChangePictureBtn.addEventListener('click', this.handleAddOrChangePicture.bind(this));
-            this.elements.scanNewBarcodeBtn.addEventListener('click', this.startBarcodeAssignmentScan.bind(this));
             this.elements.cancelPictureBtn.addEventListener('click', () => this.hideModal());
+            this._initUnitPicker();
+            // The PIN screens are real forms, so a browser pairs a PIN with the phone number (the hidden username) and with no other box.
+            // Nothing is ever sent by the form itself: the buttons do the work.
+            document.querySelectorAll('.cred-form').forEach(f => f.addEventListener('submit', (e) => e.preventDefault()));
             if(this.elements.torchBtn) this.elements.torchBtn.addEventListener('click', () => { Camera.toggleTorch(); });
             this.elements.saleQuantityInput.addEventListener('input', this.updateSaleTotal.bind(this));
             // TRIPLE TOGGLE LISTENERS
@@ -663,21 +660,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.navigateTo('stock-levels-view');
             });
             this.elements.refreshStocksBtn.addEventListener('click', () => { this.state.retailersAt = 0; this.renderRetailerStocks(); }); // (a salesperson's list is read again, not reused)
-            this.elements.cartonDetailsForm.addEventListener('submit', this.handleSaveCartonDetails.bind(this));
-            this.elements.cancelCartonDetailsBtn.addEventListener('click', () => { this.hideModal(); this.showModal('product-form-modal'); });
             this.elements.logoutBtn.addEventListener('click', this.handleLogout.bind(this));
             this.elements.cancelProfileBtn.addEventListener('click', () => this.hideModal());
             this.elements.profileAccountToggle.addEventListener('click', () => this._setAccountOpen(!this.elements.profileAccount.classList.contains('open')));
             this.elements.scanReward.addEventListener('click', () => this._nudgeTap());
-
-            this.elements.cartonSubunitTypeInput.addEventListener('input', (e) => {
-                const selectedUnit = e.target.value;
-                if (selectedUnit) {
-                    this.elements.cartonQuantityLabel.textContent = `How many ${selectedUnit} per carton?`;
-                } else {
-                    this.elements.cartonQuantityLabel.textContent = 'How many per carton?';
-                }
-            });
 
             this.elements.productFilterTabs.forEach(btn => btn.addEventListener('click', () => {
                 this.elements.productFilterTabs.forEach(b => b.classList.remove('active'));
@@ -695,7 +681,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const fieldsToFormat = [
                 this.elements.productPriceInput,
-                this.elements.cartonSubunitQuantityInput,
                 this.elements.discountAmountInput // Added discount input
             ];
             fieldsToFormat.forEach(input => {
@@ -1333,8 +1318,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // Who a transfer comes "from": the business, whoever in it recorded the sale
         _sender() {
             const u = this.state.user;
-            if (u.type === 'Salesperson') return { store: u.businessName || '', id: u.businessPhone, role: u.businessType || 'Wholesaler' };
-            return { store: u.business, id: u.phone, role: u.type };
+            if (u.type === 'Salesperson') return { store: u.businessName || '', id: u.businessPhone, role: u.businessType || 'Wholesaler', location: u.businessLocation || '' };
+            return { store: u.business, id: u.phone, role: u.type, location: u.location || '' };
         },
 
         _linkRef(phone) { return window.fb.doc(window.fb.db, 'salesperson_links', phone); },
@@ -1481,6 +1466,8 @@ document.addEventListener('DOMContentLoaded', () => {
         openAddSalesperson() {
             document.getElementById('sp-add-form').hidden = false;
             document.getElementById('sp-add-done').hidden = true;
+            document.getElementById('sp-rule-transfer').textContent = this.state.user && this.state.user.type === 'Retailer'
+                ? 'Cannot transfer items.' : 'Can transfer items to customers, but not to other salespeople.'; // (a retailer has no transfers, so neither does their salesperson)
             const phone = document.getElementById('sp-add-phone');
             phone.value = '';
             document.getElementById('sp-add-error').textContent = '';
@@ -2125,6 +2112,9 @@ document.addEventListener('DOMContentLoaded', () => {
         hideLoader() { this.elements.loaderSpinner.style.display = 'none'; this.elements.loaderCheck.style.display = 'block'; setTimeout(() => { this.elements.loader.style.opacity = '0'; this.elements.appContainer.style.display = 'flex'; setTimeout(() => { this.elements.loader.style.display = 'none'; }, 500); }, 500); },
         showView(viewId) {
             if (this.state.currentView === viewId) return;
+            if (viewId === 'onboarding-step-login' || viewId === 'onboarding-step-newpin' || viewId === 'onboarding-step-register') {
+                document.querySelectorAll('.cred-username').forEach(u => { u.value = this.state.tempPhone || ''; });
+            }
             // Leaving the scanner any way at all (Cancel, the arrow, the phone's Back) turns the camera off: left on, it kept
             // the camera busy, so the next scan or photo started slowly, and a photo could pop up after the person had left
             if (this.state.currentView === 'camera-view') Camera.stop();
@@ -2958,16 +2948,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (isLow(product)) badgeHtml = '<div class="restock-badge">Low stock!</div>';
                 } else if (product.isSalesperson) {
                     // a salesperson's only setup step is the picture, which usually arrives with the transfer now
-                    if (!product.image) {
-                        if (product.needsSetup === 'barcode-and-price') {
-                            badgeHtml = '<div class="setup-badge">Add image & barcode</div>';
-                        } else if (product.needsSetup === 'price') {
-                            badgeHtml = '<div class="setup-badge">Add image</div>';
-                        }
+                    if (!product.image && (product.needsSetup === 'price' || product.needsSetup === 'barcode-and-price')) {
+                        badgeHtml = '<div class="setup-badge">Add image</div>';
                     }
-                } else if (product.needsSetup === 'barcode-and-price') {
-                    badgeHtml = '<div class="setup-badge">Add barcode & price</div>';
-                } else if (product.needsSetup === 'price') {
+                } else if (product.needsSetup === 'price' || product.needsSetup === 'barcode-and-price') { // (the second is an older flag: the same step now)
                     badgeHtml = '<div class="setup-badge">New: Add price</div>';
                 } else if (isLow(product)) {
                     badgeHtml = '<div class="restock-badge">Low stock!</div>';
@@ -3530,16 +3514,113 @@ document.addEventListener('DOMContentLoaded', () => {
             this.showModal('product-form-modal');
         },
 
+        // --- Units: a list with a small picture beside each one. The hidden <select> stays the real field (its value is what is saved). ---
+        UNIT_LABELS: { sachets: 'Sachets', bottles: 'Bottles', cans: 'Cans', tubs: 'Tubs', pieces: 'Pieces', packets: 'Packets', cartons: 'Cartons' },
+        UNIT_ONE: { sachets: 'Sachet', bottles: 'Bottle', cans: 'Can', tubs: 'Tub', pieces: 'Piece', packets: 'Packet', cartons: 'Carton' },
+        // Drawn on a 24 x 24 grid, one colour, lightly filled: a pouch with sealed ends, a bottle, a can, a tub with a lid, a cube, a flat pack, a box
+        UNIT_ICONS: {
+            sachets: '<rect x="7.5" y="3" width="9" height="18" rx="1.5" fill="currentColor" fill-opacity=".14"/><path d="M7.5 6.5h9M7.5 17.5h9" stroke-dasharray="1.3 1.7"/><path d="M10.5 12h3"/>',
+            bottles: '<path d="M10 3h4v3.4l2.2 3V19a2 2 0 0 1-2 2H9.8a2 2 0 0 1-2-2V9.4L10 6.4z" fill="currentColor" fill-opacity=".14"/><path d="M7.8 13.5h8.4"/>',
+            cans: '<path d="M7 6.2v11.6c0 1.2 2.2 2.2 5 2.2s5-1 5-2.2V6.2" fill="currentColor" fill-opacity=".14"/><ellipse cx="12" cy="6.2" rx="5" ry="2.2" fill="#fff"/><path d="M7 12c0 1.2 2.2 2.2 5 2.2s5-1 5-2.2"/>',
+            tubs: '<rect x="4.5" y="5.5" width="15" height="3.2" rx="1.2" fill="currentColor" fill-opacity=".14"/><path d="M6.2 8.7l1 10a1.6 1.6 0 0 0 1.6 1.4h6.4a1.6 1.6 0 0 0 1.6-1.4l1-10" fill="currentColor" fill-opacity=".14"/><path d="M8 13.5h8"/>',
+            pieces: '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" fill="currentColor" fill-opacity=".14"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/>',
+            packets: '<rect x="3" y="7" width="18" height="10" rx="2" fill="currentColor" fill-opacity=".14"/><path d="M6.5 7v10M17.5 7v10"/><path d="M10 12h4"/>',
+            cartons: '<path d="M3.5 8.5h17V20h-17z" fill="currentColor" fill-opacity=".14"/><path d="M3.5 8.5L6 4h12l2.5 4.5"/><path d="M10 12.5h4"/>'
+        },
+        _unitLabel(v) { const k = String(v || '').toLowerCase(); return this.UNIT_LABELS[k] || (k ? k.charAt(0).toUpperCase() + k.slice(1) : ''); },
+        _unitOne(v) { const k = String(v || '').toLowerCase(); return this.UNIT_ONE[k] || (k ? k.charAt(0).toUpperCase() + k.slice(1).replace(/s$/, '') : ''); },
+        _unitIcon(v) {
+            const body = this.UNIT_ICONS[String(v || '').toLowerCase()] || this.UNIT_ICONS.cartons;
+            return `<svg class="unit-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
+        },
+        _ensureUnitOption(unit) { // a unit that came with a transfer may not be in the list: keep it selectable so saving never blanks it
+            const select = this.elements.productUnitInput;
+            if (unit && !Array.from(select.options).some(o => o.value === unit)) {
+                const extra = document.createElement('option');
+                extra.value = unit;
+                extra.textContent = unit;
+                select.appendChild(extra);
+            }
+        },
+        _setUnit(value) {
+            this._ensureUnitOption(value);
+            this.elements.productUnitInput.value = value;
+            this.elements.productUnitInput.dispatchEvent(new Event('change', { bubbles: true }));
+        },
+        _refreshUnitPicker() { // shows what the real field holds
+            const select = this.elements.productUnitInput, btn = this.elements.unitBtn;
+            btn.querySelector('.unit-ico').innerHTML = this._unitIcon(select.value);
+            btn.querySelector('.unit-name').textContent = this._unitLabel(select.value);
+            btn.disabled = select.disabled;
+        },
+        _initUnitPicker() {
+            const { productUnitInput: select, unitBtn: btn, unitMenu: menu, unitAsk: ask } = this.elements;
+            btn.addEventListener('click', () => (menu.hidden ? this._openUnitMenu() : this._closeUnitMenu()));
+            btn.addEventListener('keydown', (e) => { if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); this._openUnitMenu(); } });
+            menu.addEventListener('click', (e) => { const li = e.target.closest('[data-value]'); if (li) { this._setUnit(li.dataset.value); this._hideUnitAsk(); this._closeUnitMenu(true); } });
+            menu.addEventListener('keydown', (e) => {
+                const items = Array.from(menu.querySelectorAll('[data-value]'));
+                const at = items.indexOf(document.activeElement);
+                if (e.key === 'ArrowDown') { e.preventDefault(); (items[at + 1] || items[0]).focus(); }
+                else if (e.key === 'ArrowUp') { e.preventDefault(); (items[at - 1] || items[items.length - 1]).focus(); }
+                else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (at >= 0) items[at].click(); }
+                else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); this._closeUnitMenu(true); }
+            });
+            document.addEventListener('pointerdown', (e) => { if (!menu.hidden && !e.target.closest('#unit-group')) this._closeUnitMenu(); });
+            select.addEventListener('change', () => this._refreshUnitPicker());
+            ask.addEventListener('click', (e) => { const b = e.target.closest('[data-unit]'); if (b) { this._setUnit(b.dataset.unit); this._hideUnitAsk(); } });
+            this._refreshUnitPicker();
+        },
+        _openUnitMenu() {
+            const { productUnitInput: select, unitBtn: btn, unitMenu: menu } = this.elements;
+            if (btn.disabled) return;
+            menu.innerHTML = Array.from(select.options).filter(o => o.style.display !== 'none').map(o => {
+                const name = o.value === 'cartons' ? 'Packs / Cartons' : this._unitLabel(o.value);
+                return `<li role="option" tabindex="-1" data-value="${this._esc(o.value)}" aria-selected="${o.value === select.value}"><span class="unit-ico">${this._unitIcon(o.value)}</span><span class="unit-opt-name">${this._esc(name)}</span></li>`;
+            }).join('');
+            menu.hidden = false;
+            btn.setAttribute('aria-expanded', 'true');
+            const chosen = menu.querySelector('[aria-selected="true"]') || menu.firstElementChild;
+            if (chosen) chosen.focus({ preventScroll: true });
+            // the box scrolls just enough to show the whole list (the list can be taller than what is left of the box under the field)
+            const box = menu.closest('.modal-content');
+            if (box) setTimeout(() => { // (once the list has finished opening: while it opens it is a little smaller, and the scroll would stop short)
+                if (menu.hidden) return;
+                const over = menu.getBoundingClientRect().bottom - box.getBoundingClientRect().bottom + 16;
+                if (over > 0) box.scrollBy({ top: over });
+            }, 200);
+        },
+        _closeUnitMenu(refocus) {
+            const { unitBtn: btn, unitMenu: menu } = this.elements;
+            if (menu.hidden) return;
+            menu.hidden = true;
+            btn.setAttribute('aria-expanded', 'false');
+            if (refocus) btn.focus({ preventScroll: true });
+        },
+        // A received item came in counted differently from the unit kept here: a small question pointing at the unit field, "Bottle or Sachet?"
+        _askUnit(product) {
+            const { unitAsk: ask, unitBtn: btn } = this.elements;
+            const pill = (u) => `<button type="button" class="unit-ask-btn" data-unit="${this._esc(u)}"><span class="unit-ico">${this._unitIcon(u)}</span>${this._esc(this._unitOne(u))}</button>`;
+            ask.innerHTML = `<span class="unit-ask-arrow"></span><div class="unit-ask-row">${pill(product.unit)}<span class="unit-ask-or">or</span>${pill(product.unitToConfirm)}<span class="unit-ask-q">?</span></div>`;
+            ask.hidden = false;
+            btn.classList.add('needs-answer');
+        },
+        _hideUnitAsk() {
+            this.elements.unitAsk.hidden = true;
+            this.elements.unitBtn.classList.remove('needs-answer');
+        },
+
         _openProductForm(options = {}) {
             this.state.newProductKey = this._newId(); // this form makes ONE product
             this.elements.productForm.reset();
+            this._hideUnitAsk();
+            this._closeUnitMenu();
             this.elements.productFormTitle.textContent = 'Add New Product';
             this.elements.deleteProductBtn.style.display = 'none';
             const picBtn = this.elements.addChangePictureBtn;
             picBtn.style.display = 'flex';
             picBtn.classList.remove('success');
             picBtn.innerHTML = '<span>Snap Image</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>';
-            this.elements.scanNewBarcodeBtn.style.display = 'none';
             this.elements.productIdInput.value = '';
             this.elements.productBarcodeDisplay.style.display = 'none';
             this.elements.productSourceInfo.style.display = 'none';
@@ -3558,6 +3639,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.productBarcodeDisplay.style.display = 'block';
             }
 
+            this._refreshUnitPicker();
             this.hideModal();
             this.showModal('product-form-modal');
         },
@@ -3596,6 +3678,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 isSalesperson: isEditing ? this.state.editingProduct.isSalesperson : false,
                 wholesalerPrice: isEditing ? this.state.editingProduct.wholesalerPrice : 0,
                 needsSetup: null,
+                unitToConfirm: null, // saving answers the unit question (whichever unit is showing is the one kept)
             };
 
             if (isEditing) productData.editedAt = this._serverNow(); // every edit starts the product's "recently edited" line afresh (online time, so every phone agrees)
@@ -3610,11 +3693,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            if (isEditing && this.state.editingProduct.needsSetup === 'barcode-and-price' && !productData.barcode) {
-                await this._needs(form.scanNewBarcodeBtn, 'Scan this product\'s barcode first.', 'Barcode needed');
-                return;
-            }
-
             // New products need room; an edit counts towards the hourly limit (finishing a received product's setup does not)
             let saveOptions = null;
             if (!isEditing) {
@@ -3623,52 +3701,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 const before = this.state.editingProduct;
                 const changed = ['name', 'price', 'stock', 'unit', 'barcode', 'stockVisible'].filter(k => JSON.stringify(productData[k] === undefined ? null : productData[k]) !== JSON.stringify(before[k] === undefined ? null : before[k]));
                 const pictureChanged = !!this.state.capturedBlob && this.state.capturedBlob !== before.image; // a new picture, not the old one loaded into the form
-                if (!changed.length && !pictureChanged) {
+                if (!changed.length && !pictureChanged && !before.unitToConfirm) {
                     this.hideModal();
                     this.state.editingProduct = null;
                     this.showToast('Nothing was changed.');
                     return;
                 }
-                const counts = !before.needsSetup;
+                if (before.unitToConfirm) changed.push('unitToConfirm'); // answering the unit question is a change to save, but it is not a hand edit
+                const counts = !before.needsSetup && !before.unitToConfirm;
                 if (counts && !(await this._checkEditQuota())) return;
                 saveOptions = { only: [...changed, 'editedAt', ...(before.needsSetup ? ['needsSetup'] : [])], counts };
             }
 
-            if (productData.unit === 'cartons' && this.state.user.type === 'Wholesaler') {
-                this.elements.cartonDetailsForm.reset();
-                this.elements.cartonProductNameLabel.textContent = "What's inside?";
-                this.elements.cartonQuantityLabel.textContent = 'How many per carton?';
-                this.state.tempProductDataForCarton = productData;
-                this.state.tempSaveOptions = saveOptions && { counts: saveOptions.counts }; // the carton details are saved with the whole product
-                this.hideModal();
-                this.showModal('carton-details-modal');
-                return;
-            }
-
             await this._commitProductSave(productData, saveOptions);
-        },
-
-        async handleSaveCartonDetails(e) {
-            e.preventDefault();
-            return this._once('saveProduct', () => this._saveCartonDetails());
-        },
-
-        async _saveCartonDetails() {
-            if (!this.state.tempProductDataForCarton) return;
-
-            const subUnitType = this.elements.cartonSubunitTypeInput.value;
-            const subUnitQuantity = this.unformatNumber(this.elements.cartonSubunitQuantityInput.value);
-
-            if (!subUnitType) { await this._needs(this.elements.cartonSubunitTypeInput, 'Choose what is inside.', 'Check your entry'); return; }
-            if (isNaN(subUnitQuantity) || subUnitQuantity <= 0) { await this._needs(this.elements.cartonSubunitQuantityInput, 'Add how many are in each carton.', 'Check your entry'); return; }
-
-            let productData = this.state.tempProductDataForCarton;
-            productData.subUnitType = subUnitType;
-            productData.subUnitQuantity = subUnitQuantity;
-
-            await this._commitProductSave(productData, this.state.tempSaveOptions);
-            this.state.tempProductDataForCarton = null;
-            this.state.tempSaveOptions = null;
         },
 
         async _commitProductSave(productData, saveOptions) {
@@ -3701,7 +3746,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (saveOptions && saveOptions.only) {
                 options = { only: thumbChanged ? [...saveOptions.only, 'thumb'] : saveOptions.only, thumb: thumbChanged };
             } else if (before) {
-                options = { thumb: thumbChanged }; // the whole product goes (cartons), the picture only if it is new
+                options = { thumb: thumbChanged }; // the whole product goes, the picture only if it is new
             } else {
                 options = { thumb: true };
             }
@@ -3724,6 +3769,8 @@ document.addEventListener('DOMContentLoaded', () => {
             this.state.editingProduct = product;
             this.state.capturedBarcode = product.barcode;
             this.elements.productForm.reset();
+            this._hideUnitAsk();
+            this._closeUnitMenu();
             this.elements.productFormTitle.textContent = 'Edit Product';
             this.elements.deleteProductBtn.style.display = 'flex';
             const picBtn = this.elements.addChangePictureBtn;
@@ -3740,13 +3787,9 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.productNameInput.value = product.name;
             this.elements.productPriceInput.value = this.formatNumber(product.price);
             this.elements.productStockInput.value = this.formatNumber(product.stock);
-            // Units that came with a transfer may not be in the dropdown; keep them selectable so saving never blanks the unit
-            if (product.unit && !Array.from(this.elements.productUnitInput.options).some(o => o.value === product.unit)) {
-                const extra = document.createElement('option');
-                extra.value = product.unit;
-                extra.textContent = product.unit;
-                this.elements.productUnitInput.appendChild(extra);
-            }
+            // Units that came with a transfer may not be in the list; keep them selectable so saving never blanks the unit
+            this._ensureUnitOption(product.unit);
+            this._ensureUnitOption(product.unitToConfirm);
             this.elements.productUnitInput.value = product.unit;
             this.state.capturedBlob = product.image;
 
@@ -3755,7 +3798,6 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.productPriceInput.disabled = isSalesperson;
             this.elements.productStockInput.disabled = isSalesperson;
             this.elements.productUnitInput.disabled = isSalesperson;
-            this.elements.scanNewBarcodeBtn.style.display = 'none';
 
             if (isSalesperson) {
                 this.elements.productSourceInfo.textContent = 'As a salesperson, you can only change the product image.';
@@ -3775,25 +3817,20 @@ document.addEventListener('DOMContentLoaded', () => {
             const canShowVisibility = !!product.supplierId && !isSalesperson && !product.isSalesperson;
             this.elements.stockVisibilityRow.style.display = canShowVisibility ? 'flex' : 'none';
             this.elements.stockVisibilityToggle.checked = product.stockVisible !== false;
+            this._refreshUnitPicker();
 
-            if (product.needsSetup === 'barcode-and-price') {
-                this.elements.scanNewBarcodeBtn.style.display = 'block';
-                this.elements.productSourceInfo.textContent = 'This product needs a barcode. Scan one now.';
-                this.elements.productSourceInfo.style.display = 'block';
-                this.elements.productBarcodeDisplay.style.display = 'none';
+            if (product.barcode) { // (every product has one: it is how it was added)
+                this.elements.productBarcodeDisplay.textContent = product.barcode;
+                this.elements.productBarcodeDisplay.style.display = 'block';
             } else {
-                this.elements.scanNewBarcodeBtn.style.display = 'none';
-                if (product.barcode) {
-                    this.elements.productBarcodeDisplay.textContent = product.barcode;
-                    this.elements.productBarcodeDisplay.style.display = 'block';
-                } else {
-                    this.elements.productSourceInfo.textContent = 'No barcode assigned.';
-                    this.elements.productSourceInfo.style.display = 'block';
-                    this.elements.productBarcodeDisplay.style.display = 'none';
-                }
+                this.elements.productBarcodeDisplay.style.display = 'none';
             }
 
             this.showModal('product-form-modal');
+            // A received item was counted in another unit (bottles against sachets): once the box is open, ask which it is
+            if (!isSalesperson && product.unitToConfirm && String(product.unitToConfirm).toLowerCase() !== String(product.unit || '').toLowerCase()) {
+                setTimeout(() => { if (this.state.editingProduct === product && this._modalLive) this._askUnit(product); }, 450);
+            }
         },
 
         async handleDeleteProduct() {
@@ -3847,52 +3884,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 say("The photo did not work. Please try again.", "Photo failed");
                 if (this.state.currentView === 'camera-view') this._back();
             }
-        },
-
-        startBarcodeAssignmentScan() {
-            this.hideModal();
-            this._setCameraActions(false);
-            this.elements.scanFeedback.textContent = 'Scan new barcode...';
-            this.navigateTo('camera-view');
-            Camera.startScan(
-                this.handleBarcodeAssignmentResult.bind(this),
-                () => {
-                    this.elements.scanFeedback.textContent = 'Product not found.';
-                    setTimeout(() => {
-                        this._back();
-                        this.showModal('product-form-modal');
-                        say('No barcode found. Hold the phone steady and try again.', 'Not found');
-                    }, 500);
-                },
-                this.elements.scanTimerDisplay,
-                this._scanOptions()
-            );
-        },
-
-        async handleBarcodeAssignmentResult(result) {
-            this._back();
-            if (result.type !== 'barcode') return;
-
-            this._logToFirestore('scan_logs', null, {
-                userId: this.state.user.phone,
-                type: 'assign_barcode',
-                status: 'success',
-                barcode: result.data,
-                timestamp: window.fb.serverTimestamp()
-            });
-
-            const existingProduct = await DB.getProductByBarcode(result.data);
-            if (existingProduct && existingProduct.id !== this.state.editingProduct.id) {
-                say(`This barcode already belongs to "${existingProduct.name}".`, "Already used");
-                this.showModal('product-form-modal');
-                return;
-            }
-
-            this.state.capturedBarcode = result.data;
-            this.elements.productBarcodeDisplay.textContent = result.data;
-            this.elements.productBarcodeDisplay.style.display = 'block';
-            this.elements.productSourceInfo.style.display = 'none';
-            this.showModal('product-form-modal');
         },
 
         handleProductFound(product) {
@@ -4056,6 +4047,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     senderStore: sender.store,
                     senderId: sender.id,
                     senderRole: sender.role,
+                    senderLocation: sender.location,
                     ...(this._isSalesperson() ? { sentBy: this.state.user.phone, sentByName: this.state.user.name } : {}),
                     targetPhone: targetPhone,
                     claimed: false,
@@ -4815,6 +4807,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     senderStore: sender.store,
                     senderId: sender.id,
                     senderRole: sender.role,
+                    senderLocation: sender.location,
                     ...(this._isSalesperson() ? { sentBy: this.state.user.phone, sentByName: this.state.user.name } : {}),
                     targetPhone: targetPhone,
                     claimed: false,
@@ -4829,10 +4822,6 @@ document.addEventListener('DOMContentLoaded', () => {
                             unit: product ? product.unit : 'pieces',
                             barcode: product ? product.barcode : null
                         };
-                        if (product && product.unit === 'cartons') {
-                            item.subUnitType = product.subUnitType;
-                            item.subUnitQuantity = product.subUnitQuantity;
-                        }
                         Object.assign(item, this._settlementFields(selectedSaleObjects.filter(s => s.productId === sale.productId)));
                         return item;
                     })
@@ -5367,17 +5356,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const itemsHtml = items.map(item => {
                 const unit = this._esc(item.unit);
                 const lineTotal = (Number(item.price) || 0) * (Number(item.quantity) || 0);
-                let sub = '';
-                if (item.unit === 'cartons' && item.subUnitType && item.subUnitQuantity > 0) {
-                    sub = `<div class="rc-sub"><span>= ${this.formatNumber(item.quantity * item.subUnitQuantity)} ${this._esc(item.subUnitType)}</span></div>`;
-                }
                 const picture = this._safeImageUrl(item.image);
                 const thumb = !anyPicture ? ''
                     : picture ? `<img class="rc-thumb" src="${picture}" alt="" width="40" height="40">`
                     : `<span class="rc-thumb" aria-hidden="true"></span>`;
                 return `<div class="rc-item${anyPicture ? ' has-thumb' : ''}">${thumb}<div class="rc-item-main">` +
                     `<div class="rc-row"><span class="rc-item-name">${this._esc(item.name)}</span><span class="rc-amt">${money(lineTotal)}</span></div>` +
-                    `<div class="rc-calc">${this.formatNumber(item.quantity)} ${this._esc(unit)} &times; ${money(item.price)}</div>${sub}` +
+                    `<div class="rc-calc">${this.formatNumber(item.quantity)} ${this._esc(unit)} &times; ${money(item.price)}</div>` +
                     `</div></div>`;
             }).join('');
 
@@ -5387,10 +5372,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // The store's phone sits under its name: a transfer comes from a business, and its id is that business's phone number
             const senderPhone = /^\+?\d{7,15}$/.test(String(logData.senderId || '')) ? String(logData.senderId) : '';
+            const senderMeta = [senderPhone, logData.senderLocation].filter(Boolean).join(' \u00b7 '); // phone, then the area (LGA)
 
             this.elements.incomingTransferChip.textContent = `${items.length} item${items.length === 1 ? '' : 's'}`;
             this.elements.incomingTransferContent.innerHTML =
-                `<div class="receipt-header"><div class="rc-from">From</div><div class="rc-store">${this._esc(logData.senderStore)}</div>${senderPhone ? `<div class="rc-meta">${this._esc(senderPhone)}</div>` : ''}</div>` +
+                `<div class="receipt-header"><div class="rc-from">From</div><div class="rc-store">${this._esc(logData.senderStore)}</div>${senderMeta ? `<div class="rc-meta">${this._esc(senderMeta)}</div>` : ''}</div>` +
                 `<div class="rc-info"><div class="rc-kv"><span>Sent</span><span>${dateStr} &middot; ${timeStr}</span></div></div>` +
                 `<div class="rc-cols"><span>Item</span><span>Amount</span></div>` +
                 `<div class="receipt-items">${itemsHtml}</div>` +
@@ -5403,6 +5389,72 @@ document.addEventListener('DOMContentLoaded', () => {
                 `<p class="rc-note">${noticeText}</p>`;
             const scroller = this.elements.incomingTransferContent.parentElement;
             if (scroller) scroller.scrollTop = 0;
+            // A transfer sent before it carried the area: ask for it (once) and fill it in beside the phone number
+            if (senderPhone && !logData.senderLocation) {
+                this._senderPlace(logData).then((place) => {
+                    const line = this.elements.incomingTransferContent.querySelector('.receipt-header .rc-meta');
+                    if (place && line && this.state.scannedLogData === logData) line.textContent = [senderPhone, place].join(' \u00b7 ');
+                });
+            }
+        },
+
+        // The sender's area (LGA): from the transfer itself, otherwise from the sender's account. Kept on the transfer once found.
+        async _senderPlace(logData) {
+            if (logData.senderLocation) return logData.senderLocation;
+            if (!logData.senderId || !this.state.firebaseReady) return '';
+            try {
+                const snap = await window.fb.getDoc(window.fb.doc(window.fb.db, 'users', String(logData.senderId)));
+                const place = snap.exists() ? String(snap.data().location || '').trim() : '';
+                if (place) logData.senderLocation = place;
+                return place;
+            } catch (e) { return ''; }
+        },
+
+        // The receipt of an accepted transfer, drawn the way the sender's own receipt is, and saved to the phone as a picture
+        async _downloadTransferReceipt(log) {
+            try {
+                const money = (n) => `\u20a6${this.formatNumber(n)}`;
+                const amount = (v) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : 0; };
+                const items = Array.isArray(log.items) ? log.items : [];
+                const gross = items.reduce((sum, i) => sum + (Number(i.price) || 0) * (Number(i.quantity) || 0), 0);
+                const discount = items.reduce((sum, i) => sum + amount(i.discount), 0);
+                const balance = items.reduce((sum, i) => sum + amount(i.creditBalance), 0);
+                const hasCredit = items.some(i => i.creditPaid != null || i.creditBalance != null);
+                const due = Math.max(0, gross - discount);
+                const sent = DB._normalizeTimestamp(log.timestamp);
+                const place = await this._senderPlace(log);
+                const phone = /^\+?\d{7,15}$/.test(String(log.senderId || '')) ? String(log.senderId) : '';
+                const model = {
+                    store: String(log.senderStore || ''),
+                    meta: [phone, place].filter(Boolean).join(' \u00b7 '),
+                    customer: '',
+                    items: items.map(i => ({
+                        name: String(i.name || ''),
+                        amount: money((Number(i.price) || 0) * (Number(i.quantity) || 0)),
+                        calc: `${this.formatNumber(i.quantity)} ${String(i.unit || '')} \u00d7 ${money(i.price)}`,
+                        subs: []
+                    })),
+                    sumRows: discount > 0 ? [{ label: 'Subtotal', value: money(gross), tone: 'muted' }, { label: 'Discount', value: `-${money(discount)}`, tone: 'discount' }] : [],
+                    total: money(due),
+                    credit: hasCredit ? { paid: money(Math.max(0, due - balance)), balance: money(balance) } : null,
+                    stamp: `TRANSFER \u00b7 ${sent.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} \u00b7 ${sent.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`
+                };
+                const blob = await new Promise(resolve => this._drawReceipt(model).toBlob(resolve, 'image/png'));
+                if (!blob) return;
+                const day = sent.toISOString().slice(0, 10);
+                const shop = String(log.senderStore || 'transfer').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'transfer';
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `pikashot-receipt-${shop}-${day}.png`;
+                link.style.display = 'none';
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 60000);
+            } catch (error) {
+                console.error('Could not save the transfer receipt:', error); // the transfer itself is already done: never let this get in its way
+            }
         },
 
         async acceptPikaLog() {
@@ -5413,7 +5465,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!this.state.scannedLogData) return;
 
             const isSalesperson = this.state.user.type === 'Salesperson';
-            const isRetailerReceiving = this.state.user.type === 'Retailer';
             const log = this.state.scannedLogData;
             const supplierId = log.senderId;
 
@@ -5454,32 +5505,9 @@ document.addEventListener('DOMContentLoaded', () => {
             let updatedProductsForFirebase = {};
 
             for (const item of log.items) {
-                let stockToAdd, unitType, costPrice, needsSetup, barcode, originalName, wholesalerPrice, subUnitType, subUnitQuantity;
-
-                const isCarton = item.unit === 'cartons' && item.subUnitType && item.subUnitQuantity > 0;
-
-                if (isSalesperson) {
-                    stockToAdd = item.quantity;
-                    unitType = item.unit;
-                    costPrice = item.price;
-                    needsSetup = 'price';
-                } else if (isRetailerReceiving && isCarton) {
-                    stockToAdd = item.quantity * item.subUnitQuantity;
-                    unitType = item.subUnitType;
-                    costPrice = item.price / item.subUnitQuantity;
-                    needsSetup = 'barcode-and-price';
-                } else {
-                    stockToAdd = item.quantity;
-                    unitType = item.unit;
-                    costPrice = item.price;
-                    needsSetup = 'price';
-                }
-
-                wholesalerPrice = item.price;
-                barcode = item.barcode;
-                originalName = item.name;
-                subUnitType = item.subUnitType;
-                subUnitQuantity = item.subUnitQuantity;
+                // Whatever the unit (bottles, sachets, cartons...), it comes in as the sender counted it
+                const stockToAdd = item.quantity, unitType = item.unit, costPrice = item.price, needsSetup = 'price';
+                const wholesalerPrice = item.price, barcode = item.barcode, originalName = item.name;
 
                 // Same barcode = same product: add to what the user already has (even if it is named differently)
                 let existingProduct = null;
@@ -5518,9 +5546,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     existingProduct.isSalesperson = isSalesperson;
                     existingProduct.originalName = originalName;
                     existingProduct.wholesalerPrice = wholesalerPrice;
-                    if (isCarton) {
-                        existingProduct.subUnitType = subUnitType;
-                        existingProduct.subUnitQuantity = subUnitQuantity;
+                    // Counted in a different unit from the one kept here (bottles against sachets): the owner is asked which it is,
+                    // in this product's Edit box (the unit is not changed, and nothing is converted, until they answer)
+                    if (!isSalesperson && item.unit && existingProduct.unit && String(item.unit).toLowerCase() !== String(existingProduct.unit).toLowerCase()) {
+                        existingProduct.unitToConfirm = item.unit;
                     }
                     finalProduct = existingProduct;
                 } else {
@@ -5542,16 +5571,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         wholesalerPrice: wholesalerPrice,
                         needsSetup: needsSetup
                     };
-                    if (isCarton) {
-                        finalProduct.subUnitType = subUnitType;
-                        finalProduct.subUnitQuantity = subUnitQuantity;
-                    }
                     allProducts.push(finalProduct); // so a repeated barcode/name inside the same transfer is merged too
                 }
                 if (existingProduct) {
                     // the stock is added to whatever it is now; the fields that changed are sent, nothing else
                     productUpdates.push(DB.saveProduct(finalProduct, { delta: stockToAdd, thumb: thumbSentHere,
-                        only: ['supplierId', 'barcode', 'needsSetup', 'lockedUntilOOS', 'isSalesperson', 'originalName', 'wholesalerPrice', 'subUnitType', 'subUnitQuantity', 'thumb'] }));
+                        only: ['supplierId', 'barcode', 'needsSetup', 'lockedUntilOOS', 'isSalesperson', 'originalName', 'wholesalerPrice', 'unitToConfirm', 'thumb'] }));
                 } else {
                     productUpdates.push(DB.saveProduct(finalProduct, { thumb: true }));
                 }
@@ -5613,6 +5638,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.hideModal();
             this.state.scannedLogData = null;
             this._nudgeAct('transfer');
+            this._downloadTransferReceipt(log); // the receipt for it is saved to the phone too (after the transfer is safely in; it never holds anything up)
             await this.renderProducts();
             this.navigateTo('products-view');
             this.showCelebration({

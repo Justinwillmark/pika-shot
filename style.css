@@ -268,16 +268,64 @@ html, body {
 .wholesaler-only {
     display: none; /* Hidden by default */
 }
-.scan-new-barcode-btn {
-    margin-top: -10px;
-    margin-bottom: 10px;
-}
 .price-group {
-    flex: 2;
+    flex: 1.7;
 }
 .unit-group {
-    flex: 1;
+    flex: 1.3;
 }
+
+/* The PIN screens are forms that take no room of their own; the phone number rides along, unseen, as the username a browser pairs the PIN with */
+.cred-form { display: contents; }
+.cred-username { position: absolute !important; left: 0 !important; top: 0 !important; width: 1px !important; height: 1px !important; margin: 0 !important; padding: 0 !important; border: 0 !important; box-shadow: none !important; opacity: 0 !important; pointer-events: none !important; }
+/* A PIN box that is not a login (asked before something is deleted): hidden digits, without being a password box */
+.masked-pin { -webkit-text-security: disc; text-security: disc; }
+
+/* Unit: a button that shows the chosen unit with a small picture, and a list of every unit with its picture (the hidden <select> is the real field) */
+.unit-btn {
+    display: flex; align-items: center; gap: 8px; width: 100%; height: 50px; padding: 0 10px 0 10px; border: 1.5px solid #b4bec7; border-radius: 12px;
+    background: #fff; color: #1d1d1d; font: inherit; font-size: 1rem; text-align: left; cursor: pointer; -webkit-tap-highlight-color: transparent;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.unit-btn:focus-visible, .unit-btn[aria-expanded="true"] { outline: none; border-color: var(--primary-color); box-shadow: 0 0 0 1px var(--primary-color); }
+.unit-btn:disabled { background: #f3f5f7; color: #7a848c; cursor: default; }
+.unit-btn .unit-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.unit-btn .unit-chev { flex: none; color: #556; transition: transform 0.18s ease; }
+.unit-btn[aria-expanded="true"] .unit-chev { transform: rotate(180deg); }
+.unit-ico { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; color: var(--primary-color); }
+.unit-btn:disabled .unit-ico { color: #8a949b; }
+.unit-svg { width: 100%; height: 100%; display: block; }
+.unit-menu {
+    position: absolute; z-index: 40; top: calc(100% + 6px); left: 0; min-width: 214px; max-height: 320px; margin: 0; padding: 6px; list-style: none; overflow-y: auto;
+    background: #fff; border: 1px solid #dfe5ea; border-radius: 14px; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18); transform-origin: 18px -6px; animation: unit-pop 0.16s ease-out;
+}
+.unit-menu[hidden] { display: none; }
+.unit-menu li { display: flex; align-items: center; gap: 12px; min-height: 42px; padding: 0 10px; border-radius: 9px; font-size: 0.98rem; color: #1d1d1d; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.unit-menu li .unit-ico { width: 28px; height: 28px; }
+.unit-menu li:hover, .unit-menu li:focus { background: #eef6f7; outline: none; }
+.unit-menu li:active { background: #dcecee; }
+.unit-menu li[aria-selected="true"] { background: rgba(0, 140, 149, 0.1); font-weight: 600; }
+.unit-menu li[aria-selected="true"]::after { content: ''; margin-left: auto; width: 6px; height: 11px; border: solid var(--primary-color); border-width: 0 2.5px 2.5px 0; transform: rotate(45deg) translate(-2px, -2px); }
+@keyframes unit-pop { from { opacity: 0; transform: translateY(-6px) scale(0.97); } to { opacity: 1; transform: none; } }
+
+/* "Bottle or Sachet?": a small floating question under the unit field, pointing up at it; the field glows until it is answered */
+.unit-ask {
+    position: absolute; z-index: 45; top: calc(100% + 12px); left: -2px; width: max-content; max-width: calc(100vw - 56px); padding: 10px 12px;
+    background: #fff; border: 1.5px solid var(--primary-color); border-radius: 14px; box-shadow: 0 10px 26px rgba(0, 0, 0, 0.2);
+    transform-origin: 26px -8px; animation: unit-ask-in 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+.unit-ask[hidden] { display: none; }
+.unit-ask-arrow { position: absolute; top: -7px; left: 24px; width: 12px; height: 12px; background: #fff; border-left: 1.5px solid var(--primary-color); border-top: 1.5px solid var(--primary-color); transform: rotate(45deg); border-top-left-radius: 3px; }
+.unit-ask-row { display: flex; align-items: center; gap: 8px; font-size: 0.95rem; color: #1d1d1d; white-space: nowrap; }
+.unit-ask-btn { display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 12px 0 8px; border: 1.5px solid var(--primary-color); border-radius: 999px; background: #fff; color: var(--primary-color); font: inherit; font-size: 0.95rem; font-weight: 600; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: background-color 0.15s, color 0.15s, transform 0.1s; }
+.unit-ask-btn .unit-ico { width: 22px; height: 22px; }
+.unit-ask-btn:active { background: var(--primary-color); color: #fff; transform: scale(0.96); }
+.unit-ask-or, .unit-ask-q { color: #5b6670; font-weight: 600; }
+.unit-ask-q { margin-left: -4px; }
+.unit-btn.needs-answer { border-color: var(--primary-color); animation: unit-glow 1.6s ease-in-out infinite; }
+@keyframes unit-ask-in { from { opacity: 0; transform: translateY(-8px) scale(0.94); } to { opacity: 1; transform: none; } }
+@keyframes unit-glow { 0%, 100% { box-shadow: 0 0 0 0 rgba(0, 140, 149, 0.35); } 50% { box-shadow: 0 0 0 5px rgba(0, 140, 149, 0.12); } }
+@media (prefers-reduced-motion: reduce) { .unit-menu, .unit-ask { animation: none; } .unit-btn.needs-answer { animation: none; box-shadow: 0 0 0 3px rgba(0, 140, 149, 0.25); } }
 #product-form .btn-icon {
     flex: 1;
     margin-bottom: 20px;
@@ -1647,13 +1695,21 @@ button:focus { outline: none; }
 .modal-content .sp-rules p { margin: 0 0 6px; text-align: left; font-size: 0.85rem; line-height: 1.4; color: var(--text-color); }
 .modal-content .sp-rules p.sp-rules-lead { font-weight: 700; }
 .sp-rules ul { margin: 0; padding-left: 18px; font-size: 0.84rem; line-height: 1.55; color: var(--text-light); }
-#add-salesperson-modal #sp-add-form .modal-actions { margin-top: 0; }
+/* The box is a scrolling top and a footer that never moves, so Cancel and Get code stay in view above the phone's keypad. While the number is
+   being typed the "how it works" panel folds away to leave only the number and the two buttons. */
+#add-salesperson-modal.sp-modal { padding: 0; overflow: hidden; }
+#add-salesperson-modal .sp-pane { display: flex; flex-direction: column; min-height: 0; max-height: 100%; flex: 1 1 auto; }
+#add-salesperson-modal .sp-pane[hidden] { display: none; }
+#add-salesperson-modal .sp-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 24px 24px 6px; }
+#add-salesperson-modal .sp-footer { flex: none; margin: 0; padding: 12px 24px 20px; background: var(--surface-color); box-shadow: 0 -6px 12px -8px rgba(0, 0, 0, 0.18); }
+#add-salesperson-modal .sp-rules { max-height: 300px; margin: 4px 0 14px; overflow: hidden; transition: max-height 0.28s ease, opacity 0.2s ease, margin 0.28s ease, padding 0.28s ease; }
+#add-salesperson-modal #sp-add-form:focus-within .sp-rules { max-height: 0; margin-top: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0; opacity: 0; }
+@media (prefers-reduced-motion: reduce) { #add-salesperson-modal .sp-rules { transition: none; } }
 .sp-code-box { margin: 4px 0; padding: 16px; border-radius: 14px; background: #e6f4f5; text-align: center; }
 .sp-code-box strong { padding-left: 0.3em; font-size: 2.6rem; font-weight: 800; letter-spacing: 0.3em; color: var(--primary-color); font-variant-numeric: tabular-nums; }
 .sp-code-box.expired { background: #f3f3f3; }
 .sp-code-box.expired strong { color: #b5b5b5; text-decoration: line-through; }
 .modal-content p.sp-timer { margin: 6px 0 0; text-align: center; font-size: 0.88rem; color: var(--text-light); }
-#add-salesperson-modal #sp-add-done .modal-actions { margin-top: 18px; }
 
 /* The Salespeople tab: a card per salesperson, a summary card per day that still needs their money confirmed */
 .sp-card { overflow: hidden; }

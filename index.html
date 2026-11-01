@@ -72,21 +72,24 @@
             <div class="onboarding-content">
                 <h1>Welcome Back!</h1>
                 <p>Enter your 6-digit PIN to log in.</p>
+                <form id="login-form" class="cred-form" autocomplete="on" novalidate>
                 <div class="form-group outlined">
                     <label for="login-pin">Your PIN</label>
+                    <input type="text" class="cred-username" name="username" autocomplete="username" tabindex="-1" aria-hidden="true">
                     <div class="input-wrapper">
                         <input type="password" id="login-pin" placeholder="••••••" maxlength="6" inputmode="numeric" autocomplete="current-password" enterkeyhint="go">
                         <div class="input-icons">
-                            <button id="toggle-login-pin" class="icon-btn" title="Show/Hide">
+                            <button type="button" id="toggle-login-pin" class="icon-btn" title="Show/Hide">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
                             </button>
-                            <button id="copy-login-pin" class="icon-btn" title="Copy">
+                            <button type="button" id="copy-login-pin" class="icon-btn" title="Copy">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                             </button>
                         </div>
                     </div>
                 </div>
-                <button id="login-btn" class="btn btn-primary">Login</button>
+                <button type="submit" id="login-btn" class="btn btn-primary">Login</button>
+                </form>
                 <div class="login-links">
                     <button type="button" id="forgot-pin-btn" class="wa-link-btn">Forgot PIN?</button>
                     <button type="button" id="back-to-phone-btn" class="wa-link-btn muted-link">Use a different number</button>
@@ -99,12 +102,14 @@
             <div class="onboarding-content">
                 <h1>Create a new PIN</h1>
                 <p>Choose a new 6-digit PIN for <b id="newpin-phone"></b>.</p>
+                <form id="newpin-form" class="cred-form" autocomplete="on" novalidate>
                 <div class="form-group outlined">
                     <label for="new-pin">New 6-digit PIN</label>
+                    <input type="text" class="cred-username" name="username" autocomplete="username" tabindex="-1" aria-hidden="true">
                     <div class="input-wrapper">
                         <input type="password" id="new-pin" placeholder="••••••" maxlength="6" inputmode="numeric" autocomplete="new-password">
                         <div class="input-icons">
-                            <button id="toggle-new-pin" class="icon-btn" title="Show/Hide">
+                            <button type="button" id="toggle-new-pin" class="icon-btn" title="Show/Hide">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
                             </button>
                         </div>
@@ -115,14 +120,15 @@
                     <div class="input-wrapper">
                         <input type="password" id="new-pin-confirm" placeholder="••••••" maxlength="6" inputmode="numeric" autocomplete="new-password">
                         <div class="input-icons">
-                            <button id="toggle-new-pin-confirm" class="icon-btn" title="Show/Hide">
+                            <button type="button" id="toggle-new-pin-confirm" class="icon-btn" title="Show/Hide">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
                             </button>
                         </div>
                     </div>
                     <p id="new-pin-match" class="newpin-match" role="alert" hidden>The two PINs are not the same.</p>
                 </div>
-                <button id="save-new-pin-btn" class="btn btn-primary">Save PIN and log in</button>
+                <button type="submit" id="save-new-pin-btn" class="btn btn-primary">Save PIN and log in</button>
+                </form>
                 <p class="newpin-note">Any other phone still using your old PIN will be logged out.</p>
             </div>
         </div>
@@ -139,6 +145,7 @@
                     </div>
                 </div>
 
+                <form id="register-form" class="cred-form" autocomplete="on" novalidate>
                 <div class="reg-fields">
                     <div class="form-group">
                         <label for="first-name">First name</label>
@@ -188,7 +195,7 @@
 
                     <div class="form-group" id="business-name-group">
                         <label for="business-name">Business name</label>
-                        <input type="text" id="business-name" placeholder="e.g., Amaka's Provisions" required>
+                        <input type="text" id="business-name" placeholder="e.g., Amaka's Provisions" autocomplete="off" required>
                     </div>
 
                     <div class="form-group">
@@ -205,13 +212,14 @@
 
                     <div class="form-group">
                         <label for="create-pin">Create 6-digit PIN</label>
+                        <input type="text" class="cred-username" name="username" autocomplete="username" tabindex="-1" aria-hidden="true">
                         <div class="input-wrapper">
                             <input type="password" id="create-pin" placeholder="••••••" maxlength="6" inputmode="numeric" autocomplete="new-password">
                             <div class="input-icons">
-                                <button id="toggle-create-pin" class="icon-btn" title="Show/Hide">
+                                <button type="button" id="toggle-create-pin" class="icon-btn" title="Show/Hide">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
                                 </button>
-                                <button id="copy-create-pin" class="icon-btn" title="Copy">
+                                <button type="button" id="copy-create-pin" class="icon-btn" title="Copy">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                                 </button>
                             </div>
@@ -219,7 +227,8 @@
                     </div>
                 </div>
 
-                <button id="complete-registration-btn" class="btn btn-primary reg-submit">Create Account</button>
+                <button type="submit" id="complete-registration-btn" class="btn btn-primary reg-submit">Create Account</button>
+                </form>
                 <p class="privacy-policy-link">By using PikaShot, you agree to our <a href="#" class="privacy-link-trigger">Data &amp; Privacy Policy</a>.</p>
             </div>
         </div>
@@ -346,7 +355,7 @@
                 <div class="product-controls-sticky-header">
                     <div id="product-search-container" style="display: none;">
                         <div class="search-field">
-                            <input type="search" id="product-search-input" placeholder="Search my products...">
+                            <input type="search" id="product-search-input" placeholder="Search my products..." autocomplete="off">
                             <button type="button" id="low-stock-settings-btn" class="search-settings-btn" aria-label="Set the low stock level">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
                             </button>
@@ -486,7 +495,7 @@
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
             </button>
             <h2 id="product-form-title">Add New Product</h2>
-            <form id="product-form" novalidate>
+            <form id="product-form" autocomplete="off" novalidate>
                 <input type="hidden" id="product-id">
                  <p id="product-barcode-display" class="barcode-display large" style="display: none;"></p>
                 <p id="product-source-info" class="source-info" style="display: none;"></p>
@@ -498,49 +507,27 @@
                     </label>
                 </div>
                 <div class="form-group">
-                     <button type="button" id="scan-new-barcode-btn" class="btn btn-secondary scan-new-barcode-btn" style="display: none;">Scan Barcode</button>
-                </div>
-                <div class="form-group">
                     <label for="product-name">Product name</label>
-                    <input type="text" id="product-name" placeholder="e.g., Indomie Chicken" enterkeyhint="next" required>
+                    <input type="text" id="product-name" placeholder="e.g., Indomie Chicken" autocomplete="off" enterkeyhint="next" required>
                 </div>
                 <div class="form-row">
-                    <div class="form-group unit-group"><label for="product-unit">Unit</label><select id="product-unit" required><option value="sachets">sachets</option><option value="bottles">bottles</option><option value="cans">cans</option><option value="tubs">tubs</option><option value="pieces">pieces</option><option value="packets">packets</option><option value="cartons" class="wholesaler-only">packs/cartons</option></select></div>
-                    <div class="form-group price-group"><label for="product-price">Price (₦)</label><input type="text" id="product-price" inputmode="decimal" placeholder="e.g., 200" enterkeyhint="next" required></div>
+                    <div class="form-group unit-group" id="unit-group">
+                        <label for="product-unit-btn" id="unit-label">Unit</label>
+                        <!-- The list below is the real field (its value is what gets saved); the button and the picture menu are how it is shown and chosen -->
+                        <select id="product-unit" required hidden tabindex="-1" aria-hidden="true"><option value="sachets">sachets</option><option value="bottles">bottles</option><option value="cans">cans</option><option value="tubs">tubs</option><option value="pieces">pieces</option><option value="packets">packets</option><option value="cartons" class="wholesaler-only">packs/cartons</option></select>
+                        <button type="button" id="product-unit-btn" class="unit-btn" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="unit-label"><span class="unit-ico" aria-hidden="true"></span><span class="unit-name"></span><svg class="unit-chev" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg></button>
+                        <ul id="unit-menu" class="unit-menu" role="listbox" aria-labelledby="unit-label" hidden></ul>
+                        <div id="unit-ask" class="unit-ask" role="dialog" aria-label="Which unit is this?" hidden></div>
+                    </div>
+                    <div class="form-group price-group"><label for="product-price">Price (₦)</label><input type="text" id="product-price" inputmode="decimal" placeholder="e.g., 200" autocomplete="off" enterkeyhint="next" required></div>
                 </div>
                 <div class="form-row">
                     <button type="button" id="add-change-picture-btn" class="btn-icon"><span>Snap Image</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg></button>
-                    <div class="form-group stock-group"><label for="product-stock">Stock</label><input type="text" id="product-stock" inputmode="decimal" placeholder="e.g., 24 or 2.5" enterkeyhint="done" required></div>
+                    <div class="form-group stock-group"><label for="product-stock">Stock</label><input type="text" id="product-stock" inputmode="decimal" placeholder="e.g., 24 or 2.5" autocomplete="off" enterkeyhint="done" required></div>
                 </div>
                  <div class="modal-actions modal-actions-inline">
                     <button type="button" id="cancel-product-form-btn" class="btn btn-secondary btn-cancel" data-back>Cancel</button>
                     <button type="submit" id="save-product-btn" class="btn btn-primary">Save Product</button>
-                </div>
-            </form>
-        </div>
-
-        <div id="carton-details-modal" class="modal-content" style="display:none;">
-            <h2>Carton Details</h2>
-            <form id="carton-details-form" novalidate>
-                <div class="form-group">
-                    <label for="carton-subunit-type" id="carton-product-name-label">What's inside?</label>
-                    <select id="carton-subunit-type" required>
-                         <option value="" disabled selected>Select</option>
-                         <option value="sachets">sachets</option>
-                         <option value="bottles">bottles</option>
-                         <option value="cans">cans</option>
-                         <option value="tubs">tubs</option>
-                         <option value="pieces">pieces</option>
-                         <option value="packets">packets</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="carton-subunit-quantity" id="carton-quantity-label">How many per carton?</label>
-                    <input type="text" id="carton-subunit-quantity" inputmode="numeric" placeholder="e.g., 12" enterkeyhint="done" required>
-                </div>
-                <div class="modal-actions modal-actions-inline">
-                     <button type="button" id="cancel-carton-details-btn" class="btn btn-secondary btn-cancel" data-back>Cancel</button>
-                     <button type="submit" class="btn btn-primary">Confirm</button>
                 </div>
             </form>
         </div>
@@ -570,7 +557,7 @@
                         <div class="input-with-contact-wrapper" id="input-contact-wrapper">
                             <div class="input-with-prefix" id="discount-input-wrapper">
                                 <span class="currency-prefix">₦</span>
-                                <input type="text" id="discount-amount" inputmode="numeric" placeholder="0">
+                                <input type="text" id="discount-amount" inputmode="numeric" placeholder="0" autocomplete="off">
                             </div>
                             <button type="button" id="select-contact-btn" class="btn btn-icon" style="display:none;" aria-label="Select Contact">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M19 8v6"></path><path d="M22 11h-6"></path></svg>
@@ -587,7 +574,7 @@
                     <label for="sale-quantity" id="sale-quantity-label">Quantity</label>
                     <div class="quantity-stepper">
                         <button type="button" id="decrease-quantity-btn" class="btn btn-secondary" aria-label="Decrease quantity">-</button>
-                        <input type="text" id="sale-quantity" inputmode="decimal" value="1">
+                        <input type="text" id="sale-quantity" inputmode="decimal" value="1" autocomplete="off">
                         <button type="button" id="increase-quantity-btn" class="btn btn-secondary" aria-label="Increase quantity">+</button>
                     </div>
                 </div>
@@ -685,7 +672,7 @@
             <p id="pin-confirm-text"></p>
             <div id="pin-input-wrap" class="pin-input-wrap">
                 <label for="pin-confirm-input">Your PIN</label>
-                <input type="password" id="pin-confirm-input" inputmode="numeric" maxlength="6" placeholder="••••••" autocomplete="off" enterkeyhint="done">
+                <input type="text" id="pin-confirm-input" class="masked-pin" inputmode="numeric" maxlength="6" placeholder="••••••" autocomplete="off" enterkeyhint="done" autocapitalize="off" autocorrect="off" spellcheck="false">
             </div>
             <p id="pin-confirm-error" class="pin-error" aria-live="polite"></p>
             <div class="modal-actions modal-actions-inline">
@@ -733,35 +720,37 @@
             </div>
         </div>
 
-        <div id="add-salesperson-modal" class="modal-content" style="display:none;">
-            <div id="sp-add-form">
-                <h2>Add a salesperson</h2>
-                <div class="form-group">
-                    <label for="sp-add-phone">Their phone number</label>
-                    <input type="tel" id="sp-add-phone" inputmode="numeric" placeholder="08012345678" autocomplete="off" enterkeyhint="go">
+        <div id="add-salesperson-modal" class="modal-content sp-modal" style="display:none;">
+            <div id="sp-add-form" class="sp-pane">
+                <div class="sp-scroll">
+                    <h2>Add a salesperson</h2>
+                    <div class="form-group">
+                        <label for="sp-add-phone">Their phone number</label>
+                        <input type="tel" id="sp-add-phone" inputmode="numeric" placeholder="08012345678" autocomplete="off" enterkeyhint="go">
+                    </div>
+                    <p id="sp-add-error" class="sp-error" role="alert"></p>
+                    <div class="sp-rules">
+                        <p class="sp-rules-lead">The code expires in 20 minutes.</p>
+                        <ul>
+                            <li>Sells from your products and sees only their own sales and customers.</li>
+                            <li id="sp-rule-transfer">Can transfer items to customers, but not to other salespeople.</li>
+                            <li>Cannot edit products, mark credit as repaid, or see your inventory worth.</li>
+                        </ul>
+                    </div>
                 </div>
-                <p id="sp-add-error" class="sp-error" role="alert"></p>
-                <div class="sp-rules">
-                    <p class="sp-rules-lead">How it works.</p>
-                    <p>A salesperson sells from your products and sees only their own sales. They cannot:</p>
-                    <ul>
-                        <li>Edit your products</li>
-                        <li>Transfer items to other salespeople</li>
-                        <li>Mark a credit as fully repaid</li>
-                        <li>See your inventory worth or other salespeople</li>
-                    </ul>
-                </div>
-                <div class="modal-actions modal-actions-inline">
+                <div class="modal-actions modal-actions-inline sp-footer">
                     <button type="button" id="sp-add-cancel" class="btn btn-secondary btn-cancel" data-back>Cancel</button>
                     <button type="button" id="sp-add-go" class="btn btn-primary">Get code</button>
                 </div>
             </div>
-            <div id="sp-add-done" hidden>
-                <h2 id="sp-done-title">Code for your salesperson</h2>
-                <p id="sp-done-sub">Ask them to enter this code in PikaShot.</p>
-                <div class="sp-code-box"><strong id="sp-code-value">0000</strong></div>
-                <p id="sp-timer" class="sp-timer">Expires in 20:00</p>
-                <div class="modal-actions">
+            <div id="sp-add-done" class="sp-pane" hidden>
+                <div class="sp-scroll">
+                    <h2 id="sp-done-title">Code for your salesperson</h2>
+                    <p id="sp-done-sub">Ask them to enter this code in PikaShot.</p>
+                    <div class="sp-code-box"><strong id="sp-code-value">0000</strong></div>
+                    <p id="sp-timer" class="sp-timer">Expires in 20:00</p>
+                </div>
+                <div class="modal-actions sp-footer">
                     <button type="button" id="sp-copy" class="btn btn-primary">Copy code</button>
                     <div class="modal-actions-inline">
                         <button type="button" id="sp-new" class="btn btn-secondary">New code</button>
@@ -776,7 +765,7 @@
             <p>A product shows "Low stock" when fewer than this many are left.</p>
             <div class="form-group">
                 <label for="low-stock-input">Fewer than</label>
-                <input type="text" id="low-stock-input" inputmode="numeric" maxlength="4" placeholder="7" enterkeyhint="done">
+                <input type="text" id="low-stock-input" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="7" enterkeyhint="done">
             </div>
             <div class="modal-actions modal-actions-inline">
                 <button type="button" id="low-stock-cancel" class="btn btn-secondary btn-cancel" data-back>Cancel</button>

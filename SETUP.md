@@ -3,7 +3,7 @@
 ## Publishing
 - Quick way (as before): publish the project folder as it is.
 - Faster, harder-to-copy way: `npm install` once, then `npm run deploy`. It shrinks and scrambles the scripts into `dist/` and publishes that.
-- Every release: change `CACHE_NAME` in `serviceworker.js` (v45 -> v46 ...) so phones fetch the new files.
+- Every release: change `CACHE_NAME` in `serviceworker.js` (v46 -> v47 ...) so phones fetch the new files.
 
 ## Settings in one place (`config.js`)
 | Setting | What it does |
@@ -129,9 +129,24 @@ clearing browsing data or switching phones the picture comes back from the thumb
 
 ## Salespeople and customers
 - **A salesperson sees only their own customers.** A customer is theirs once they accepted something this salesperson transferred (the sale is marked `transferredTo` on the salesperson's own sales). Their Customers tab lists the credit they recorded plus the read-only stock cards of those customers, and a credit card shows "Their stock" only for such a customer. The business's other customers are never read (one document per customer is fetched, not the whole list), never shown, and never named in their messages. The list is read again as soon as a new customer of theirs appears, otherwise reused for 10 minutes (Refresh reads it again).
+- **The Add a salesperson box** says what a salesperson can do in 3 short lines. Its Cancel / Get code buttons sit in a footer that never scrolls, and while the number is being typed the "how it works" panel folds away, so both buttons stay in view above the phone's keypad (even on a very short screen). For a retailer the transfer line reads "Cannot transfer items."
 - This is enforced in the app, as the rest of what a salesperson may see is: the Firestore rules treat every signed-in phone alike (they cannot tell a salesperson from an admin), so the rules were not changed.
 - **A salesperson transfers like a wholesaler.** The Transfer button shows for them when their business is a wholesaler (or the business type is not known); a salesperson of a retailer has none, as a retailer has none. The transfer is sent as the business (`senderId`, `senderStore`) with `sentBy` / `sentByName` saying which salesperson sent it, and the customer who accepts becomes that salesperson's customer.
 - **A salesperson does not choose a business name or a business location when signing up.** Both come from their admin: each time the salesperson's phone checks its link it reads the admin's account (`users/<admin>.business` and `.location`), so they are always the admin's current ones (an older link that holds no name is no problem). If the admin cannot be reached just then, what the phone already knows is kept. They are kept on the salesperson's phone only (`LOCAL_ONLY_USER_FIELDS` in `db.js`), so the salesperson's own account keeps an empty business and location. The profile, receipts (on screen, printed and the shared picture) and the share-receipt text use them (`_shop()` in `app.js`), and so does the "From" on a transfer a salesperson sends.
+
+## Units, cartons and the Edit product box
+- **A carton is just a unit now.** The "what is inside / how many per carton" step is gone (its box, the "= 72 sachets" line on incoming transfers, the sub-unit details sent with a transfer, and a retailer's automatic carton-to-pieces conversion). Older products still hold the old sub-unit fields; nothing reads them.
+- **The unit list has a small picture beside every unit** (sachet, bottle, can, tub, piece, packet, carton). The hidden `<select id="product-unit">` is still the real field: the button and picture list (`_initUnitPicker` in `app.js`, `.unit-*` in `style.css`) only show and set it. Pictures are the `UNIT_ICONS` in `app.js`: add one there when a unit is added to the select.
+- **A received item counted in a different unit** (you keep Milo in packets, sachets arrive): the stock is added as before and the product is marked `unitToConfirm`. When its Edit box is opened, a small floating question points at the Unit field: "Packet or Sachet?". Tapping one sets the field; saving settles it (the mark is cleared, and it does not use up one of the five hand edits an hour). Closing the box without saving asks again next time. Nothing is converted: the stock number is not changed. Salespeople are not asked (they cannot edit products).
+- **No barcode prompts in Edit product.** A product cannot be added without a barcode, so "needs a barcode / Scan Barcode / No barcode assigned" are gone. Older products flagged "barcode-and-price" are treated as "price".
+
+## Accepted transfers: receipt and sender
+- When a transfer is accepted, its receipt is also saved to the phone as a picture (`pikashot-receipt-<store>-<date>.png`), drawn the way the sender's own receipt is. It is saved only after the transfer is in, and a failure to save never affects the transfer. Chrome may ask before saving a second file without a tap in the same visit.
+- A transfer now carries the sender's area (`senderLocation`, the LGA). "Incoming item transfer" shows it beside the phone number ("08030000001 · Surulere"). A transfer sent before this change has none: the app reads the sender's account for it.
+
+## Password manager (Android)
+- Chrome offers "Save password?" on password boxes. The only password-type boxes left are Log in, Create a new PIN (two) and Create Account, and each is inside a real form with the phone number as a hidden username (`.cred-username`, filled when the screen opens), so Chrome pairs the PIN with the phone number and with no other box. Every other box says `autocomplete="off"`. The PIN asked before something is deleted is a masked text box (`.masked-pin`), not a password box, so it never offers to save.
+- This is how Chrome decides, and it cannot be tried from a computer: look at it on a real Android phone after publishing.
 
 ## Wording: "items" with transfers
 - Wherever a transfer is spoken of, what moves is called **items** (not products): the Transfer Items box ("2 items selected"), "Incoming item transfer" and its Item column, the "Request item transfer when you restock" message, the accept messages and the "Items added" celebration, the salesperson rules and the privacy text. "Products" stays for the Products list itself ("Add to my products", the product limit message, "Delete products you no longer sell").
