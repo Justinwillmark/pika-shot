@@ -24,6 +24,11 @@ const Camera = {
     onTorchChange: null,      // optional callback(isOn) so the UI can reflect torch state
 
     SCAN_WINDOW_MS: 12000,    // how long one scan attempt keeps looking before giving up
+    PHOTO_SETTLE_MS: 2000,        // photo: time to let focus and brightness settle once pictures are coming in
+    PHOTO_LIGHT_SETTLE_MS: 800,   // photo: extra time for brightness to even out after the light comes on
+    PHOTO_LIGHT_WAIT_MS: 2500,    // photo: the longest a phone that has a light is waited for it to come on
+    PHOTO_FROZEN_MS: 1500,        // photo: a picture that has not moved for this long is treated as a stalled camera
+    PHOTO_MAX_SIDE: 1280,         // photo: longest side, in pixels
     ZXING_URL: 'https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js',
     CHECKED_FORMATS: ['ean_13', 'ean_8', 'upc_a', 'upc_e'],
     STRUCTURED_FORMATS: ['qr_code', 'data_matrix', 'aztec', 'pdf417'],
@@ -158,20 +163,6 @@ const Camera = {
         return this.stream ? this.stream.getVideoTracks()[0] : null;
     },
 
-    _startCountdown(duration, countdownElement) {
-        let count = duration;
-        countdownElement.style.display = 'block';
-        countdownElement.textContent = count;
-        this.countdownInterval = setInterval(() => {
-            count--;
-            countdownElement.textContent = count > 0 ? count : '';
-            if (count <= 0) {
-                 countdownElement.style.display = 'none';
-                 clearInterval(this.countdownInterval);
-            }
-        }, 1000);
-    },
-
     _constraintAttempts() {
         return [
             { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
@@ -242,7 +233,7 @@ const Camera = {
         while (Date.now() - started < timeoutMs) {
             if (session !== this._session) return false;
             if (video.videoWidth > 0 && video.readyState >= 2) return true;
-            await this._sleep(100);
+            await this._sleep(40);
         }
         return false;
     },
@@ -590,42 +581,81 @@ const Camera = {
         }
     },
 
+    // Takes one picture. Resolves { blob } on success; { blob: null, cancelled: true } when something else turned the camera off
+    // first (Cancel, Back, a new scan); { blob: null, reported: true } when the camera would not open (the person was told why).
+    // The settle time counts from the moment pictures are really coming in, never from the tap: a slow phone is not made to wait
+    // for its own start-up and a full countdown on top of it.
     async capturePhoto(countdownElement, feedbackElement) {
         this.stop();
         const session = this._session;
         this.isScanning = true;
-        if (!await this._openStream(session, 0)) {
-            if (session === this._session) {
-                this.stop();
-                (window.pikaSay || alert)(this._friendlyCameraError(this.lastError), 'Camera problem');
+        const say = (text) => { if (feedbackElement) feedbackElement.textContent = text; };
+        const showCount = (n) => {
+            if (!countdownElement) return;
+            countdownElement.style.display = n > 0 ? 'block' : 'none';
+            countdownElement.textContent = n > 0 ? n : '';
+        };
+        const failed = () => {
+            showCount(0);
+            if (session !== this._session) return { blob: null, cancelled: true };
+            this.stop();
+            (window.pikaSay || alert)(this._friendlyCameraError(this.lastError), 'Camera problem');
+            return { blob: null, reported: true };
+        };
+
+        say('Opening camera...');
+        if (!await this._openStream(session, 0)) return failed();
+        if (session !== this._session) return { blob: null, cancelled: true };
+        const video = this.videoElement;
+        const begin = () => {
+            this._tuneTrack();
+            // The light helps photos too; it stays off once the user has switched it off.
+            this._autoTorch(session, 'photo');
+            return Date.now();
+        };
+        let started = begin();                 // when pictures started coming in
+        let lastTime = video.currentTime, lastMove = started, torchAt = 0, restarted = false;
+        say('Snapping Image');
+
+        // Settle: focus and brightness need a moment, and the light changes the brightness when it comes on
+        for (;;) {
+            await this._sleep(100);
+            if (session !== this._session) { showCount(0); return { blob: null, cancelled: true }; }
+            const now = Date.now();
+            if (video.currentTime !== lastTime) { lastTime = video.currentTime; lastMove = now; }
+
+            // A frozen picture (some phones stall right after starting): open the camera once more instead of shooting it
+            if (now - lastMove > this.PHOTO_FROZEN_MS && !restarted && document.visibilityState === 'visible') {
+                restarted = true;
+                showCount(0);
+                if (!await this._openStream(session, 1)) return failed();
+                if (session !== this._session) return { blob: null, cancelled: true };
+                started = begin();
+                lastTime = video.currentTime; lastMove = started; torchAt = 0;
+                continue;
             }
-            return { blob: null };
+
+            if (!torchAt && this.torchOn) torchAt = now;
+            const sinceStart = now - started;
+            // Wait for the light only if it is on its way: a phone with no light never makes the person wait for one
+            const lightComing = this.torchPref !== false && !torchAt && (this._torchSupported() ? sinceStart < this.PHOTO_LIGHT_WAIT_MS : sinceStart < 1000);
+            const readyAt = Math.max(started + this.PHOTO_SETTLE_MS, torchAt ? torchAt + this.PHOTO_LIGHT_SETTLE_MS : 0);
+            if (!lightComing && now >= readyAt) break;
+            showCount(Math.max(1, Math.ceil((readyAt - now) / 1000)));
         }
-        this._tuneTrack();
-        // The light helps photos too; it stays off once the user has switched it off.
-        this._autoTorch(session, 'photo');
+        showCount(0);
 
-        return new Promise(async (resolve) => {
-            if (feedbackElement) feedbackElement.textContent = 'Snapping Image';
-            this._startCountdown(3, countdownElement);
-
-            // Give the camera a moment to adjust focus and exposure, and for the countdown to finish
-            setTimeout(async () => {
-                if (session !== this._session || !this.videoElement.videoWidth) {
-                    if (session === this._session) this.stop();
-                    return resolve({ blob: null });
-                }
-                const canvas = document.createElement('canvas');
-                canvas.width = this.videoElement.videoWidth;
-                canvas.height = this.videoElement.videoHeight;
-                const context = canvas.getContext('2d');
-                context.drawImage(this.videoElement, 0, 0, canvas.width, canvas.height);
-
-                const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.9));
-
-                this.stop();
-                resolve({ blob });
-            }, 3000); // 3000ms delay for countdown
-        });
+        const vw = video.videoWidth, vh = video.videoHeight;
+        if (!vw || !vh) { this.stop(); return { blob: null }; }
+        // Some phones give far more than was asked for; a picture this big is never needed and only slows the save
+        const scale = Math.min(1, this.PHOTO_MAX_SIDE / Math.max(vw, vh));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(vw * scale);
+        canvas.height = Math.round(vh * scale);
+        canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+        const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.9));
+        if (session !== this._session) return { blob: null, cancelled: true };
+        this.stop();
+        return { blob };
     },
 };

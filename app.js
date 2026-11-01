@@ -151,6 +151,7 @@ document.addEventListener('DOMContentLoaded', () => {
             shareLogBtn: document.getElementById('share-log-btn'),
             phoneTransferModal: document.getElementById('phone-transfer-modal'),
             transferPhoneInput: document.getElementById('transfer-phone-input'),
+            transferContactBtn: document.getElementById('transfer-contact-btn'),
             cancelPhoneTransferBtn: document.getElementById('cancel-phone-transfer-btn'),
             transferSummary: document.getElementById('transfer-summary'),
             transferInputWrap: document.getElementById('transfer-input-wrap'),
@@ -596,10 +597,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.hideModal();
                 this.showModal('phone-transfer-modal');
             });
-            this.elements.sendInviteBtn.addEventListener('click', () => {
-                this.hideModal();
-                this.showToast("Download link sent!");
-            });
+            this.elements.sendInviteBtn.addEventListener('click', () => this._inviteOnWhatsApp());
+            // The phone's contacts can only be opened by browsers that offer them (Chrome on Android): elsewhere the button stays out of the way
+            if ('contacts' in navigator && 'ContactsManager' in window) {
+                this.elements.transferContactBtn.hidden = false;
+                this.elements.transferContactBtn.parentElement.classList.add('has-contacts');
+                this.elements.transferContactBtn.addEventListener('click', () => this._pickTransferContact());
+            }
 
             // PIN check (used before something is removed for good)
             this.elements.pinConfirmInput.addEventListener('input', (e) => {
@@ -2071,6 +2075,9 @@ document.addEventListener('DOMContentLoaded', () => {
         hideLoader() { this.elements.loaderSpinner.style.display = 'none'; this.elements.loaderCheck.style.display = 'block'; setTimeout(() => { this.elements.loader.style.opacity = '0'; this.elements.appContainer.style.display = 'flex'; setTimeout(() => { this.elements.loader.style.display = 'none'; }, 500); }, 500); },
         showView(viewId) {
             if (this.state.currentView === viewId) return;
+            // Leaving the scanner any way at all (Cancel, the arrow, the phone's Back) turns the camera off: left on, it kept
+            // the camera busy, so the next scan or photo started slowly, and a photo could pop up after the person had left
+            if (this.state.currentView === 'camera-view') Camera.stop();
             this.elements.views.forEach(view => view.classList.remove('active'));
             const viewToShow = document.getElementById(viewId);
             if (viewToShow) {
@@ -3769,18 +3776,20 @@ document.addEventListener('DOMContentLoaded', () => {
             // Hide scan-related UI elements for photo capture
             document.querySelector('#camera-overlay .scan-box').style.display = 'none';
             this._setCameraActions(false); // taking a picture has nothing to do with selling
-            this.elements.scanFeedback.textContent = 'Hold steady...';
+            this.elements.scanFeedback.textContent = 'Opening camera...';
 
             const attempt = this._photoAttempt = (this._photoAttempt || 0) + 1;
             this.navigateTo('camera-view');
             try {
-                const { blob } = await Camera.capturePhoto(this.elements.scanTimerDisplay, this.elements.scanFeedback);
-                if (attempt !== this._photoAttempt) return; // a newer picture was started meanwhile
+                const { blob, cancelled, reported } = await Camera.capturePhoto(this.elements.scanTimerDisplay, this.elements.scanFeedback);
+                if (cancelled || attempt !== this._photoAttempt) return; // backed out (Cancel, the arrow or the phone's Back), or a newer picture was started meanwhile
                 if (this.state.currentView === 'camera-view') this._back(); // Cancel has already gone back once
                 if (blob) {
                     this.state.capturedBlob = blob;
                     this.elements.capturedImagePreview.src = URL.createObjectURL(blob);
                     this.showModal('confirm-picture-modal');
+                } else if (!reported) {
+                    say("The picture did not come out. Please try again.", "Photo failed");
                 }
             } catch (error) {
                 console.error("Error capturing image:", error);
@@ -4636,6 +4645,28 @@ document.addEventListener('DOMContentLoaded', () => {
             this.hideModal();
             this.showModal('phone-transfer-modal');
             setTimeout(() => this.elements.transferPhoneInput.focus(), 80);
+        },
+
+        // Customer phone number: the small button beside the box opens the phone's contacts. The chosen number goes through the same
+        // path as typing it (tidied to 11 digits, then checked), so the customer's name shows up, or the invite pop-up if they are new.
+        async _pickTransferContact() {
+            try {
+                const picked = await navigator.contacts.select(['tel'], { multiple: false });
+                if (!picked || !picked.length) return; // closed without choosing anyone
+                const number = (picked[0].tel || []).map(t => this._localPhone(t)).find(n => /^0[789]\d{9}$/.test(n));
+                if (!number) { this._setTransferState('error', 'No Nigerian mobile number on this contact.'); return; }
+                this.elements.transferPhoneInput.value = number;
+                this.elements.transferPhoneInput.dispatchEvent(new Event('input'));
+            } catch (e) { /* closed, or not allowed: the number can still be typed */ }
+        },
+
+        // A customer who is not on PikaShot yet: WhatsApp opens on their number with the invite already written
+        INVITE_TEXT: 'Track daily sales, manage inventory and customers easily, for free. Use PikaShot today: https://pika-shot.netlify.app',
+        _inviteOnWhatsApp() {
+            const phone = this._localPhone(this.elements.transferPhoneInput.value);
+            const who = phone.length === 11 ? '234' + phone.slice(1) : ''; // international form, no "+" and no leading 0
+            window.open(`https://wa.me/${who}?text=${encodeURIComponent(this.INVITE_TEXT)}`, '_blank', 'noopener');
+            this.hideModal();
         },
 
         // Backing out of a transfer takes the user back to the receipt it was started from

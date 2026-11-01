@@ -1581,6 +1581,14 @@ button:focus { outline: none; }
 /* who a transfer goes to */
 .transfer-input-wrap { position: relative; margin-top: 8px; border-color: #b4bec7; background: #fff; }
 .transfer-input-wrap:focus-within { box-shadow: 0 0 0 1px var(--primary-color); }
+/* the number's box, with a small "add customer" button beside it that opens the phone's contacts (shown only where the browser can) */
+.transfer-phone-row { display: flex; align-items: flex-end; gap: 10px; }
+.transfer-phone-row .transfer-input-wrap { flex: 1; min-width: 0; }
+.transfer-contact-btn { flex: none; display: flex; align-items: center; justify-content: center; width: 48px; height: 56px; padding: 0; border: 1.5px solid #b4bec7; border-radius: 14px; background: #fff; color: var(--primary-color); cursor: pointer; -webkit-tap-highlight-color: transparent; transition: background-color 0.15s, border-color 0.15s; }
+.transfer-phone-row.has-contacts .transfer-input-wrap > svg { display: none; } /* the button beside the box says "phone book": the box needs the room for all 11 digits */
+@media (max-width: 359px) { .transfer-input-wrap input { font-size: 1.05rem; letter-spacing: 0.02em; } }
+.transfer-contact-btn[hidden] { display: none; }
+.transfer-contact-btn:active { background: rgba(0, 140, 149, 0.1); border-color: var(--primary-color); }
 
 /* PIN check */
 .pin-input-wrap { position: relative; margin-top: 6px; }

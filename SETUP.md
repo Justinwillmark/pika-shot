@@ -3,7 +3,7 @@
 ## Publishing
 - Quick way (as before): publish the project folder as it is.
 - Faster, harder-to-copy way: `npm install` once, then `npm run deploy`. It shrinks and scrambles the scripts into `dist/` and publishes that.
-- Every release: change `CACHE_NAME` in `serviceworker.js` (v36 -> v37 ...) so phones fetch the new files.
+- Every release: change `CACHE_NAME` in `serviceworker.js` (v37 -> v38 ...) so phones fetch the new files.
 
 ## Settings in one place (`config.js`)
 | Setting | What it does |
@@ -44,6 +44,13 @@
 ## Product pictures
 The full photo lives on the phone. A small thumbnail (a few KB) is saved with the product in Firestore, so after logging out,
 clearing browsing data or switching phones the picture comes back from the thumbnail. No Storage bucket is used.
+
+### Snap Image (`capturePhoto` in `camera.js`)
+- The screen says "Opening camera..." while the camera starts, then "Snapping Image" with a 2, 1 count. The time to settle focus and brightness (`PHOTO_SETTLE_MS`, 2 seconds) counts from the moment pictures are really coming in, not from the tap, so a slow phone is no longer made to wait for its own start-up plus a full countdown on top.
+- The light comes on for photos (unless the person switched it off). The shot waits a moment after it comes on (`PHOTO_LIGHT_SETTLE_MS`) so the picture is not blown out, but never waits for a light a phone does not have.
+- A camera that freezes right after starting is opened once more instead of being photographed frozen. A picture that comes out empty now says so ("The picture did not come out") instead of silently doing nothing.
+- Leaving the camera screen in any way (Cancel, the arrow, the phone's Back) turns the camera off at once (`showView`). Before, Back and the arrow left it running, which kept it busy for the next scan or photo and could pop up a picture after the person had left.
+- Pictures are never bigger than `PHOTO_MAX_SIDE` (1280 px) on the long side.
 
 ## Things are recorded once
 - A sale gets its id when the confirm box opens, and the sale plus the stock it takes out are saved together on the phone (`DB.recordSale`). A second tap, a retry or a slow connection is the same sale: if that id is already saved, nothing changes. Editing a sale moves the stock by the difference only (`DB.editSale`).
@@ -106,6 +113,10 @@ clearing browsing data or switching phones the picture comes back from the thumb
 
 ## Salespeople and customers
 - A salesperson's Customers tab now also lists the customers' stock cards of their business (read only: no "Remove from list"), as well as the credit they recorded. It reads the customer list once and reuses it for 10 minutes (Refresh reads it again). Firestore rules already allowed this.
+
+## Transfer to a customer
+- The box is titled "Customer phone number". Beside it is a small add-customer button that opens the phone's contacts. It only shows in browsers that have the contact picker (Chrome on Android); elsewhere it stays hidden and the number is typed. A chosen contact's first Nigerian mobile number is used (any way it is written: +234 803..., 0803..., 803...), and goes through the same check as a typed number.
+- A customer who is not on PikaShot gets the pop-up "Customer phone number is not on PikaShot. Please invite them on WhatsApp." The "WhatsApp invite" button opens WhatsApp on that customer's number with the message in `INVITE_TEXT` (`app.js`) already written. Nothing is sent by PikaShot itself: the person taps Send in WhatsApp.
 
 ## Select a Product
 - When choosing a product to sell, My Products shows no product count, no inventory worth and no low-stock settings gear, only the search, the three tabs and the cards. All of that is CSS under `.selection-mode` in `style.css`.
