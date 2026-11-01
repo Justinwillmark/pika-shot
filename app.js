@@ -354,6 +354,7 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('forgot-pin-btn').addEventListener('click', () => this.handleForgotPin());
             document.getElementById('save-new-pin-btn').addEventListener('click', () => this.handleSaveNewPin());
             document.getElementById('toggle-new-pin').addEventListener('click', () => this.togglePinVisibility('new-pin', 'toggle-new-pin'));
+            document.getElementById('toggle-new-pin-confirm').addEventListener('click', () => this.togglePinVisibility('new-pin-confirm', 'toggle-new-pin-confirm'));
             document.getElementById('wa-new-code').addEventListener('click', async () => {
                 const phone = this.state.tempPhone;
                 if (!phone) return;
@@ -723,9 +724,14 @@ document.addEventListener('DOMContentLoaded', () => {
             // Enter on the keyboard does the obvious next step
             this.elements.checkPhoneInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); this.handleCheckPhone(); } });
             this.elements.loginPinInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); this.handleLogin(); } });
-            const newPin = document.getElementById('new-pin');
-            newPin.addEventListener('input', (e) => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 6); });
-            newPin.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); this.handleSaveNewPin(); } });
+            // Create a new PIN: typed twice, so a slip is caught before it is saved. Enter moves on, then saves.
+            const newPin = document.getElementById('new-pin'), newPinAgain = document.getElementById('new-pin-confirm');
+            const newPinMatch = document.getElementById('new-pin-match');
+            const checkNewPinMatch = () => { newPinMatch.hidden = !(newPinAgain.value.length === 6 && newPinAgain.value !== newPin.value); }; // said as soon as the second one is complete
+            newPin.addEventListener('input', (e) => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 6); if (newPinAgain.value) checkNewPinMatch(); });
+            newPinAgain.addEventListener('input', (e) => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 6); checkNewPinMatch(); });
+            newPin.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); newPinAgain.focus(); } });
+            newPinAgain.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); this.handleSaveNewPin(); } });
             this.elements.loginPinInput.addEventListener('input', (e) => {
                 e.target.value = e.target.value.replace(/\D/g, '').slice(0, 6);
             });
@@ -916,9 +922,9 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (e) { return false; }
         },
         // Confirmed on the dashboard, and not too long ago
-        _verifiedFresh(d) {
+        _verifiedFresh(d, marginMs = 0) { // (marginMs: some of the hour kept back, so a request on its way is not refused at the last second)
             if (!d || !d.verified) return false;
-            return Date.now() - DB._normalizeTimestamp(d.verifiedAt).getTime() < this.VERIFIED_TTL_MS;
+            return Date.now() - DB._normalizeTimestamp(d.verifiedAt).getTime() < this.VERIFIED_TTL_MS - marginMs;
         },
         // They took more than an hour after being confirmed: tell them, and start a new check
         async _verificationExpired(phone, purpose) {
@@ -940,7 +946,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (pending) {
                 const snap = await window.fb.getDoc(this._verificationRef(phone));
                 const d = snap.exists() ? snap.data() : null;
-                if (d && d.verified && d.code === pending.code && this._verifiedFresh(d)) { this._pending = pending; return this._phoneVerified(phone); }
+                if (d && d.verified && d.code === pending.code && this._verifiedFresh(d)) { this._pending = pending; return this._phoneVerified(phone, d); }
                 if (!d || d.code !== pending.code || d.verified) pending = null; // replaced, or confirmed too long ago: start over
             }
             if (!pending) pending = await this._newSignupCode(phone, purpose);
@@ -974,7 +980,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (this._waUnsub) this._waUnsub();
             this._waUnsub = window.fb.onSnapshot(this._verificationRef(pending.phone), (snap) => {
                 const d = snap.exists() ? snap.data() : null;
-                if (d && d.verified && d.code === pending.code && this._verifiedFresh(d)) this._phoneVerified(pending.phone);
+                if (d && d.verified && d.code === pending.code && this._verifiedFresh(d)) this._phoneVerified(pending.phone, d);
             }, (error) => console.error('Could not watch the number check:', error));
         },
 
@@ -992,7 +998,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 : `Then come back here after verification. This screen continues by itself (${Math.ceil(left / 60000)} min left).`;
         },
 
-        _phoneVerified(phone) {
+        _phoneVerified(phone, confirmed) {
             if (this._verifiedDone) return; // the listener and the startup check can both report it
             this._verifiedDone = true;
             this._stopVerification();
@@ -1001,8 +1007,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!reset) {
                 this._pending = null;
                 this._savePending(null);
-                this._verifiedMem = { phone, at: Date.now() };
-                try { localStorage.setItem('pika_verified_phone', JSON.stringify({ phone, at: Date.now() })); } catch (e) { /* fine */ }
+                // The hour runs from when the dashboard confirmed the number (that is what the server counts), not from when this phone noticed
+                const at = confirmed && confirmed.verifiedAt ? DB._normalizeTimestamp(confirmed.verifiedAt).getTime() : Date.now();
+                this._verifiedMem = { phone, at };
+                try { localStorage.setItem('pika_verified_phone', JSON.stringify({ phone, at })); } catch (e) { /* fine */ }
             } // a PIN reset keeps its record until the new PIN is saved, so closing the app here loses nothing
             const status = document.getElementById('wa-status');
             status.textContent = reset ? 'Confirmed. Opening new PIN…' : 'Confirmed. Opening Create Account…';
@@ -1012,6 +1020,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (reset) {
                     document.getElementById('newpin-phone').textContent = phone;
                     document.getElementById('new-pin').value = '';
+                    document.getElementById('new-pin-confirm').value = '';
+                    document.getElementById('new-pin-match').hidden = true;
                     this.showView('onboarding-step-newpin');
                 } else {
                     this.showView('onboarding-step-register');
@@ -1039,6 +1049,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const phone = this.state.tempPhone;
             const pending = this._pendingVerification();
             if (!/^\d{6}$/.test(pin)) { await this._needs(document.getElementById('new-pin'), 'Your PIN must be 6 numbers.', 'Check your PIN'); return; }
+            const again = document.getElementById('new-pin-confirm');
+            if (again.value.trim() !== pin) { await this._needs(again, 'The two PINs are not the same. Type the same PIN in both boxes.', 'Check your PIN'); return; }
             if (!phone || !pending || pending.phone !== phone || pending.purpose !== 'reset') {
                 say('Verify your number on WhatsApp first.', 'Verify first');
                 this.showView('onboarding-step-1');
@@ -1063,6 +1075,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 this._pending = null;
                 this._savePending(null);
                 document.getElementById('new-pin').value = '';
+                again.value = '';
+                document.getElementById('new-pin-match').hidden = true;
 
                 this.state.user = { ...snap.data(), ...pinRecord, pinChangedAt };
                 delete this.state.user.pin;
@@ -1103,7 +1117,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const snap = await window.fb.getDoc(this._verificationRef(p.phone));
                 const d = snap.exists() ? snap.data() : null;
                 if (d && d.verified && d.code === p.code) {
-                    if (this._verifiedFresh(d)) { this._pending = p; this._phoneVerified(p.phone); return; }
+                    if (this._verifiedFresh(d)) { this._pending = p; this._phoneVerified(p.phone, d); return; }
                     this._savePending(null); // confirmed more than an hour ago: they start again
                     say('Your number check expired after 1 hour. Please verify again.', 'Verify again');
                     return;
@@ -1301,10 +1315,12 @@ document.addEventListener('DOMContentLoaded', () => {
         MAX_SALESPEOPLE: 5,
 
         _isSalesperson() { const u = this.state.user; return !!u && u.type === 'Salesperson'; },
-        // The business's name and place as this person shows them (on receipts, in the profile): a salesperson's are their admin's
+        // The business's name, place and phone as this person shows them (on receipts, in the profile): a salesperson's are their admin's
         _shop() {
             const u = this.state.user || {};
-            return u.type === 'Salesperson' ? { name: u.businessName || '', location: u.businessLocation || '' } : { name: u.business || '', location: u.location || '' };
+            return u.type === 'Salesperson'
+                ? { name: u.businessName || '', location: u.businessLocation || '', phone: u.businessPhone || '' }
+                : { name: u.business || '', location: u.location || '', phone: u.phone || '' };
         },
         // A salesperson who no business has confirmed yet
         _isWaiting() { const u = this.state.user; return !!u && u.type === 'Salesperson' && !u.businessPhone; },
@@ -1849,6 +1865,17 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!this._verifiedOnThisPhone(this.state.tempPhone)) { await this._verificationExpired(this.state.tempPhone, 'signup'); return; }
 
             this.showLoader();
+            // The server is the judge of the number check (it allows an hour from the moment it was confirmed), not this phone's clock.
+            // Asked first, so the person never fills in a form that cannot be saved.
+            try {
+                const check = await window.fb.getDoc(this._verificationRef(this.state.tempPhone));
+                if (!this._verifiedFresh(check.exists() ? check.data() : null, 3 * 60000)) { this.hideLoader(); await this._verificationExpired(this.state.tempPhone, 'signup'); return; }
+            } catch (error) {
+                console.error('Could not check the number confirmation:', error);
+                this.hideLoader();
+                say('Check your internet and try again.', 'No internet');
+                return;
+            }
             const uid = window.fb.auth.currentUser ? window.fb.auth.currentUser.uid : null;
 
             const newUser = {
@@ -1860,9 +1887,11 @@ document.addEventListener('DOMContentLoaded', () => {
             };
 
             try {
-                // Save to IndexedDB and Sync to Cloud (handled by db.js)
+                // The account is made only when the server says yes. One kept only on this phone would look like a brand-new person
+                // (and a new WhatsApp check) the next time they log in.
                 DB.setIdentity(newUser);
-                await DB.saveUser(newUser);
+                const answer = new Promise((resolve, reject) => setTimeout(() => reject(Object.assign(new Error('The server did not answer'), { code: 'timeout' })), 20000));
+                await Promise.race([DB.createAccount(newUser), answer]);
                 this.state.user = newUser;
                 this._claimDevice(newUser.phone);
                 try { localStorage.removeItem('pika_verified_phone'); } catch (e) { /* fine */ }
@@ -1870,7 +1899,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.showView('location-permission-view');
             } catch (error) {
                 console.error("Registration failed:", error);
-                say("Your account was not created. Please try again.", "Something went wrong");
+                DB.setIdentity(this.state.user);
+                if (error && error.code === 'permission-denied') { // the server no longer counts the number check
+                    this.hideLoader();
+                    await this._verificationExpired(this.state.tempPhone, 'signup');
+                    return;
+                }
+                say("Your account was not created. Check your internet and try again.", "Not created");
             } finally {
                 this.hideLoader();
             }
@@ -4398,7 +4433,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const shop = this._shop();
             return {
                 store: String(shop.name),
-                meta: [shop.location, user.phone].filter(Boolean).join(' · '),
+                meta: [shop.location, shop.phone].filter(Boolean).join(' · '), // (a salesperson's receipt carries their admin's number)
                 customer: customers.size === 1 ? [...customers][0] : '',
                 items,
                 sumRows,
@@ -4653,7 +4688,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // -----------------------------------------------------------
 
             const productCount = new Set(selectedSaleObjects.map(s => s.productId != null ? s.productId : s.productName)).size;
-            this.elements.transferSummary.textContent = `${productCount} product${productCount === 1 ? '' : 's'} selected`;
+            this.elements.transferSummary.textContent = `${productCount} item${productCount === 1 ? '' : 's'} selected`;
             this.elements.transferPhoneInput.value = '';
             this._setTransferState('idle');
             const scroller = document.getElementById('receipt-scroll');
@@ -5292,7 +5327,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (existingStock.length > 0) {
                     const currentSupplierId = existingStock[0].supplierId;
                     if (currentSupplierId !== logData.senderId) {
-                        this.showToast("Please sell all current stock before accepting products from a new wholesaler.");
+                        this.showToast("Please sell all current stock before accepting items from a new wholesaler.");
                         return;
                     }
                 }
@@ -5350,11 +5385,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 ? 'Your wholesaler will see your stock and sales.'
                 : 'The sender will see your stock of these items.';
 
+            // The store's phone sits under its name: a transfer comes from a business, and its id is that business's phone number
+            const senderPhone = /^\+?\d{7,15}$/.test(String(logData.senderId || '')) ? String(logData.senderId) : '';
+
             this.elements.incomingTransferChip.textContent = `${items.length} item${items.length === 1 ? '' : 's'}`;
             this.elements.incomingTransferContent.innerHTML =
-                `<div class="receipt-header"><div class="rc-from">From</div><div class="rc-store">${this._esc(logData.senderStore)}</div></div>` +
+                `<div class="receipt-header"><div class="rc-from">From</div><div class="rc-store">${this._esc(logData.senderStore)}</div>${senderPhone ? `<div class="rc-meta">${this._esc(senderPhone)}</div>` : ''}</div>` +
                 `<div class="rc-info"><div class="rc-kv"><span>Sent</span><span>${dateStr} &middot; ${timeStr}</span></div></div>` +
-                `<div class="rc-cols"><span>Product</span><span>Amount</span></div>` +
+                `<div class="rc-cols"><span>Item</span><span>Amount</span></div>` +
                 `<div class="receipt-items">${itemsHtml}</div>` +
                 `<div class="rc-summary">` +
                 (discountTotal > 0 ? `<div class="rc-sum muted"><span>Discount</span><span>-${money(discountTotal)}</span></div>` : '') +
@@ -5385,7 +5423,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const added = this._countNewProducts(log.items, current);
                 if (current.length + added > LIMITS.maxProducts) {
                     const room = Math.max(0, LIMITS.maxProducts - current.length);
-                    say(`This transfer brings ${added} new ${added === 1 ? 'product' : 'products'} and you have room for ${room} more (the limit is ${LIMITS.maxProducts}). Delete products you no longer sell, then accept it again.`, 'Product limit');
+                    say(`This transfer brings ${added} new ${added === 1 ? 'item' : 'items'} and you have room for ${room} more (the limit is ${LIMITS.maxProducts}). Delete products you no longer sell, then accept it again.`, 'Product limit');
                     return;
                 }
             }
@@ -5579,11 +5617,11 @@ document.addEventListener('DOMContentLoaded', () => {
             this.navigateTo('products-view');
             this.showCelebration({
                 icon: '📦',
-                title: 'Products added',
+                title: 'Items added',
                 headline: log.senderStore ? `From ${log.senderStore}` : 'Transfer accepted',
                 messages: [
                     'The items have been added to your products. Add your prices now.',
-                    'Earn airtime points each time you record a sale for these products. T&C apply.'
+                    'Earn airtime points each time you record a sale for these items. T&C apply.'
                 ]
             });
         },

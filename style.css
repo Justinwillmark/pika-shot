@@ -1526,6 +1526,8 @@ button:focus { outline: none; }
 .login-links { display: flex; flex-direction: column; align-items: center; gap: 2px; margin-top: 14px; }
 .wa-link-btn.muted-link { color: var(--text-light); font-weight: 500; }
 .onboarding-content .newpin-note { margin: 14px 0 0; font-size: 0.82rem; }
+.onboarding-content p.newpin-match { margin: 6px 2px 0; font-size: 0.82rem; line-height: 1.3; font-weight: 600; text-align: left; color: var(--danger-color); }
+.onboarding-content p.newpin-match[hidden] { display: none; }
 .onboarding-content p b { color: var(--text-color); white-space: nowrap; }
 
 /* === One look for every field (search boxes excepted): the title sits on the border line === */

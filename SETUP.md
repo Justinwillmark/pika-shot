@@ -3,7 +3,7 @@
 ## Publishing
 - Quick way (as before): publish the project folder as it is.
 - Faster, harder-to-copy way: `npm install` once, then `npm run deploy`. It shrinks and scrambles the scripts into `dist/` and publishes that.
-- Every release: change `CACHE_NAME` in `serviceworker.js` (v41 -> v42 ...) so phones fetch the new files.
+- Every release: change `CACHE_NAME` in `serviceworker.js` (v43 -> v44 ...) so phones fetch the new files.
 
 ## Settings in one place (`config.js`)
 | Setting | What it does |
@@ -40,6 +40,12 @@
 - Phones only ask for what changed since last time (`lastUpdate`), and keep a copy of it on the phone, so a normal day is small.
 - Where to watch: Firestore Database > Usage.
 - A new phone (or cleared data) reads that account's products and sales in full once.
+
+## Creating an account (why someone could look "new" when they come back)
+- Logging in asks the server whether `users/<phone>` exists; if not, the person is treated as new and gets the WhatsApp check. So an account that never reached the server looks like a new person next time.
+- It used to be possible: the sign-up sent the new account without waiting for the answer, and the server refuses it when the WhatsApp confirmation is more than an hour old *on the server* (rule `signupVerified`). The phone counted its hour from when it noticed the confirmation, which can be later, so a slow sign-up passed on the phone and was refused online, with no message. The person used the app, and later was asked to verify as a brand-new user.
+- Now (`handleRegistration`, `DB.createAccount`): the server is asked first whether the confirmation still counts (3 minutes of margin kept back); the account is kept on the phone only after the server says yes (20 seconds at most, then "Check your internet and try again"); if the server refuses, the person is told the number check expired and the WhatsApp check starts again at once, before they have used the app. The phone's one-hour clock now runs from the dashboard's confirmation time (`_phoneVerified`).
+- Accounts made before this change that never reached the server cannot be repaired by the app (the rules need a fresh WhatsApp check to create an account). Their owner verifies once more and fills Create Account again; their products and sales are still online under the same number and come back. To count them: a number that has `products` or `sales` under `users/<phone>` but no `users/<phone>` document.
 
 ## Create Account (business type)
 - The business type buttons offer only **Store Owner** and **Salesperson**. Retailer sign-up is switched off: its button is commented out in `index.html` (take the comment marks away to bring it back).
@@ -97,7 +103,7 @@ clearing browsing data or switching phones the picture comes back from the thumb
 - New accounts (first week, or under 15 sales) hear more about how to earn; a slow day or a long break gets more encouragement; a fresh win (a record day, a customer paying back, 15+ sales) gets celebrated first.
 - Closer to a goal counts for more (5 sales from 100, "tomorrow makes 7 days in a row"); a streak about to break says so; evenings give the day's summary; Mondays and the start of a month give a fresh-start message.
 - The more often a message has been shown the less often it comes up, and the last 8 are not repeated straight away.
-- "Request product transfer when you restock" is for wholesalers and retailers (not salespeople) and comes up more when stock is low.
+- "Request item transfer when you restock" is for wholesalers and retailers (not salespeople) and comes up more when stock is low.
 - Customers' stock for these messages is kept on the phone (`pika_custstock_<business phone>`; a salesperson's own list is `pika_custstock_<business phone>_<their phone>`), refreshed whenever the Customers tab is open and, in the background, at most every 12 hours when the app opens (one read of that business's customer list for a wholesaler; for a salesperson only their own customers, one by one). Anything older than 3 days is ignored.
 
 ## Sounds (all made in `app.js`, no sound files)
@@ -126,6 +132,16 @@ clearing browsing data or switching phones the picture comes back from the thumb
 - This is enforced in the app, as the rest of what a salesperson may see is: the Firestore rules treat every signed-in phone alike (they cannot tell a salesperson from an admin), so the rules were not changed.
 - **A salesperson transfers like a wholesaler.** The Transfer button shows for them when their business is a wholesaler (or the business type is not known); a salesperson of a retailer has none, as a retailer has none. The transfer is sent as the business (`senderId`, `senderStore`) with `sentBy` / `sentByName` saying which salesperson sent it, and the customer who accepts becomes that salesperson's customer.
 - **A salesperson does not choose a business name or a business location when signing up.** Both come from their admin: each time the salesperson's phone checks its link it reads the admin's account (`users/<admin>.business` and `.location`), so they are always the admin's current ones (an older link that holds no name is no problem). If the admin cannot be reached just then, what the phone already knows is kept. They are kept on the salesperson's phone only (`LOCAL_ONLY_USER_FIELDS` in `db.js`), so the salesperson's own account keeps an empty business and location. The profile, receipts (on screen, printed and the shared picture) and the share-receipt text use them (`_shop()` in `app.js`), and so does the "From" on a transfer a salesperson sends.
+
+## Wording: "items" with transfers
+- Wherever a transfer is spoken of, what moves is called **items** (not products): the Transfer Items box ("2 items selected"), "Incoming item transfer" and its Item column, the "Request item transfer when you restock" message, the accept messages and the "Items added" celebration, the salesperson rules and the privacy text. "Products" stays for the Products list itself ("Add to my products", the product limit message, "Delete products you no longer sell").
+
+## Who a transfer or receipt names
+- A receipt shows the business name, then its place and phone. For a salesperson that is their admin's name, place and phone number (the profile and the share text use the same `_shop()` in `app.js`).
+- "Incoming item transfer" shows the sending store's phone number under its name. A transfer's `senderId` is the sending business's phone (a salesperson's transfer is sent as their business), so that is the number shown. Nothing new is stored.
+
+## Create a new PIN
+- After "Forgot PIN" is confirmed on WhatsApp, the new PIN is typed twice (`new-pin` and `new-pin-confirm`). As soon as the second box has 6 digits that do not match the first, it says so under the box; Save PIN and log in does not go on until both are the same. Enter on the first box moves to the second; Enter on the second saves. Create Account's PIN box is as it was.
 
 ## Transfer to a customer
 - The box is titled "Customer phone number". Beside it is a small add-customer button that opens the phone's contacts. It only shows in browsers that have the contact picker (Chrome on Android); elsewhere it stays hidden and the number is typed. A chosen contact's first Nigerian mobile number is used (any way it is written: +234 803..., 0803..., 803...), and goes through the same check as a typed number.

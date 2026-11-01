@@ -256,8 +256,9 @@ const DB = {
             if (collectionName === 'products' && !(options && options.thumb)) delete cleanData.thumb;
             if (window.fb.serverTimestamp) cleanData.lastUpdate = window.fb.serverTimestamp(); // how the other phones know it changed
 
-            return window.fb.setDoc(ref, cleanData, { merge: true })
-                .catch(err => console.error("Cloud sync failed:", err));
+            // strict: the caller needs to hear a refusal (a new account must really reach the server)
+            const sent = window.fb.setDoc(ref, cleanData, { merge: true });
+            return (options && options.strict) ? sent : sent.catch(err => console.error("Cloud sync failed:", err));
         } catch (e) {
             console.error("Error initiating cloud sync:", e);
             return Promise.resolve();
@@ -400,6 +401,17 @@ const DB = {
             this._syncToCloud(null, null, cloudCopy); // Save to users/{phone}
         }
         return this._requestToPromise(store.put(user));
+    },
+
+    // A brand-new account. The server decides (it only accepts one within an hour of the number being confirmed on WhatsApp), and the
+    // phone keeps nothing unless the server said yes: an account kept only on a phone looks like a new person the next time they log in.
+    // Throws the server's answer when it refuses (code 'permission-denied') or cannot be reached.
+    async createAccount(userData) {
+        this.userPhone = userData.phone;
+        const cloudCopy = { ...userData };
+        this.LOCAL_ONLY_USER_FIELDS.forEach(k => delete cloudCopy[k]);
+        await this._syncToCloud(null, null, cloudCopy, { strict: true });
+        return this._requestToPromise(this._getStore('user', 'readwrite').put({ id: 1, ...userData }));
     },
 
     async clearUser() {

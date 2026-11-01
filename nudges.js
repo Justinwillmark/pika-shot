@@ -264,7 +264,7 @@
         { id: 'ap-any', cat: 'airtime', any: true, when: () => true, text: () => 'Every sale counts toward your airtime benefits. 🎁' },
         { id: 'ap-receipts', cat: 'airtime', when: c => c.lowReceipts, weight: c => c.tenureDays < 14 ? 2 : 1, text: () => 'Share receipts. They count too. 🧾' },
         { id: 'ap-transfer', cat: 'airtime', when: c => c.lowTransfers, weight: c => c.tenureDays < 14 ? 2 : 1, text: () => 'Transfer items after each sale. It counts. 📦' },
-        { id: 'ap-request', cat: 'airtime', roles: ['Wholesaler', 'Retailer'], cooldown: 4 * DAY, when: c => c.canRequestTransfer, weight: c => c.lowCount > 0 ? 2.5 : 0.8, text: () => 'Request product transfer when you restock. 📲' },
+        { id: 'ap-request', cat: 'airtime', roles: ['Wholesaler', 'Retailer'], cooldown: 4 * DAY, when: c => c.canRequestTransfer, weight: c => c.lowCount > 0 ? 2.5 : 0.8, text: () => 'Request item transfer when you restock. 📲' },
         { id: 'ap-morning', cat: 'airtime', when: c => c.tod === 'morning', text: () => 'Good morning! Record every sale today. ☀️' },
         { id: 'ap-evening', cat: 'airtime', when: c => c.tod === 'evening', text: () => 'Record today\'s sales before you close. 🌇' },
         { id: 'ap-night', cat: 'airtime', when: c => c.tod === 'night', text: () => 'Still selling late? Every sale counts. 🌙' },

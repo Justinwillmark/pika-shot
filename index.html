@@ -110,6 +110,18 @@
                         </div>
                     </div>
                 </div>
+                <div class="form-group outlined">
+                    <label for="new-pin-confirm">Type it again</label>
+                    <div class="input-wrapper">
+                        <input type="password" id="new-pin-confirm" placeholder="••••••" maxlength="6" inputmode="numeric" autocomplete="new-password">
+                        <div class="input-icons">
+                            <button id="toggle-new-pin-confirm" class="icon-btn" title="Show/Hide">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                            </button>
+                        </div>
+                    </div>
+                    <p id="new-pin-match" class="newpin-match" role="alert" hidden>The two PINs are not the same.</p>
+                </div>
                 <button id="save-new-pin-btn" class="btn btn-primary">Save PIN and log in</button>
                 <p class="newpin-note">Any other phone still using your old PIN will be logged out.</p>
             </div>
@@ -621,7 +633,7 @@
                     <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
                 </div>
                 <div>
-                    <h2>Transfer Products</h2>
+                    <h2>Transfer Items</h2>
                     <p id="transfer-summary" class="transfer-summary"></p>
                 </div>
             </div>
@@ -684,7 +696,7 @@
 
         <div id="incoming-transfer-modal" class="modal-content receipt-modal" style="display:none;">
             <div class="receipt-modal-head">
-                <h2>Incoming product transfer</h2>
+                <h2>Incoming item transfer</h2>
                 <span id="incoming-transfer-chip" class="receipt-count-chip"></span>
             </div>
             <div class="receipt-scroll">
@@ -734,7 +746,7 @@
                     <p>A salesperson sells from your products and sees only their own sales. They cannot:</p>
                     <ul>
                         <li>Edit your products</li>
-                        <li>Transfer products to other salespeople</li>
+                        <li>Transfer items to other salespeople</li>
                         <li>Mark a credit as fully repaid</li>
                         <li>See your inventory worth or other salespeople</li>
                     </ul>
@@ -800,7 +812,7 @@
                 <p>Your records are kept on your phone and backed up on secure online servers, so you do not lose them if you change phones. We keep them for as long as you use PikaShot.</p>
 
                 <h3>Who can see it</h3>
-                <p>Your records are yours, and we never sell your information. A business you transfer products to sees the items in that transfer and your business name. A salesperson you add sees only the sales they record. Our team may look at how the app is used so we can support you and improve it.</p>
+                <p>Your records are yours, and we never sell your information. A business you transfer items to sees what is in that transfer and your business name. A salesperson you add sees only the sales they record. Our team may look at how the app is used so we can support you and improve it.</p>
 
                 <h3>Your choices</h3>
                 <p>You can turn off location at any time in your browser settings. To correct or remove your information, message us on WhatsApp on 07089319883.</p>
