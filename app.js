@@ -2451,7 +2451,7 @@ document.addEventListener('DOMContentLoaded', () => {
         updateHeader(viewId) {
             let title = 'PikaShot';
             if (this.state.productSelectionMode && viewId === 'products-view') {
-                title = 'Select a Product';
+                title = 'Select a product';
             } else {
                 const titles = { 'home-view': 'My Shop', 'products-view': 'My Products', 'all-sales-view': 'All Sales', 'stock-levels-view': 'Customers & Salespeople' };
                 if (this.state.user && this.state.user.type === 'Salesperson' && viewId === 'stock-levels-view') {
@@ -4604,14 +4604,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         async initiatePhoneTransfer() {
             if (!navigator.onLine) {
-                this.showToast("Please connect to the internet to transfer products.");
+                this.showToast("Please connect to the internet to transfer items.");
                 const shareLogBtn = this.elements.shareLogBtn;
                 shareLogBtn.classList.add('input-error-shake');
                 setTimeout(() => shareLogBtn.classList.remove('input-error-shake'), 600);
                 return;
             }
             if (!this.state.firebaseReady || !this.state.user.phone) {
-                this.showToast("Cannot transfer products: not connected to online services.");
+                this.showToast("Cannot transfer items: not connected to online services.");
                 return;
             }
 
@@ -4699,7 +4699,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (targetPhone.length !== 11) return;
 
             if (targetPhone === this.state.user.phone || targetPhone === this._businessPhone()) {
-                this._setTransferState('error', targetPhone === this.state.user.phone ? "You can't transfer products to yourself." : "You can't transfer products to your own business.");
+                this._setTransferState('error', targetPhone === this.state.user.phone ? "You can't transfer items to yourself." : "You can't transfer items to your own business.");
                 return;
             }
 
@@ -4719,7 +4719,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const userData = userSnap.data();
                 if (userData.type === 'Salesperson') {
-                    this._setTransferState('error', "You can't transfer products to a salesperson.");
+                    this._setTransferState('error', "You can't transfer items to a salesperson.");
                     return;
                 }
                 const userName = userData.name || userData.phone || "Unknown";
@@ -5706,7 +5706,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     ? '<p class="empty-state">Customers who owe you on credit show here.</p>'
                     : isRetailer
                         ? `<p class="empty-state">Make credit sales to see customers owing you here.</p>`
-                        : `<p class="empty-state">Sell and transfer products to the purchasing retailer or make credit sales to see customers here.</p>`;
+                        : `<p class="empty-state">Sell and transfer items to the purchasing retailer or make credit sales to see customers here.</p>`;
                 return;
             }
 
