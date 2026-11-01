@@ -279,7 +279,7 @@ html, body {
 .cred-form { display: contents; }
 .cred-username { position: absolute !important; left: 0 !important; top: 0 !important; width: 1px !important; height: 1px !important; margin: 0 !important; padding: 0 !important; border: 0 !important; box-shadow: none !important; opacity: 0 !important; pointer-events: none !important; }
 /* A PIN box that is not a login (asked before something is deleted): hidden digits, without being a password box */
-.masked-pin { -webkit-text-security: disc; text-security: disc; }
+.masked-pin { -webkit-text-security: disc; }
 
 /* Unit: a button that shows the chosen unit with a small picture, and a list of every unit with its picture (the hidden <select> is the real field) */
 .unit-btn {
