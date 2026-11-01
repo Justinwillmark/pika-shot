@@ -5953,7 +5953,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (retailersData.length === 0 && creditSales.length === 0) {
                 const isRetailer = this.state.user && this.state.user.type === 'Retailer';
                 this.elements.retailerStockView.innerHTML = this._isSalesperson()
-                    ? '<p class="empty-state">Customers who owe you on credit show here.</p>'
+                    ? '<p class="empty-state">Customers you transfer items to, and others who bought on credit show here.</p>'
                     : isRetailer
                         ? `<p class="empty-state">Make credit sales to see customers owing you here.</p>`
                         : `<p class="empty-state">Sell and transfer items to the purchasing retailer or make credit sales to see customers here.</p>`;
