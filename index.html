@@ -146,7 +146,7 @@
                                 <option value="Female">Female</option>
                             </select>
                         </div>
-                        <div class="form-group">
+                        <div class="form-group" id="business-location-group">
                             <label for="business-location">Business Location</label>
                             <select id="business-location" required>
                                 <option value="" disabled selected hidden>Select</option>
@@ -182,8 +182,10 @@
                     <div class="form-group">
                         <span class="field-title" id="business-type-title">Business type</span>
                         <div id="business-type-options" class="reg-segment" role="radiogroup" aria-labelledby="business-type-title">
+                            <!-- Retailer sign-up is switched off for now (take the comment marks away to bring it back):
                             <button type="button" role="radio" aria-checked="false" data-value="Retailer">Retailer</button>
-                            <button type="button" role="radio" aria-checked="false" data-value="Wholesaler">Wholesaler</button>
+                            -->
+                            <button type="button" role="radio" aria-checked="false" data-value="Wholesaler">Store Owner</button>
                             <button type="button" role="radio" aria-checked="false" data-value="Salesperson">Salesperson</button>
                         </div>
                         <input type="hidden" id="business-type">

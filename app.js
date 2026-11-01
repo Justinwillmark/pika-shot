@@ -373,7 +373,9 @@ document.addEventListener('DOMContentLoaded', () => {
             typeButtons.forEach(btn => btn.addEventListener('click', () => {
                 this.elements.businessTypeInput.value = btn.dataset.value;
                 btn.parentElement.classList.add('chosen'); // stops the "you can tap these" animation
-                document.getElementById('business-name-group').hidden = btn.dataset.value === 'Salesperson'; // they have no business to name
+                const inherits = btn.dataset.value === 'Salesperson'; // they have no business to name and no place to choose: both come from their admin
+                document.getElementById('business-name-group').hidden = inherits;
+                document.getElementById('business-location-group').hidden = inherits;
                 typeButtons.forEach(b => {
                     b.classList.toggle('selected', b === btn);
                     b.setAttribute('aria-checked', String(b === btn));
@@ -1299,6 +1301,11 @@ document.addEventListener('DOMContentLoaded', () => {
         MAX_SALESPEOPLE: 5,
 
         _isSalesperson() { const u = this.state.user; return !!u && u.type === 'Salesperson'; },
+        // The business's name and place as this person shows them (on receipts, in the profile): a salesperson's are their admin's
+        _shop() {
+            const u = this.state.user || {};
+            return u.type === 'Salesperson' ? { name: u.businessName || '', location: u.businessLocation || '' } : { name: u.business || '', location: u.location || '' };
+        },
         // A salesperson who no business has confirmed yet
         _isWaiting() { const u = this.state.user; return !!u && u.type === 'Salesperson' && !u.businessPhone; },
         // The phone the products, sales and credit belong to: a salesperson's admin, otherwise the user themselves
@@ -1319,7 +1326,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         _applyLink(link) {
             const user = this.state.user;
-            ['businessPhone', 'businessName', 'businessType', 'businessLowStock', 'businessAdminName'].forEach(k => { delete user[k]; });
+            ['businessPhone', 'businessName', 'businessType', 'businessLowStock', 'businessAdminName', 'businessLocation'].forEach(k => { delete user[k]; });
             if (link && link.businessPhone) {
                 user.businessPhone = link.businessPhone;
                 user.businessName = link.businessName || '';
@@ -1336,15 +1343,22 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const snap = await window.fb.getDoc(this._linkRef(user.phone));
                 const hadBusiness = !!user.businessPhone;
+                const wasWith = user.businessPhone, knownPlace = user.businessLocation, knownName = user.businessName; // (kept if the admin cannot be reached just now)
                 const link = snap.exists() ? snap.data() : null;
                 this._applyLink(link);
                 if (link && link.businessPhone) {
+                    if (knownPlace && link.businessPhone === wasWith) user.businessLocation = knownPlace;
+                    if (knownName && !user.businessName && link.businessPhone === wasWith) user.businessName = knownName;
                     try { // the admin's own low stock level, for the labels on the products they see
                         const business = await window.fb.getDoc(window.fb.doc(window.fb.db, 'users', link.businessPhone));
                         const level = business.exists() ? Number(business.data().lowStockLevel) : 0;
                         if (level >= 1) user.businessLowStock = level;
                         const adminName = business.exists() ? String(business.data().name || '').trim() : '';
                         if (adminName) user.businessAdminName = adminName; // who the salesperson answers to, for notices
+                        const place = business.exists() ? String(business.data().location || '').trim() : '';
+                        if (place) user.businessLocation = place; // the business's place is the salesperson's too
+                        const shopName = business.exists() ? String(business.data().business || '').trim() : '';
+                        if (shopName) user.businessName = shopName; // and so is its name, as the admin has it now (an older link may hold none)
                     } catch (e) { /* the usual level of 7 applies */ }
                 }
                 await DB.saveUser(user, false);
@@ -1820,15 +1834,16 @@ document.addEventListener('DOMContentLoaded', () => {
             const lastName = this.elements.lastNameInput.value.trim();
             const name = firstName + (lastName ? ' ' + lastName : '');
             const gender = this.elements.genderInput.value;
-            const business = this.elements.businessNameInput.value.trim();
+            const inherits = this.elements.businessTypeInput.value === 'Salesperson'; // a salesperson's business name and place are their admin's
+            const business = inherits ? '' : this.elements.businessNameInput.value.trim();
             const type = this.elements.businessTypeInput.value;
-            const location = this.elements.businessLocationInput.value;
+            const location = inherits ? '' : this.elements.businessLocationInput.value;
             const pin = this.elements.createPinInput.value.trim();
 
-            if (!firstName || !lastName || !gender || (!business && type !== 'Salesperson') || !type || !location || pin.length !== 6) {
+            if (!firstName || !lastName || !gender || (!business && !inherits) || !type || (!location && !inherits) || pin.length !== 6) {
                 const e = this.elements;
-                const missing = !firstName ? e.firstNameInput : !lastName ? e.lastNameInput : !gender ? e.genderInput : !location ? e.businessLocationInput
-                    : (!business && type !== 'Salesperson') ? e.businessNameInput : !type ? document.getElementById('business-type-options') : e.createPinInput;
+                const missing = !firstName ? e.firstNameInput : !lastName ? e.lastNameInput : !gender ? e.genderInput : (!location && !inherits) ? e.businessLocationInput
+                    : (!business && !inherits) ? e.businessNameInput : !type ? document.getElementById('business-type-options') : e.createPinInput;
                 await this._needs(missing, missing === e.createPinInput ? 'Your PIN must be 6 numbers.' : 'Fill in every box.', 'Check your details'); return;
             }
             if (!this._verifiedOnThisPhone(this.state.tempPhone)) { await this._verificationExpired(this.state.tempPhone, 'signup'); return; }
@@ -2485,7 +2500,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (this.state.user.type === 'Wholesaler' || this.state.user.type === 'Salesperson' || this.state.user.type === 'Retailer') {
                     this.elements.seeStockLevelsContainer.style.display = 'block';
                     this._setStockLink(this.state.user.type !== 'Salesperson'); // (a salesperson has customers only)
-                    this.elements.shareLogBtn.style.display = (this.state.user.type === 'Retailer' || this.state.user.type === 'Salesperson') ? 'none' : 'block';
+                    // Transferring to a customer is for wholesalers, and for the salespeople of a wholesaler (not of a retailer, who cannot transfer either)
+                    this.elements.shareLogBtn.style.display = (this.state.user.type === 'Retailer' || (this._isSalesperson() && this.state.user.businessType === 'Retailer')) ? 'none' : 'block';
                 } else {
                     this.elements.seeStockLevelsContainer.style.display = 'none';
                     this.elements.shareLogBtn.style.display = 'none';
@@ -4379,9 +4395,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const user = this.state.user || {};
+            const shop = this._shop();
             return {
-                store: String(user.business || ''),
-                meta: [user.location, user.phone].filter(Boolean).join(' · '),
+                store: String(shop.name),
+                meta: [shop.location, user.phone].filter(Boolean).join(' · '),
                 customer: customers.size === 1 ? [...customers][0] : '',
                 items,
                 sumRows,
@@ -4591,7 +4608,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     await navigator.share({
                         files: [new File([blob], 'pikashot-receipt.png', { type: 'image/png' })],
                         title: 'Your Receipt',
-                        text: 'Here is your receipt from ' + this.state.user.business,
+                        text: 'Here is your receipt from ' + this._shop().name,
                     });
                     this._nudgeAct('receipt');
                 } catch (error) {
@@ -5616,25 +5633,46 @@ document.addEventListener('DOMContentLoaded', () => {
             await this._drawCustomers();
         },
 
-        // A wholesaler's customers (the ones who accepted their transfers): read once and kept for 10 minutes. A salesperson sees their business's.
+        // A salesperson's customers: only the ones who accepted something THIS salesperson transferred (it is written on their own sales).
+        // Nobody else of the business's is read, shown or counted in their messages.
+        _transferredTo(sales) {
+            const phones = new Set();
+            (sales || []).forEach(s => { if (s.sharedAsLog && s.transferredTo) phones.add(String(s.transferredTo)); });
+            return phones;
+        },
+
+        // A wholesaler's customers (the ones who accepted their transfers): read once and kept for 10 minutes.
+        // A salesperson gets only their own customers, read one by one (the business's whole list is never read).
         async _loadBusinessCustomers(force) {
             const u = this.state.user, biz = this._businessPhone();
             if (!u || !biz || !(u.type === 'Wholesaler' || (u.type === 'Salesperson' && u.businessType === 'Wholesaler'))) return;
             if (!this.state.firebaseReady || !navigator.onLine) return;
-            if (!force && this.state.retailersData && Date.now() - (this.state.retailersAt || 0) < 600000) return;
+            const salesperson = u.type === 'Salesperson';
+            const mine = salesperson ? [...this._transferredTo(await DB.getAllSales())].sort() : null;
+            const sig = mine ? mine.join(',') : '';
+            const fresh = Date.now() - (this.state.retailersAt || 0) < 600000;
+            if (!force && this.state.retailersData && fresh && (!salesperson || this.state.retailersSig === sig)) return; // (a new customer of theirs is read at once)
             try {
-                const snap = await window.fb.getDocs(window.fb.collection(window.fb.db, `retailer_stocks/${biz}/supplied_retailers`));
                 const list = [];
-                snap.forEach(d => list.push({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) }));
+                let missed = false;
+                if (salesperson) {
+                    const docs = await Promise.all(mine.map(phone => window.fb.getDoc(window.fb.doc(window.fb.db, `retailer_stocks/${biz}/supplied_retailers/${phone}`)).catch(() => { missed = true; return null; })));
+                    docs.forEach(d => { if (d && d.exists()) list.push({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) }); });
+                } else {
+                    const snap = await window.fb.getDocs(window.fb.collection(window.fb.db, `retailer_stocks/${biz}/supplied_retailers`));
+                    snap.forEach(d => list.push({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) }));
+                }
                 if (!this.state.user) return;
                 this.state.retailersData = list;
                 this.state.retailersAt = Date.now();
+                this.state.retailersSig = missed ? null : sig; // (one that could not be read is tried again next time)
                 this._saveCustomerStock(list);
             } catch (error) { console.error('Could not load customers:', error); }
         },
 
         // What the profile messages need to know about customers running short. Kept on the phone, so asking costs nothing.
-        _custStockKey() { return `pika_custstock_${this._businessPhone()}`; },
+        // A salesperson's list is their own (and is never mixed up with the admin's, or an older copy that held every customer).
+        _custStockKey() { return `pika_custstock_${this._businessPhone()}${this._isSalesperson() ? '_' + this.state.user.phone : ''}`; },
         _saveCustomerStock(retailers) {
             try {
                 const list = [];
@@ -5695,9 +5733,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // The customers: everyone who owes on a credit sale (whoever recorded it) and the customers who accepted a transfer
         async _drawCustomers() {
-            const retailersData = (this.state.retailersData || []).filter(r => !Object.values(r.products || {}).some(p => p.isSalesperson));
+            let retailersData = (this.state.retailersData || []).filter(r => !Object.values(r.products || {}).some(p => p.isSalesperson));
             const allSales = await DB.getAllSales();
             if (!this.state.user) return; // logged out while this was loading
+            if (this._isSalesperson()) { // never a customer outside their own
+                const mine = this._transferredTo(allSales);
+                retailersData = retailersData.filter(r => mine.has(String(r.id)));
+            }
             const creditSales = allSales.filter(s => s.saleType === 'credit' && !s.creditSettled);
 
             if (retailersData.length === 0 && creditSales.length === 0) {
@@ -5980,8 +6022,8 @@ document.addEventListener('DOMContentLoaded', () => {
         async showProfileModal() {
             if (this.state.user) {
                 this.elements.profileName.textContent = this.state.user.name;
-                this.elements.profileBusiness.textContent = this._isSalesperson() ? (this.state.user.businessName || '') : this.state.user.business;
-                this.elements.profileLocation.textContent = this.state.user.location;
+                this.elements.profileBusiness.textContent = this._shop().name;
+                this.elements.profileLocation.textContent = this._shop().location;
                 this.elements.profilePhone.textContent = this.state.user.phone || this.state.user.phone; // Handle both cases
                 this.elements.profileRole.textContent = this.state.user.type;
                 this.elements.profileAccountName.textContent = this.state.user.name;

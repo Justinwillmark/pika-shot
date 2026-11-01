@@ -3,7 +3,7 @@
 ## Publishing
 - Quick way (as before): publish the project folder as it is.
 - Faster, harder-to-copy way: `npm install` once, then `npm run deploy`. It shrinks and scrambles the scripts into `dist/` and publishes that.
-- Every release: change `CACHE_NAME` in `serviceworker.js` (v39 -> v40 ...) so phones fetch the new files.
+- Every release: change `CACHE_NAME` in `serviceworker.js` (v41 -> v42 ...) so phones fetch the new files.
 
 ## Settings in one place (`config.js`)
 | Setting | What it does |
@@ -40,6 +40,11 @@
 - Phones only ask for what changed since last time (`lastUpdate`), and keep a copy of it on the phone, so a normal day is small.
 - Where to watch: Firestore Database > Usage.
 - A new phone (or cleared data) reads that account's products and sales in full once.
+
+## Create Account (business type)
+- The business type buttons offer only **Store Owner** and **Salesperson**. Retailer sign-up is switched off: its button is commented out in `index.html` (take the comment marks away to bring it back).
+- "Store Owner" is only a label: it is saved, and shown everywhere after sign-in, as **Wholesaler** (`data-value="Wholesaler"`). Accounts that already exist as Retailers are not touched and keep working.
+- The row of buttons (`.reg-segment`) shares the width equally, so it fits two or three buttons.
 
 ## The app icon
 - A white scanner frame around a barcode on PikaShot teal (`#008C95`, the same teal as `background_color` in `manifest.json`). Because the colours match, the start-up screen Android draws on installed phones shows only the white mark on teal. That screen is made by Android from the manifest (name, `background_color`, icon): it cannot be switched off, only changed here.
@@ -84,7 +89,7 @@ clearing browsing data or switching phones the picture comes back from the thumb
 - A customer owes on credit: after 3 days unpaid, "{name} owes {amount} since {day}", then again every 3 days until "Fully repaid?" is pressed (each customer has their own 3 days, the biggest debt first, never late at night).
   A tap opens Customers at that credit card. When the app opens and a reminder is due, it is said then (once a day).
 - "You're running low on {product}" (best seller first, each product at most every 2 days), and "{product} is out of stock. Restock soon" (only for products that sold in the last 30 days). A tap opens My Products on the Low stock or Out of stock tab, at that product.
-- Wholesalers and their salespeople: "{customer} is low on / out of {product}" (nothing left first, each customer at most every 3 days), and "{n} customers need stock" when 3 or more are low. A tap opens Customers at that customer.
+- Wholesalers and their salespeople: "{customer} is low on / out of {product}" (nothing left first, each customer at most every 3 days), and "{n} customers need stock" when 3 or more are low. A tap opens Customers at that customer. (A salesperson hears only about their own customers: see Salespeople and customers.)
   "Low" means under 10 units, the same line where the customer card turns red.
 - "Need money for stock? Get help" is shown (at most once every 3 days) to anyone with more than 4 products low or out of stock, and to a top seller whose sales fell: 3 of the 7 days before had 100+ sales, yesterday and the day before were each under 50, and more than 2 products have been low or out of stock for more than 2 days. Tapping it opens Pika's WhatsApp line (`WA_NUMBER` in `app.js`) with the words "I'm a PikaShot top seller and need money for stock."
 
@@ -93,7 +98,7 @@ clearing browsing data or switching phones the picture comes back from the thumb
 - Closer to a goal counts for more (5 sales from 100, "tomorrow makes 7 days in a row"); a streak about to break says so; evenings give the day's summary; Mondays and the start of a month give a fresh-start message.
 - The more often a message has been shown the less often it comes up, and the last 8 are not repeated straight away.
 - "Request product transfer when you restock" is for wholesalers and retailers (not salespeople) and comes up more when stock is low.
-- Customers' stock for these messages is kept on the phone (`pika_custstock_<business phone>`), refreshed whenever the Customers tab is open and, in the background, at most every 12 hours when the app opens (one read of that business's customer list, only for wholesalers and their salespeople). Anything older than 3 days is ignored.
+- Customers' stock for these messages is kept on the phone (`pika_custstock_<business phone>`; a salesperson's own list is `pika_custstock_<business phone>_<their phone>`), refreshed whenever the Customers tab is open and, in the background, at most every 12 hours when the app opens (one read of that business's customer list for a wholesaler; for a salesperson only their own customers, one by one). Anything older than 3 days is ignored.
 
 ## Sounds (all made in `app.js`, no sound files)
 - Good scan: one short, soft blip (`_playScanBeep`): a pure E6 with a faint octave below for warmth and above for sparkle, starting gently and fading smoothly. It replaced a sharp 2300 Hz square-wave beep.
@@ -117,7 +122,10 @@ clearing browsing data or switching phones the picture comes back from the thumb
 - Every Cancel and Close button has the class `btn-cancel` (a red line and red text, like Logout; over the camera it keeps a white fill so it can be read). Add `btn-cancel` to the next one too. Other buttons (Decline, Done, OK, Try Again) keep their own look.
 
 ## Salespeople and customers
-- A salesperson's Customers tab now also lists the customers' stock cards of their business (read only: no "Remove from list"), as well as the credit they recorded. It reads the customer list once and reuses it for 10 minutes (Refresh reads it again). Firestore rules already allowed this.
+- **A salesperson sees only their own customers.** A customer is theirs once they accepted something this salesperson transferred (the sale is marked `transferredTo` on the salesperson's own sales). Their Customers tab lists the credit they recorded plus the read-only stock cards of those customers, and a credit card shows "Their stock" only for such a customer. The business's other customers are never read (one document per customer is fetched, not the whole list), never shown, and never named in their messages. The list is read again as soon as a new customer of theirs appears, otherwise reused for 10 minutes (Refresh reads it again).
+- This is enforced in the app, as the rest of what a salesperson may see is: the Firestore rules treat every signed-in phone alike (they cannot tell a salesperson from an admin), so the rules were not changed.
+- **A salesperson transfers like a wholesaler.** The Transfer button shows for them when their business is a wholesaler (or the business type is not known); a salesperson of a retailer has none, as a retailer has none. The transfer is sent as the business (`senderId`, `senderStore`) with `sentBy` / `sentByName` saying which salesperson sent it, and the customer who accepts becomes that salesperson's customer.
+- **A salesperson does not choose a business name or a business location when signing up.** Both come from their admin: each time the salesperson's phone checks its link it reads the admin's account (`users/<admin>.business` and `.location`), so they are always the admin's current ones (an older link that holds no name is no problem). If the admin cannot be reached just then, what the phone already knows is kept. They are kept on the salesperson's phone only (`LOCAL_ONLY_USER_FIELDS` in `db.js`), so the salesperson's own account keeps an empty business and location. The profile, receipts (on screen, printed and the shared picture) and the share-receipt text use them (`_shop()` in `app.js`), and so does the "From" on a transfer a salesperson sends.
 
 ## Transfer to a customer
 - The box is titled "Customer phone number". Beside it is a small add-customer button that opens the phone's contacts. It only shows in browsers that have the contact picker (Chrome on Android); elsewhere it stays hidden and the number is typed. A chosen contact's first Nigerian mobile number is used (any way it is written: +234 803..., 0803..., 803...), and goes through the same check as a typed number.
