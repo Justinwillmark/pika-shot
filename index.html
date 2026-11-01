@@ -461,6 +461,10 @@
 
     <div id="modal-container" class="modal-container" style="display:none;">
 
+        <!-- The unit list of the product box. It floats above the box (it is not part of the form, so the box never changes size when it opens),
+             sits under the Unit field and is only as wide as its units (never narrower than the field); it is placed by _placeUnitMenu in app.js -->
+        <ul id="unit-menu" class="unit-menu" role="listbox" aria-labelledby="unit-label" hidden></ul>
+
         <div id="add-product-failed-modal" class="modal-content" style="display:none;">
             <h2>Product not found</h2>
             <p>No barcode was detected. Please ensure the barcode is clear and well-lit.</p>
@@ -520,8 +524,6 @@
                     </div>
                     <div class="form-group price-group"><label for="product-price">Price (₦)</label><input type="text" id="product-price" inputmode="decimal" placeholder="e.g., 200" autocomplete="off" enterkeyhint="next" required></div>
                 </div>
-                <!-- The unit list: one vertical list that opens right under the Unit / Price row, as wide as the form, and pushes the rest of the box down -->
-                <div id="unit-panel" class="unit-panel"><div class="unit-panel-clip"><ul id="unit-menu" class="unit-menu" role="listbox" aria-labelledby="unit-label"></ul></div></div>
                 <div class="form-row">
                     <button type="button" id="add-change-picture-btn" class="btn-icon"><span>Snap Image</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg></button>
                     <div class="form-group stock-group"><label for="product-stock">Stock</label><input type="text" id="product-stock" inputmode="decimal" placeholder="e.g., 24 or 2.5" autocomplete="off" enterkeyhint="done" required></div>

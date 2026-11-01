@@ -109,7 +109,6 @@ document.addEventListener('DOMContentLoaded', () => {
             productUnitInput: document.getElementById('product-unit'),
             unitBtn: document.getElementById('product-unit-btn'),
             unitMenu: document.getElementById('unit-menu'),
-            unitPanel: document.getElementById('unit-panel'),
             unitAsk: document.getElementById('unit-ask'),
             cancelProductFormBtn: document.getElementById('cancel-product-form-btn'),
             saveProductBtn: document.getElementById('save-product-btn'),
@@ -2136,6 +2135,7 @@ document.addEventListener('DOMContentLoaded', () => {
         //   _modalLive:  a modal is showing and its step is the newest one
         //   _modalStale: the modal has been closed but its step is still the newest one: the next view takes its place, or the next Back goes past it
         showModal(modalId) {
+            this._closeUnitMenu(false, true); // (the unit list belongs to the product box only)
             this.elements.modalContainer.style.display = 'flex';
             this.elements.modalContainer.querySelectorAll('.modal-content').forEach(m => m.style.display = 'none');
             const modalToShow = document.getElementById(modalId);
@@ -2197,7 +2197,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this._hideModalBox();
             if (this._modalLive) { this._modalLive = false; this._modalStale = true; }
         },
-        _hideModalBox() { this.elements.modalContainer.style.display = 'none'; this.elements.modalContainer.querySelectorAll('.modal-content').forEach(m => m.style.display = 'none'); this._followKeyboard(false); },
+        _hideModalBox() { this._closeUnitMenu(false, true); this.elements.modalContainer.style.display = 'none'; this.elements.modalContainer.querySelectorAll('.modal-content').forEach(m => m.style.display = 'none'); this._followKeyboard(false); },
 
         // Adds a step to the history, but only once a step back that is still on its way has arrived (a step added before then would be lost in it)
         _pushStep(extra) {
@@ -3592,15 +3592,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (at >= 0) items[at].click(); }
                 else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); this._closeUnitMenu(true); }
             });
-            document.addEventListener('pointerdown', (e) => { if (this._unitMenuOpen() && !e.target.closest('#unit-group, #unit-panel')) this._closeUnitMenu(); });
+            document.addEventListener('pointerdown', (e) => { if (this._unitMenuOpen() && !e.target.closest('#unit-group, #unit-menu')) this._closeUnitMenu(); });
+            // The list follows the Unit field if anything moves it (the box scrolling, the keyboard going away, the phone turning)
+            const follow = () => { if (this._unitMenuOpen()) this._placeUnitMenu(); };
+            window.addEventListener('resize', follow);
+            if (window.visualViewport) { window.visualViewport.addEventListener('resize', follow); window.visualViewport.addEventListener('scroll', follow); }
+            btn.closest('.modal-content').addEventListener('scroll', follow, { passive: true });
             select.addEventListener('change', () => this._refreshUnitPicker());
             ask.addEventListener('click', (e) => { const b = e.target.closest('[data-unit]'); if (b) { this._setUnit(b.dataset.unit); this._hideUnitAsk(); } });
             this._refreshUnitPicker();
         },
-        _unitMenuOpen() { return this.elements.unitPanel.classList.contains('open'); },
-        // The list slides open under the Unit / Price row, pushing the rest of the box down (the box scrolls if it is taller than the screen)
+        _unitMenuOpen() { return !!this._unitIsOpen; },
+        // The list floats above the product box, under the Unit field: the box itself never changes (no growing, no scrolling, nothing covered
+        // that was not under the list). It is as wide as its units want (never narrower than the field) and opens upwards if there is no room below.
         _openUnitMenu() {
-            const { productUnitInput: select, unitBtn: btn, unitMenu: menu, unitPanel: panel, unitAsk: ask } = this.elements;
+            const { productUnitInput: select, unitBtn: btn, unitMenu: menu, unitAsk: ask } = this.elements;
             if (btn.disabled) return;
             menu.innerHTML = Array.from(select.options).filter(o => o.style.display !== 'none' && (!o.dataset.extra || o.value === select.value)).map(o => {
                 const name = o.value === 'cartons' ? 'Packs / Cartons' : this._unitLabel(o.value);
@@ -3608,25 +3614,45 @@ document.addEventListener('DOMContentLoaded', () => {
             }).join('');
             this._askWasOpen = !ask.hidden;
             ask.hidden = true; // the question steps aside while the list is open (choosing a unit answers it; closing the list brings it back)
-            panel.classList.add('open');
+            this._unitIsOpen = true;
+            clearTimeout(this._unitHideTimer);
+            menu.classList.remove('out');
+            menu.hidden = false;
+            this._placeUnitMenu();
             btn.setAttribute('aria-expanded', 'true');
             const chosen = menu.querySelector('[aria-selected="true"]') || menu.firstElementChild;
             if (chosen) chosen.focus({ preventScroll: true });
-            // the box scrolls just enough to show the whole list, once it has finished sliding open
-            const box = panel.closest('.modal-content');
-            if (box) setTimeout(() => {
-                if (!this._unitMenuOpen()) return;
-                const over = panel.getBoundingClientRect().bottom - box.getBoundingClientRect().bottom + 16;
-                if (over > 0) box.scrollBy({ top: over, behavior: 'smooth' });
-            }, 280);
         },
-        _closeUnitMenu(refocus) {
-            const { unitBtn: btn, unitPanel: panel, unitAsk: ask } = this.elements;
-            if (!this._unitMenuOpen()) return;
-            panel.classList.remove('open');
+        // Puts the list under the Unit field (left edges together); above it when it would not fit below; inside itself it scrolls on a very short screen
+        _placeUnitMenu() {
+            const { unitBtn: btn, unitMenu: menu, modalContainer: layer } = this.elements;
+            const layerBox = layer.getBoundingClientRect(), field = btn.getBoundingClientRect();
+            const gap = 4, edge = 8;
+            menu.style.maxHeight = 'none';
+            menu.style.minWidth = `${Math.round(field.width)}px`;
+            const wide = menu.offsetWidth, tall = menu.offsetHeight; // as big as its units want to be
+            const below = layerBox.bottom - field.bottom - gap - edge, above = field.top - layerBox.top - gap - edge;
+            const up = tall > below && above > below;
+            const high = Math.floor(Math.min(tall, Math.max(up ? above : below, 96)));
+            menu.style.maxHeight = `${high}px`;
+            const left = Math.min(Math.max(field.left - layerBox.left, edge), Math.max(edge, layerBox.width - wide - edge));
+            menu.style.left = `${Math.round(left)}px`;
+            menu.style.top = `${Math.round(up ? field.top - layerBox.top - gap - high : field.bottom - layerBox.top + gap)}px`;
+            menu.classList.toggle('up', up);
+        },
+        _closeUnitMenu(refocus, instant) {
+            const { unitBtn: btn, unitMenu: menu, unitAsk: ask } = this.elements;
+            if (!this._unitIsOpen) return;
+            this._unitIsOpen = false;
             btn.setAttribute('aria-expanded', 'false');
             if (this._askWasOpen) ask.hidden = false; // closed without choosing: the question is still waiting
             this._askWasOpen = false;
+            clearTimeout(this._unitHideTimer);
+            if (instant) { menu.hidden = true; menu.classList.remove('out'); }
+            else {
+                menu.classList.add('out'); // a short fade, then it is gone
+                this._unitHideTimer = setTimeout(() => { if (!this._unitIsOpen) { menu.hidden = true; menu.classList.remove('out'); } }, 110);
+            }
             if (refocus) btn.focus({ preventScroll: true });
         },
         // A received item came in counted differently from the unit kept here: a small question pointing at the unit field, "Bottle or Sachet?"
