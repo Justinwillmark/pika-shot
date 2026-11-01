@@ -1471,8 +1471,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const phone = document.getElementById('sp-add-phone');
             phone.value = '';
             document.getElementById('sp-add-error').textContent = '';
-            this.showModal('add-salesperson-modal');
-            setTimeout(() => phone.focus(), 150);
+            this.showModal('add-salesperson-modal'); // (no keypad yet: it would cover what they are told above the number. They tap the number when they have read it)
         },
 
         closeAddSalesperson() {
@@ -2864,6 +2863,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (this.toggleOnboardingTooltip) this.toggleOnboardingTooltip();
             
             allProducts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)); // Sort by newest first
+            if (!this._isSalesperson()) allProducts.sort((a, b) => this._freshSince(b) - this._freshSince(a)); // items just received and not opened yet go first (the rest keep their order)
 
             if (this.state.productSelectionMode) {
                 // Picking a product to sell: best sellers first (in-stock before out-of-stock) so there is less scrolling.
@@ -2951,8 +2951,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (!product.image && (product.needsSetup === 'price' || product.needsSetup === 'barcode-and-price')) {
                         badgeHtml = '<div class="setup-badge">Add image</div>';
                     }
-                } else if (product.needsSetup === 'price' || product.needsSetup === 'barcode-and-price') { // (the second is an older flag: the same step now)
-                    badgeHtml = '<div class="setup-badge">New: Add price</div>';
+                } else if (this._freshSince(product)) { // received, and not opened yet
+                    badgeHtml = `<div class="setup-badge">${product.needsSetup === 'price' || product.needsSetup === 'barcode-and-price' ? 'New: Add price' : 'New stock'}</div>`; // (the second is an older flag: the same step now)
                 } else if (isLow(product)) {
                     badgeHtml = '<div class="restock-badge">Low stock!</div>';
                 }
@@ -2993,6 +2993,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.productGrid.appendChild(card);
             });
             this._flashCard('focusProduct', `[data-product-id="${CSS.escape(String((this.state.focusProduct || {}).id))}"]`);
+        },
+
+        // When a received item arrived, for as long as its owner has not opened it (0 once they have, and for every other product).
+        // Opening is all it takes: whether they then save, change something or just close the box, it is no longer new.
+        _freshSince(product) {
+            if (!product || product.isSalesperson) return 0;
+            if (product.freshAt) return Number(product.freshAt) || 0;
+            if (product.freshAt === undefined && (product.needsSetup === 'price' || product.needsSetup === 'barcode-and-price')) return new Date(product.createdAt).getTime() || 1; // (received before arrivals were tracked: new until opened)
+            return 0;
+        },
+        async _markSeen(product) {
+            if (!this._freshSince(product)) return;
+            product.freshAt = null; // the copy the open box holds
+            try {
+                await DB.patchProduct(product.id, { freshAt: null });
+                if (this.state.currentView === 'products-view') await this.renderProducts(this.elements.productSearchInput.value); // (behind the box: the label is gone and the product is back in its place)
+            } catch (e) {
+                console.error('Could not note that a received item was opened:', e);
+            }
         },
 
         // Scrolls to a card a message pointed at and lets it flash. `what` names where the target is kept in state: it is waited for
@@ -3515,22 +3534,24 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         // --- Units: a list with a small picture beside each one. The hidden <select> stays the real field (its value is what is saved). ---
-        UNIT_LABELS: { sachets: 'Sachets', bottles: 'Bottles', cans: 'Cans', tubs: 'Tubs', pieces: 'Pieces', packets: 'Packets', cartons: 'Cartons' },
-        UNIT_ONE: { sachets: 'Sachet', bottles: 'Bottle', cans: 'Can', tubs: 'Tub', pieces: 'Piece', packets: 'Packet', cartons: 'Carton' },
-        // Drawn on a 24 x 24 grid, one colour, lightly filled: a pouch with sealed ends, a bottle, a can, a tub with a lid, a cube, a flat pack, a box
+        UNIT_LABELS: { sachets: 'Sachets', bottles: 'Bottles', cans: 'Cans', tins: 'Tins', pieces: 'Pieces', packets: 'Packets', cartons: 'Cartons' },
+        UNIT_ONE: { sachets: 'Sachet', bottles: 'Bottle', cans: 'Can', tins: 'Tin', pieces: 'Piece', packets: 'Packet', cartons: 'Carton' },
+        // Drawn on a 24 x 24 grid, one colour, lightly filled: a pouch with sealed ends, a bottle, a can, a short wide tin with a lid, a cube, a flat pack, a box
         UNIT_ICONS: {
             sachets: '<rect x="7.5" y="3" width="9" height="18" rx="1.5" fill="currentColor" fill-opacity=".14"/><path d="M7.5 6.5h9M7.5 17.5h9" stroke-dasharray="1.3 1.7"/><path d="M10.5 12h3"/>',
             bottles: '<path d="M10 3h4v3.4l2.2 3V19a2 2 0 0 1-2 2H9.8a2 2 0 0 1-2-2V9.4L10 6.4z" fill="currentColor" fill-opacity=".14"/><path d="M7.8 13.5h8.4"/>',
             cans: '<path d="M7 6.2v11.6c0 1.2 2.2 2.2 5 2.2s5-1 5-2.2V6.2" fill="currentColor" fill-opacity=".14"/><ellipse cx="12" cy="6.2" rx="5" ry="2.2" fill="#fff"/><path d="M7 12c0 1.2 2.2 2.2 5 2.2s5-1 5-2.2"/>',
-            tubs: '<rect x="4.5" y="5.5" width="15" height="3.2" rx="1.2" fill="currentColor" fill-opacity=".14"/><path d="M6.2 8.7l1 10a1.6 1.6 0 0 0 1.6 1.4h6.4a1.6 1.6 0 0 0 1.6-1.4l1-10" fill="currentColor" fill-opacity=".14"/><path d="M8 13.5h8"/>',
+            tins: '<path d="M3.5 10v7c0 1.7 3.8 3 8.5 3s8.5-1.3 8.5-3v-7" fill="currentColor" fill-opacity=".14"/><ellipse cx="12" cy="10" rx="8.5" ry="3" fill="#fff"/><ellipse cx="12" cy="10" rx="5.4" ry="1.6"/><path d="M3.5 14.2c0 1.7 3.8 3 8.5 3s8.5-1.3 8.5-3"/>',
             pieces: '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" fill="currentColor" fill-opacity=".14"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/>',
             packets: '<rect x="3" y="7" width="18" height="10" rx="2" fill="currentColor" fill-opacity=".14"/><path d="M6.5 7v10M17.5 7v10"/><path d="M10 12h4"/>',
             cartons: '<path d="M3.5 8.5h17V20h-17z" fill="currentColor" fill-opacity=".14"/><path d="M3.5 8.5L6 4h12l2.5 4.5"/><path d="M10 12.5h4"/>'
         },
-        _unitLabel(v) { const k = String(v || '').toLowerCase(); return this.UNIT_LABELS[k] || (k ? k.charAt(0).toUpperCase() + k.slice(1) : ''); },
-        _unitOne(v) { const k = String(v || '').toLowerCase(); return this.UNIT_ONE[k] || (k ? k.charAt(0).toUpperCase() + k.slice(1).replace(/s$/, '') : ''); },
+        _unitName(v) { return /^tubs$/i.test(v) ? 'tins' : /^tub$/i.test(v) ? 'tin' : v; }, // (products saved before "Tubs" became "Tins" still say tubs: they are shown, and saved from now on, as tins)
+        _unitKey(v) { return String(this._unitName(v) || '').toLowerCase(); },
+        _unitLabel(v) { const k = this._unitKey(v); return this.UNIT_LABELS[k] || (k ? k.charAt(0).toUpperCase() + k.slice(1) : ''); },
+        _unitOne(v) { const k = this._unitKey(v); return this.UNIT_ONE[k] || (k ? k.charAt(0).toUpperCase() + k.slice(1).replace(/s$/, '') : ''); },
         _unitIcon(v) {
-            const body = this.UNIT_ICONS[String(v || '').toLowerCase()] || this.UNIT_ICONS.cartons;
+            const body = this.UNIT_ICONS[this._unitKey(v)] || this.UNIT_ICONS.cartons;
             return `<svg class="unit-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
         },
         _ensureUnitOption(unit) { // a unit that came with a transfer may not be in the list: keep it selectable so saving never blanks it
@@ -3566,7 +3587,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (at >= 0) items[at].click(); }
                 else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); this._closeUnitMenu(true); }
             });
-            document.addEventListener('pointerdown', (e) => { if (!menu.hidden && !e.target.closest('#unit-group')) this._closeUnitMenu(); });
+            document.addEventListener('pointerdown', (e) => { if (!menu.hidden && !e.target.closest('#unit-group, #unit-menu')) this._closeUnitMenu(); });
             select.addEventListener('change', () => this._refreshUnitPicker());
             ask.addEventListener('click', (e) => { const b = e.target.closest('[data-unit]'); if (b) { this._setUnit(b.dataset.unit); this._hideUnitAsk(); } });
             this._refreshUnitPicker();
@@ -3600,7 +3621,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // A received item came in counted differently from the unit kept here: a small question pointing at the unit field, "Bottle or Sachet?"
         _askUnit(product) {
             const { unitAsk: ask, unitBtn: btn } = this.elements;
-            const pill = (u) => `<button type="button" class="unit-ask-btn" data-unit="${this._esc(u)}"><span class="unit-ico">${this._unitIcon(u)}</span>${this._esc(this._unitOne(u))}</button>`;
+            const pill = (u) => `<button type="button" class="unit-ask-btn" data-unit="${this._esc(this._unitName(u))}"><span class="unit-ico">${this._unitIcon(u)}</span>${this._esc(this._unitOne(u))}</button>`;
             ask.innerHTML = `<span class="unit-ask-arrow"></span><div class="unit-ask-row">${pill(product.unit)}<span class="unit-ask-or">or</span>${pill(product.unitToConfirm)}<span class="unit-ask-q">?</span></div>`;
             ask.hidden = false;
             btn.classList.add('needs-answer');
@@ -3768,6 +3789,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (this._isSalesperson()) { this.showToast('Only your admin can edit products.'); return; }
             this.state.editingProduct = product;
             this.state.capturedBarcode = product.barcode;
+            this._markSeen(product);
             this.elements.productForm.reset();
             this._hideUnitAsk();
             this._closeUnitMenu();
@@ -3788,9 +3810,9 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.productPriceInput.value = this.formatNumber(product.price);
             this.elements.productStockInput.value = this.formatNumber(product.stock);
             // Units that came with a transfer may not be in the list; keep them selectable so saving never blanks the unit
-            this._ensureUnitOption(product.unit);
-            this._ensureUnitOption(product.unitToConfirm);
-            this.elements.productUnitInput.value = product.unit;
+            this._ensureUnitOption(this._unitName(product.unit));
+            this._ensureUnitOption(this._unitName(product.unitToConfirm));
+            this.elements.productUnitInput.value = this._unitName(product.unit);
             this.state.capturedBlob = product.image;
 
             const isSalesperson = this.state.user && this.state.user.type === 'Salesperson';
@@ -3828,7 +3850,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             this.showModal('product-form-modal');
             // A received item was counted in another unit (bottles against sachets): once the box is open, ask which it is
-            if (!isSalesperson && product.unitToConfirm && String(product.unitToConfirm).toLowerCase() !== String(product.unit || '').toLowerCase()) {
+            if (!isSalesperson && product.unitToConfirm && this._unitKey(product.unitToConfirm) !== this._unitKey(product.unit)) {
                 setTimeout(() => { if (this.state.editingProduct === product && this._modalLive) this._askUnit(product); }, 450);
             }
         },
@@ -5503,6 +5525,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const productUpdates = [];
             const staleSupplierEntries = []; // [supplierId, productKey] pairs to take off earlier suppliers
             let updatedProductsForFirebase = {};
+            const arrivedAt = Date.now();
+            let itemNo = 0;
 
             for (const item of log.items) {
                 // Whatever the unit (bottles, sachets, cartons...), it comes in as the sender counted it
@@ -5548,7 +5572,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     existingProduct.wholesalerPrice = wholesalerPrice;
                     // Counted in a different unit from the one kept here (bottles against sachets): the owner is asked which it is,
                     // in this product's Edit box (the unit is not changed, and nothing is converted, until they answer)
-                    if (!isSalesperson && item.unit && existingProduct.unit && String(item.unit).toLowerCase() !== String(existingProduct.unit).toLowerCase()) {
+                    if (!isSalesperson && item.unit && existingProduct.unit && this._unitKey(item.unit) !== this._unitKey(existingProduct.unit)) {
                         existingProduct.unitToConfirm = item.unit;
                     }
                     finalProduct = existingProduct;
@@ -5573,10 +5597,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     };
                     allProducts.push(finalProduct); // so a repeated barcode/name inside the same transfer is merged too
                 }
+                if (!isSalesperson) finalProduct.freshAt = arrivedAt - itemNo++; // new until the owner opens it: on top of "My products" meanwhile (the transfer's first item highest)
                 if (existingProduct) {
                     // the stock is added to whatever it is now; the fields that changed are sent, nothing else
                     productUpdates.push(DB.saveProduct(finalProduct, { delta: stockToAdd, thumb: thumbSentHere,
-                        only: ['supplierId', 'barcode', 'needsSetup', 'lockedUntilOOS', 'isSalesperson', 'originalName', 'wholesalerPrice', 'unitToConfirm', 'thumb'] }));
+                        only: ['supplierId', 'barcode', 'needsSetup', 'lockedUntilOOS', 'isSalesperson', 'originalName', 'wholesalerPrice', 'unitToConfirm', 'freshAt', 'thumb'] }));
                 } else {
                     productUpdates.push(DB.saveProduct(finalProduct, { thumb: true }));
                 }

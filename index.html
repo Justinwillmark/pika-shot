@@ -506,7 +506,7 @@
                         <span class="mini-switch-slider"></span>
                     </label>
                 </div>
-                <div class="form-group">
+                <div class="form-group" id="product-name-group">
                     <label for="product-name">Product name</label>
                     <input type="text" id="product-name" placeholder="e.g., Indomie Chicken" autocomplete="off" enterkeyhint="next" required>
                 </div>
@@ -514,12 +514,13 @@
                     <div class="form-group unit-group" id="unit-group">
                         <label for="product-unit-btn" id="unit-label">Unit</label>
                         <!-- The list below is the real field (its value is what gets saved); the button and the picture menu are how it is shown and chosen -->
-                        <select id="product-unit" required hidden tabindex="-1" aria-hidden="true"><option value="sachets">sachets</option><option value="bottles">bottles</option><option value="cans">cans</option><option value="tubs">tubs</option><option value="pieces">pieces</option><option value="packets">packets</option><option value="cartons" class="wholesaler-only">packs/cartons</option></select>
+                        <select id="product-unit" required hidden tabindex="-1" aria-hidden="true"><option value="sachets">sachets</option><option value="bottles">bottles</option><option value="cans">cans</option><option value="tins">tins</option><option value="pieces">pieces</option><option value="packets">packets</option><option value="cartons" class="wholesaler-only">packs/cartons</option></select>
                         <button type="button" id="product-unit-btn" class="unit-btn" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="unit-label"><span class="unit-ico" aria-hidden="true"></span><span class="unit-name"></span><svg class="unit-chev" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg></button>
-                        <ul id="unit-menu" class="unit-menu" role="listbox" aria-labelledby="unit-label" hidden></ul>
                         <div id="unit-ask" class="unit-ask" role="dialog" aria-label="Which unit is this?" hidden></div>
                     </div>
                     <div class="form-group price-group"><label for="product-price">Price (₦)</label><input type="text" id="product-price" inputmode="decimal" placeholder="e.g., 200" autocomplete="off" enterkeyhint="next" required></div>
+                    <!-- (the list sits in the row, not in the Unit field, so it can open as wide as the form) -->
+                    <ul id="unit-menu" class="unit-menu" role="listbox" aria-labelledby="unit-label" hidden></ul>
                 </div>
                 <div class="form-row">
                     <button type="button" id="add-change-picture-btn" class="btn-icon"><span>Snap Image</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg></button>
@@ -724,19 +725,19 @@
             <div id="sp-add-form" class="sp-pane">
                 <div class="sp-scroll">
                     <h2>Add a salesperson</h2>
-                    <div class="form-group">
-                        <label for="sp-add-phone">Their phone number</label>
-                        <input type="tel" id="sp-add-phone" inputmode="numeric" placeholder="08012345678" autocomplete="off" enterkeyhint="go">
-                    </div>
-                    <p id="sp-add-error" class="sp-error" role="alert"></p>
                     <div class="sp-rules">
-                        <p class="sp-rules-lead">The code expires in 20 minutes.</p>
+                        <p class="sp-rules-lead">What a salesperson can do</p>
                         <ul>
                             <li>Sells from your products and sees only their own sales and customers.</li>
                             <li id="sp-rule-transfer">Can transfer items to customers, but not to other salespeople.</li>
                             <li>Cannot edit products, mark credit as repaid, or see your inventory worth.</li>
                         </ul>
                     </div>
+                    <div class="form-group">
+                        <label for="sp-add-phone">Their phone number</label>
+                        <input type="tel" id="sp-add-phone" inputmode="numeric" placeholder="08012345678" autocomplete="off" enterkeyhint="go">
+                    </div>
+                    <p id="sp-add-error" class="sp-error" role="alert"></p>
                 </div>
                 <div class="modal-actions modal-actions-inline sp-footer">
                     <button type="button" id="sp-add-cancel" class="btn btn-secondary btn-cancel" data-back>Cancel</button>

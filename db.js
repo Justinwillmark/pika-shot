@@ -585,6 +585,16 @@ const DB = {
         return this._syncToCloud('sales', id, fields);
     },
 
+    // Changes only these fields of a product (here and in the cloud), leaving the rest as it is now
+    async patchProduct(id, fields) {
+        const product = await this._requestToPromise(this._getStore('products', 'readonly').get(id));
+        if (!product) return null;
+        const updated = { ...product, ...fields };
+        await this._requestToPromise(this._getStore('products', 'readwrite').put(updated));
+        this._syncToCloud('products', id, { ...fields, id });
+        return updated;
+    },
+
     getAllSales() {
         const store = this._getStore('sales', 'readonly');
         return this._requestToPromise(store.getAll());
