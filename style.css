@@ -508,6 +508,10 @@ button:focus { outline: none; }
 .btn:disabled { background-color: #ccc; cursor: not-allowed; }
 .btn-primary { background-color: var(--primary-color); color: white; }
 .btn-primary:active { background-color: var(--primary-dark); }
+/* A button with a small line of explanation under its label: small and light so it never competes with the label, but still plain to read */
+.btn-stack { padding-top: 9px; padding-bottom: 9px; line-height: 1.2; }
+.btn-stack .btn-main { display: block; }
+.btn-stack .btn-sub { display: block; margin-top: 3px; font-size: 0.76rem; font-weight: 500; letter-spacing: 0.01em; color: rgba(255, 255, 255, 0.94); }
 .btn-secondary { background-color: var(--border-color); color: var(--text-color); }
 .btn-secondary:active { background-color: #ddd; }
 /* Every Cancel and Close button: a red line and red text, like Logout (and a white fill over the camera, so it can be read) */
