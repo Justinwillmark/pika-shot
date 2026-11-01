@@ -3,7 +3,7 @@
 ## Publishing
 - Quick way (as before): publish the project folder as it is.
 - Faster, harder-to-copy way: `npm install` once, then `npm run deploy`. It shrinks and scrambles the scripts into `dist/` and publishes that.
-- Every release: change `CACHE_NAME` in `serviceworker.js` (v37 -> v38 ...) so phones fetch the new files.
+- Every release: change `CACHE_NAME` in `serviceworker.js` (v39 -> v40 ...) so phones fetch the new files.
 
 ## Settings in one place (`config.js`)
 | Setting | What it does |
@@ -40,6 +40,11 @@
 - Phones only ask for what changed since last time (`lastUpdate`), and keep a copy of it on the phone, so a normal day is small.
 - Where to watch: Firestore Database > Usage.
 - A new phone (or cleared data) reads that account's products and sales in full once.
+
+## The app icon
+- A white scanner frame around a barcode on PikaShot teal (`#008C95`, the same teal as `background_color` in `manifest.json`). Because the colours match, the start-up screen Android draws on installed phones shows only the white mark on teal. That screen is made by Android from the manifest (name, `background_color`, icon): it cannot be switched off, only changed here.
+- `icons/icon-192.png` and `icon-512.png` are the normal icon (rounded corners); `icon-maskable-512.png` is the full-square version that phones which cut icons into circles or squircles use. The same `icon-192.png` is the picture shown for a product that has no photo.
+- An already installed app updates its icon on its own after Chrome next checks the manifest (it can take a day or more). Uninstalling and installing again shows it at once.
 
 ## Product pictures
 The full photo lives on the phone. A small thumbnail (a few KB) is saved with the product in Firestore, so after logging out,

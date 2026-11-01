@@ -4654,7 +4654,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const picked = await navigator.contacts.select(['tel'], { multiple: false });
                 if (!picked || !picked.length) return; // closed without choosing anyone
                 const number = (picked[0].tel || []).map(t => this._localPhone(t)).find(n => /^0[789]\d{9}$/.test(n));
-                if (!number) { this._setTransferState('error', 'No Nigerian mobile number on this contact.'); return; }
+                if (!number) { this._setTransferState('error', 'Not a Nigerian mobile number'); return; }
                 this.elements.transferPhoneInput.value = number;
                 this.elements.transferPhoneInput.dispatchEvent(new Event('input'));
             } catch (e) { /* closed, or not allowed: the number can still be typed */ }
