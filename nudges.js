@@ -3,7 +3,8 @@
 // The message changes only after every 5 actions (sales, scans, transfers, receipts shared or printed, in any mix).
 // Each person gets their own shuffled order, so two people do not see the same run of messages.
 // Exceptions that change it straight away: a nudge when the app opens after days away, a reminder when a credit has gone
-// unpaid for 3 days (again every 3 days), and the welcome after a first sale.
+// unpaid for 3 days (again every 3 days), the welcome after a first sale, and the receipt of a transfer that was just accepted
+// (4 seconds after it, then 3 more times within the same day, until the receipt is downloaded).
 // Every message is at most 8 words with one emoji, in plain words. Pidgin is only used in the motivation messages and the "where you dey" greeting.
 //
 // What decides which message comes next (nothing here is random except the final draw from the person's own seed):
@@ -353,17 +354,32 @@
         { id: 'ia-morning', cat: 'inactivity', open: true, when: c => c.inactiveDays >= 1 && c.tod === 'morning', text: () => 'Good morning. Record your first sale. ☀️' },
 
         // ---- The welcome after a first sale
-        { id: 'welcome', chime: true, cat: 'welcome', special: true, when: () => false, text: () => 'First sale recorded. Welcome aboard! 🎉' }
+        { id: 'welcome', chime: true, cat: 'welcome', special: true, when: () => false, text: () => 'First sale recorded. Welcome aboard! 🎉' },
+
+        // ---- The receipt of a transfer that was just accepted: a primary nudge (it comes up by itself, with the loud beep). A tap downloads the receipt.
+        { id: 'tx-receipt', chime: true, cat: 'receipt', special: true, go: 'receipt', when: () => false, text: (c, r, s) => receiptText(s) }
     ];
     const BY_ID = {};
     CATALOG.forEach(m => { BY_ID[m.id] = m; });
+
+    // The receipt message of an accepted transfer: 4 seconds after it is accepted, then three more times within the same day (24 hours).
+    // The words change each time. `r` is { store, shown }: the sender's name (two words at most) and how many times it has come up.
+    const RECEIPT_AT = [4000, 90 * 60000, 4 * HOUR, 9 * HOUR];
+    function receiptText(r) {
+        const who = short(r && r.store, 2);
+        const k = Math.min(Math.max((r && r.shown) || 0, 0), 3);
+        if (k === 0) return who ? `${who} transfer accepted. Tap to download. 🧾` : 'Transfer accepted. Tap to download receipt. 🧾';
+        if (k === 1) return who ? `${who} receipt is waiting. Tap to download. 🧾` : 'Your receipt is waiting. Tap to download. 🧾';
+        if (k === 2) return who ? `Need the ${who} receipt? Tap to download. 🧾` : 'Need your receipt? Tap to download. 🧾';
+        return who ? `Last reminder: ${who} receipt. Tap to download. 🧾` : 'Last reminder: your receipt. Tap to download. 🧾';
+    }
 
     const fitsWho = (m, c) => !m.who || m.who === c.gender;
     const fitsRole = (m, c) => !m.roles || m.roles.indexOf(c.role) >= 0;
 
     // ---------------------------------------------------------------- remembering where a person is in their run
     function newState(seed) {
-        return { v: 1, seed: seed >>> 0, n: 0, cat: null, id: null, text: null, subject: null, actions: 0, recent: [], shown: {}, times: {}, urgentRun: 0, lowSince: {}, freshAt: 0, openDay: null, welcomed: false, acts: { receipt: [], transfer: [] } };
+        return { v: 1, seed: seed >>> 0, n: 0, cat: null, id: null, text: null, subject: null, actions: 0, recent: [], shown: {}, times: {}, urgentRun: 0, lowSince: {}, freshAt: 0, openDay: null, welcomed: false, receipt: null, acts: { receipt: [], transfer: [] } };
     }
 
     function settle(state, m, key, subject, text, ctx) {
@@ -442,9 +458,11 @@
     function show(state, ctx) {
         let m = BY_ID[state.id];
         let subject = null;
-        const keeps = m && (m.open || m.special);
+        if (state.receipt && ctx.now && ctx.now.getTime() - state.receipt.at > DAY) state.receipt = null; // a day has passed: no more receipt messages
+        const gone = !!m && m.id === 'tx-receipt' && !state.receipt; // (the receipt was downloaded, or its day is over)
+        const keeps = m && (m.open || m.special) && !gone;
         if (m && !keeps && m.subjects && state.subject) subject = m.subjects(ctx).find(s => s.key === state.subject.key) || null;
-        const valid = !!m && (keeps || (fitsWho(m, ctx) && fitsRole(m, ctx) && (m.subjects ? !!subject : m.when(ctx))));
+        const valid = !!m && !gone && (keeps || (fitsWho(m, ctx) && fitsRole(m, ctx) && (m.subjects ? !!subject : m.when(ctx))));
         if (!m || !valid || state.actions >= EVERY) { const x = pick(state, ctx); m = x.m; subject = x.s; }
         const text = (m.open || m.special) ? state.text : m.text(ctx, rngFor(state), subject);
         return { text, go: m.go || null, arg: subject ? subject.arg || null : null, id: m.id, cat: m.cat, chime: !!m.chime };
@@ -480,6 +498,38 @@
         settle(state, m, m.id, null, m.text(ctx), ctx);
     }
 
+    // A transfer was just accepted: its receipt message is due 4 seconds from now, and again (3 times) later the same day.
+    // Only the latest accepted transfer is followed.
+    function receiptStart(state, info, nowMs) {
+        state.receipt = { at: nowMs, n: 0, shown: 0, store: String((info && info.store) || '') };
+    }
+
+    // Is a receipt message due at this moment? (a day after the transfer there are no more, and the record is dropped)
+    function receiptDue(state, nowMs) {
+        const r = state.receipt;
+        if (!r) return false;
+        if (nowMs - r.at > DAY) { state.receipt = null; return false; }
+        return r.n < RECEIPT_AT.length && nowMs >= r.at + RECEIPT_AT[r.n];
+    }
+
+    // The receipt message comes up now: it replaces the one in the Profile card, and the next time is set. A time that went by while the
+    // app was closed is not repeated: it comes up once, now.
+    function receiptNudge(state, ctx) {
+        const r = state.receipt;
+        const nowMs = ctx && ctx.now ? ctx.now.getTime() : Date.now();
+        const text = receiptText(r);
+        r.shown = (r.shown || 0) + 1;
+        while (r.n < RECEIPT_AT.length && nowMs >= r.at + RECEIPT_AT[r.n]) r.n++;
+        settle(state, BY_ID['tx-receipt'], 'tx-receipt', null, text, ctx);
+        return text;
+    }
+
+    // The receipt was downloaded: its messages stop, and the one in the Profile card gives way to the next
+    function receiptDone(state) {
+        state.receipt = null;
+        if (state.id === 'tx-receipt') { state.id = null; state.text = null; }
+    }
+
     // One more action done (sale, scan, transfer, receipt shared or printed)
     function act(state, kind, now) {
         state.actions = (state.actions || 0) + 1;
@@ -491,6 +541,6 @@
         }
     }
 
-    root.PikaNudges = { EVERY, CATS, CATALOG, buildContext, trackStock, newState, show, pick, eligible, onOpen, welcome, act, makeRng, chimes: (id) => !!(BY_ID[id] && BY_ID[id].chime), todayIndex: (d) => dayIdx(d || new Date()) };
+    root.PikaNudges = { EVERY, CATS, CATALOG, RECEIPT_AT, buildContext, trackStock, newState, show, pick, eligible, onOpen, welcome, receiptStart, receiptDue, receiptNudge, receiptDone, receiptText, act, makeRng, chimes: (id) => !!(BY_ID[id] && BY_ID[id].chime), todayIndex: (d) => dayIdx(d || new Date()) };
     if (typeof module !== 'undefined' && module.exports) module.exports = root.PikaNudges;
 })(typeof window !== 'undefined' ? window : globalThis);

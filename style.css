@@ -295,27 +295,21 @@ html, body {
 .unit-ico { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; color: var(--primary-color); }
 .unit-btn:disabled .unit-ico { color: #8a949b; }
 .unit-svg { width: 100%; height: 100%; display: block; }
-/* The list opens under the Unit field as wide as the form, two units to a line (a last one on its own takes the whole line) */
-#product-form .form-row { position: relative; }
-.unit-menu {
-    position: absolute; z-index: 50; top: 56px; left: 0; right: 0; margin: 0; padding: 4px; list-style: none;
-    display: grid; grid-template-columns: 1fr 1fr; gap: 2px;
-    background: #fff; border: 1px solid #dfe5ea; border-radius: 12px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15); transform-origin: 40px -6px; animation: unit-pop 0.16s ease-out;
-}
-.unit-menu[hidden] { display: none; }
-.unit-menu li { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 36px; padding: 0 8px; border-radius: 8px; font-size: 0.9rem; color: #1d1d1d; cursor: pointer; -webkit-tap-highlight-color: transparent; }
-.unit-menu li:last-child:nth-child(odd) { grid-column: 1 / -1; }
-.unit-menu li .unit-ico { width: 20px; height: 20px; }
+/* The list: one vertical list, as wide as the form, that slides open right under the Unit / Price row and pushes the rest of the box down. It is part of
+   the page (not floating over the other fields), so it fits at any screen height: a box taller than the screen simply scrolls. Closed, it takes no room at all. */
+.unit-panel { display: grid; grid-template-rows: 0fr; margin: 0; visibility: hidden; transition: grid-template-rows 0.24s ease, margin 0.24s ease, visibility 0s linear 0.24s; }
+.unit-panel.open { grid-template-rows: 1fr; margin: -12px 0 22px; visibility: visible; transition: grid-template-rows 0.24s ease, margin 0.24s ease; }
+.unit-panel-clip { min-height: 0; overflow: hidden; }
+.unit-menu { margin: 0; padding: 4px; list-style: none; background: #fff; border: 1px solid #dfe5ea; border-radius: 12px; }
+.unit-menu li { display: flex; align-items: center; gap: 12px; min-width: 0; min-height: 38px; padding: 0 10px; border-radius: 8px; font-size: 0.95rem; color: #1d1d1d; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.unit-menu li + li { margin-top: 1px; }
+.unit-menu li .unit-ico { width: 22px; height: 22px; }
 .unit-opt-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .unit-menu li:hover, .unit-menu li:focus { background: #eef6f7; outline: none; }
 .unit-menu li:active { background: #dcecee; }
 .unit-menu li[aria-selected="true"] { background: rgba(0, 140, 149, 0.1); font-weight: 600; }
-.unit-menu li[aria-selected="true"]::after { content: ''; flex: none; margin-left: auto; width: 5px; height: 9px; border: solid var(--primary-color); border-width: 0 2px 2px 0; transform: rotate(45deg) translate(-2px, -2px); }
-@media (max-width: 360px) { /* narrow phones: the highlight alone marks the chosen unit */
-    .unit-menu li { gap: 6px; padding: 0 6px; font-size: 0.88rem; }
-    .unit-menu li[aria-selected="true"]::after { display: none; }
-}
-@keyframes unit-pop { from { opacity: 0; transform: translateY(-6px) scale(0.97); } to { opacity: 1; transform: none; } }
+.unit-menu li[aria-selected="true"]::after { content: ''; flex: none; margin-left: auto; width: 5px; height: 10px; border: solid var(--primary-color); border-width: 0 2px 2px 0; transform: rotate(45deg) translate(-2px, -2px); }
+@media (prefers-reduced-motion: reduce) { .unit-panel, .unit-panel.open { transition: none; } }
 
 /* "Bottle or Sachet?": a small floating question under the unit field, pointing up at it; the field glows until it is answered */
 .unit-ask {
@@ -334,7 +328,7 @@ html, body {
 .unit-btn.needs-answer { border-color: var(--primary-color); animation: unit-glow 1.6s ease-in-out infinite; }
 @keyframes unit-ask-in { from { opacity: 0; transform: translateY(-8px) scale(0.94); } to { opacity: 1; transform: none; } }
 @keyframes unit-glow { 0%, 100% { box-shadow: 0 0 0 0 rgba(0, 140, 149, 0.35); } 50% { box-shadow: 0 0 0 5px rgba(0, 140, 149, 0.12); } }
-@media (prefers-reduced-motion: reduce) { .unit-menu, .unit-ask { animation: none; } .unit-btn.needs-answer { animation: none; box-shadow: 0 0 0 3px rgba(0, 140, 149, 0.25); } }
+@media (prefers-reduced-motion: reduce) { .unit-ask { animation: none; } .unit-btn.needs-answer { animation: none; box-shadow: 0 0 0 3px rgba(0, 140, 149, 0.25); } }
 #product-form .btn-icon {
     flex: 1;
     margin-bottom: 20px;

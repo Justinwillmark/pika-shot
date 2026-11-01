@@ -109,6 +109,7 @@ document.addEventListener('DOMContentLoaded', () => {
             productUnitInput: document.getElementById('product-unit'),
             unitBtn: document.getElementById('product-unit-btn'),
             unitMenu: document.getElementById('unit-menu'),
+            unitPanel: document.getElementById('unit-panel'),
             unitAsk: document.getElementById('unit-ask'),
             cancelProductFormBtn: document.getElementById('cancel-product-form-btn'),
             saveProductBtn: document.getElementById('save-product-btn'),
@@ -1914,6 +1915,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this._backfillGeo();
             this._refreshCustomerStock();
             this._nudgeOnOpen();
+            this._nudgeReceipts(); // (a receipt message that is still due from an accepted transfer)
         },
 
         // --- Incoming transfers -------------------------------------------------------------------
@@ -2047,6 +2049,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         await DB.catchUp(); // only what changed while away
                         this._refreshCustomerStock();
                         this._nudgeOnOpen();
+                        this._nudgeReceipts();
                         this.updateDashboard();
                         this.renderProducts(this.elements.productSearchInput.value);
                         if (this.state.currentView === 'all-sales-view') {
@@ -3536,7 +3539,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // --- Units: a list with a small picture beside each one. The hidden <select> stays the real field (its value is what is saved). ---
         UNIT_LABELS: { sachets: 'Sachets', bottles: 'Bottles', cans: 'Cans', tins: 'Tins', pieces: 'Pieces', packets: 'Packets', cartons: 'Cartons' },
         UNIT_ONE: { sachets: 'Sachet', bottles: 'Bottle', cans: 'Can', tins: 'Tin', pieces: 'Piece', packets: 'Packet', cartons: 'Carton' },
-        // Drawn on a 24 x 24 grid, one colour, lightly filled: a pouch with sealed ends, a bottle, a can, a short wide tin with a lid, a cube, a flat pack, a box
+        // ("pieces" is no longer a choice, but a product already saved in pieces still shows as Pieces, with its picture)
+        // Drawn on a 24 x 24 grid, one colour, lightly filled: a pouch with sealed ends, a bottle, a can, a short wide tin with a lid, a flat pack, a box
         UNIT_ICONS: {
             sachets: '<rect x="7.5" y="3" width="9" height="18" rx="1.5" fill="currentColor" fill-opacity=".14"/><path d="M7.5 6.5h9M7.5 17.5h9" stroke-dasharray="1.3 1.7"/><path d="M10.5 12h3"/>',
             bottles: '<path d="M10 3h4v3.4l2.2 3V19a2 2 0 0 1-2 2H9.8a2 2 0 0 1-2-2V9.4L10 6.4z" fill="currentColor" fill-opacity=".14"/><path d="M7.8 13.5h8.4"/>',
@@ -3554,12 +3558,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const body = this.UNIT_ICONS[this._unitKey(v)] || this.UNIT_ICONS.cartons;
             return `<svg class="unit-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
         },
-        _ensureUnitOption(unit) { // a unit that came with a transfer may not be in the list: keep it selectable so saving never blanks it
+        _ensureUnitOption(unit) { // a unit that is not in the list (an older product's "pieces", or one that came with a transfer): keep it selectable so saving never blanks it
             const select = this.elements.productUnitInput;
             if (unit && !Array.from(select.options).some(o => o.value === unit)) {
                 const extra = document.createElement('option');
                 extra.value = unit;
                 extra.textContent = unit;
+                extra.dataset.extra = '1'; // (listed only while it is the chosen one: it is not a choice for any other product)
                 select.appendChild(extra);
             }
         },
@@ -3576,7 +3581,7 @@ document.addEventListener('DOMContentLoaded', () => {
         },
         _initUnitPicker() {
             const { productUnitInput: select, unitBtn: btn, unitMenu: menu, unitAsk: ask } = this.elements;
-            btn.addEventListener('click', () => (menu.hidden ? this._openUnitMenu() : this._closeUnitMenu()));
+            btn.addEventListener('click', () => (this._unitMenuOpen() ? this._closeUnitMenu() : this._openUnitMenu()));
             btn.addEventListener('keydown', (e) => { if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); this._openUnitMenu(); } });
             menu.addEventListener('click', (e) => { const li = e.target.closest('[data-value]'); if (li) { this._setUnit(li.dataset.value); this._hideUnitAsk(); this._closeUnitMenu(true); } });
             menu.addEventListener('keydown', (e) => {
@@ -3587,35 +3592,41 @@ document.addEventListener('DOMContentLoaded', () => {
                 else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (at >= 0) items[at].click(); }
                 else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); this._closeUnitMenu(true); }
             });
-            document.addEventListener('pointerdown', (e) => { if (!menu.hidden && !e.target.closest('#unit-group, #unit-menu')) this._closeUnitMenu(); });
+            document.addEventListener('pointerdown', (e) => { if (this._unitMenuOpen() && !e.target.closest('#unit-group, #unit-panel')) this._closeUnitMenu(); });
             select.addEventListener('change', () => this._refreshUnitPicker());
             ask.addEventListener('click', (e) => { const b = e.target.closest('[data-unit]'); if (b) { this._setUnit(b.dataset.unit); this._hideUnitAsk(); } });
             this._refreshUnitPicker();
         },
+        _unitMenuOpen() { return this.elements.unitPanel.classList.contains('open'); },
+        // The list slides open under the Unit / Price row, pushing the rest of the box down (the box scrolls if it is taller than the screen)
         _openUnitMenu() {
-            const { productUnitInput: select, unitBtn: btn, unitMenu: menu } = this.elements;
+            const { productUnitInput: select, unitBtn: btn, unitMenu: menu, unitPanel: panel, unitAsk: ask } = this.elements;
             if (btn.disabled) return;
-            menu.innerHTML = Array.from(select.options).filter(o => o.style.display !== 'none').map(o => {
+            menu.innerHTML = Array.from(select.options).filter(o => o.style.display !== 'none' && (!o.dataset.extra || o.value === select.value)).map(o => {
                 const name = o.value === 'cartons' ? 'Packs / Cartons' : this._unitLabel(o.value);
                 return `<li role="option" tabindex="-1" data-value="${this._esc(o.value)}" aria-selected="${o.value === select.value}"><span class="unit-ico">${this._unitIcon(o.value)}</span><span class="unit-opt-name">${this._esc(name)}</span></li>`;
             }).join('');
-            menu.hidden = false;
+            this._askWasOpen = !ask.hidden;
+            ask.hidden = true; // the question steps aside while the list is open (choosing a unit answers it; closing the list brings it back)
+            panel.classList.add('open');
             btn.setAttribute('aria-expanded', 'true');
             const chosen = menu.querySelector('[aria-selected="true"]') || menu.firstElementChild;
             if (chosen) chosen.focus({ preventScroll: true });
-            // the box scrolls just enough to show the whole list (the list can be taller than what is left of the box under the field)
-            const box = menu.closest('.modal-content');
-            if (box) setTimeout(() => { // (once the list has finished opening: while it opens it is a little smaller, and the scroll would stop short)
-                if (menu.hidden) return;
-                const over = menu.getBoundingClientRect().bottom - box.getBoundingClientRect().bottom + 16;
-                if (over > 0) box.scrollBy({ top: over });
-            }, 200);
+            // the box scrolls just enough to show the whole list, once it has finished sliding open
+            const box = panel.closest('.modal-content');
+            if (box) setTimeout(() => {
+                if (!this._unitMenuOpen()) return;
+                const over = panel.getBoundingClientRect().bottom - box.getBoundingClientRect().bottom + 16;
+                if (over > 0) box.scrollBy({ top: over, behavior: 'smooth' });
+            }, 280);
         },
         _closeUnitMenu(refocus) {
-            const { unitBtn: btn, unitMenu: menu } = this.elements;
-            if (menu.hidden) return;
-            menu.hidden = true;
+            const { unitBtn: btn, unitPanel: panel, unitAsk: ask } = this.elements;
+            if (!this._unitMenuOpen()) return;
+            panel.classList.remove('open');
             btn.setAttribute('aria-expanded', 'false');
+            if (this._askWasOpen) ask.hidden = false; // closed without choosing: the question is still waiting
+            this._askWasOpen = false;
             if (refocus) btn.focus({ preventScroll: true });
         },
         // A received item came in counted differently from the unit kept here: a small question pointing at the unit field, "Bottle or Sachet?"
@@ -3627,6 +3638,7 @@ document.addEventListener('DOMContentLoaded', () => {
             btn.classList.add('needs-answer');
         },
         _hideUnitAsk() {
+            this._askWasOpen = false;
             this.elements.unitAsk.hidden = true;
             this.elements.unitBtn.classList.remove('needs-answer');
         },
@@ -4039,7 +4051,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const sendTransfer = !!transferTo && transferTo.length >= 10 && !!this.state.firebaseReady && !!window.fb;
             if (sendTransfer) {
                 // The sale only counts as transferred once the recipient accepts it
-                sale.pendingTransfer = { logId: `xfer_${sale.id}`, to: transferTo };
+                sale.pendingTransfer = { logId: `xfer_${sale.id}`, to: transferTo, at: Date.now() };
                 sale.pendingTransfers = [sale.pendingTransfer];
             }
 
@@ -4808,6 +4820,7 @@ document.addEventListener('DOMContentLoaded', () => {
         async _sendTransfer() {
             const targetPhone = this.elements.transferPhoneInput.value.trim();
             this.showLoader();
+            let logId = null, marked = false, sentOnTheWay = false;
             try {
                 const allSales = await DB.getAllSales();
                 const selectedSaleObjects = allSales.filter(s => this.state.selectedSales.has(s.id));
@@ -4841,7 +4854,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             name: sale.productName,
                             price: sale.price,
                             quantity: sale.quantity,
-                            unit: product ? product.unit : 'pieces',
+                            unit: product ? product.unit : (sale.unit || 'packets'),
                             barcode: product ? product.barcode : null
                         };
                         Object.assign(item, this._settlementFields(selectedSaleObjects.filter(s => s.productId === sale.productId)));
@@ -4852,32 +4865,101 @@ document.addEventListener('DOMContentLoaded', () => {
                 await this._attachItemImages(logData.items, aggregatedSaleObjects, allProducts);
 
                 // The transfer's id is made when the box opens, so tapping twice, or trying again after a slow connection, is the same transfer
-                const logRef = window.fb.doc(window.fb.db, 'shared_logs', `xfer_${this.state.transferKey || (this.state.transferKey = this._newId())}`);
-                const already = await window.fb.getDoc(logRef).catch(() => null);
-                if (!(already && already.exists())) await window.fb.setDoc(logRef, logData); // one that is already there is never written over (it may be accepted by now)
-
-                // Confirm the transfer really is on the server before telling the user it was sent
-                const saved = await window.fb.getDoc(logRef);
-                if (!saved.exists() || saved.data().targetPhone !== targetPhone) {
-                    throw new Error('Transfer was not saved correctly');
+                let logRef = window.fb.doc(window.fb.db, 'shared_logs', `xfer_${this.state.transferKey || (this.state.transferKey = this._newId())}`);
+                let already = await window.fb.getDoc(logRef).catch(() => null);
+                if (already && already.exists() && already.data().targetPhone !== targetPhone) { // the number was changed after an earlier try that did arrive: this is another transfer
+                    logRef = window.fb.doc(window.fb.db, 'shared_logs', `xfer_${this.state.transferKey = this._newId()}`);
+                    already = null;
                 }
-                this.state.transferKey = null;
+                logId = logRef.id;
 
-                // Remember the pending transfer on each sale (it turns into "transferred" when accepted)
-                await this.handleLogShared(logRef.id, targetPhone);
-                
-                this.hideModal();
-                const recipientName = (this.elements.transferUserName.textContent || '').trim();
-                this.showToast(recipientName
-                    ? `Transfer sent! ${recipientName} will be asked to accept it.`
-                    : "Transfer sent! The recipient will be asked to accept it.");
+                // 1. On this phone first: the sales are marked "waiting for this person" before anything goes online. Whatever happens after (a slow line,
+                //    the app closed, the phone switched off) there is a record of this transfer here, so "Transferred" always appears once it is accepted.
+                await this._markTransferPending(logData.saleIds, logId, targetPhone);
+                marked = true;
+
+                // 2. Online. A refusal from the server (the write is rejected) means nothing was sent. A line too slow to answer does not: the write is kept
+                //    by the phone and goes by itself when the internet is back, so that is not a failure either.
+                const writing = (already && already.exists()) ? Promise.resolve() : Promise.resolve(window.fb.setDoc(logRef, logData)); // one that is already there is never written over (it may be accepted by now)
+                const flying = this._transfersInFlight = this._transfersInFlight || new Set(); // (while it is being sent, the check for transfers that never arrived leaves it alone)
+                flying.add(logId);
+                writing.then(() => flying.delete(logId), () => flying.delete(logId));
+                const outcome = await Promise.race([writing.then(() => 'sent'), new Promise(resolve => setTimeout(() => resolve('slow'), this.SEND_WAIT_MS))]);
+                if (outcome === 'slow') writing.catch((error) => this._transferRefusedLater(logId, error));
+
+                // 3. From here the transfer is on the server (or certain to get there): nothing below can turn it into a "failed"
+                sentOnTheWay = true;
+                this.state.transferKey = null;
+                await this._afterTransferSent(outcome === 'slow');
 
             } catch (error) {
                 console.error("Error processing phone transfer:", error);
+                if (sentOnTheWay) return; // (cannot happen: the steps after sending catch their own errors)
+                if (marked) { try { await this._unmarkTransferPending(logId); } catch (e) { console.error('Could not free the sales of a transfer that did not go:', e); } }
                 say("The transfer did not go through. Check your internet and try again.", "Transfer failed");
             } finally {
                 this.hideLoader();
             }
+        },
+
+        // How long to wait for the server to answer a transfer before saying it will go when the internet is back
+        SEND_WAIT_MS: 15000,
+        // A transfer the server has never heard of, still marked on a sale after this long, is not on its way any more
+        PENDING_GRACE_MS: 5 * 60000,
+
+        // Marks the sales behind a transfer as waiting for this person (it becomes "Transferred" when they accept)
+        async _markTransferPending(saleIds, logId, to) {
+            const allSales = await DB.getAllSales();
+            const at = Date.now();
+            const updates = [];
+            (saleIds || []).forEach((saleId) => {
+                const sale = allSales.find(s => s.id === saleId);
+                if (!sale) return;
+                const earlier = sale.pendingTransfers || [];
+                if (earlier.some(t => t.logId === logId)) return; // already listed (the same transfer tried again)
+                sale.pendingTransfer = { logId, to, at }; // latest transfer
+                sale.pendingTransfers = [...earlier, sale.pendingTransfer];
+                updates.push(DB.updateSale(sale, ['pendingTransfer', 'pendingTransfers']));
+            });
+            await Promise.all(updates);
+        },
+
+        // A transfer that never reached the server: its sales are free again (to edit, or to transfer again)
+        async _unmarkTransferPending(logId) {
+            const allSales = await DB.getAllSales();
+            await Promise.all(allSales.filter(s => !s.sharedAsLog && this._pendingLogIds(s).includes(logId)).map((sale) => {
+                const rest = (sale.pendingTransfers || []).filter(t => t.logId !== logId);
+                sale.pendingTransfers = rest;
+                sale.pendingTransfer = rest.length ? rest[rest.length - 1] : null;
+                return DB.updateSale(sale, ['pendingTransfer', 'pendingTransfers']);
+            }));
+            await this.updateDashboard();
+            if (this.state.currentView === 'all-sales-view') await this.renderAllSales();
+        },
+
+        // A write that was only slow and then turned out to be refused (the person was told it would go by itself)
+        async _transferRefusedLater(logId, error) {
+            console.error('The server refused a transfer that was waiting:', error);
+            try { await this._unmarkTransferPending(logId); } catch (e) { /* the check on the next open frees them */ }
+            say('A transfer you sent earlier did not go through. Please send it again.', 'Transfer failed');
+        },
+
+        // Everything that tidies up after a transfer was sent. Each step is on its own: the transfer is already on its way, so a problem
+        // with a screen must never turn it into a "did not go through".
+        async _afterTransferSent(slow) {
+            const step = async (job) => { try { await job(); } catch (e) { console.error('After sending a transfer:', e); } };
+            await step(() => this._nudgeAct('transfer'));
+            const recipientName = (this.elements.transferUserName.textContent || '').trim();
+            await step(() => this.hideModal());
+            await step(async () => {
+                this.exitSelectionMode();
+                await this.updateDashboard();
+                if (this.state.currentView === 'all-sales-view') await this.renderAllSales();
+            });
+            await step(() => this.watchPendingTransfers());
+            this.showToast(slow
+                ? 'Saved. The transfer will be sent as soon as your internet is back.'
+                : recipientName ? `Transfer sent! ${recipientName} will be asked to accept it.` : 'Transfer sent! The recipient will be asked to accept it.');
         },
 
         // How the sales behind a transfer item were settled, so the receiver can see it: money taken off (discount),
@@ -4970,31 +5052,6 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (e) { return null; }
         },
 
-        async handleLogShared(logId, targetPhone) {
-            this._nudgeAct('transfer');
-            this.hideModal();
-            const allSales = await DB.getAllSales();
-            const updates = [];
-
-            for (const saleId of this.state.selectedSales) {
-                const saleToUpdate = allSales.find(s => s.id === saleId);
-                if (saleToUpdate) {
-                    saleToUpdate.pendingTransfer = { logId, to: targetPhone }; // latest transfer
-                    const earlier = saleToUpdate.pendingTransfers || [];
-                    saleToUpdate.pendingTransfers = earlier.some(t => t.logId === logId) ? earlier : [...earlier, { logId, to: targetPhone }]; // (the same transfer is never listed twice)
-                    updates.push(DB.updateSale(saleToUpdate, ['pendingTransfer', 'pendingTransfers']));
-                }
-            }
-
-            await Promise.all(updates);
-            this.exitSelectionMode();
-            await this.updateDashboard();
-            if (this.state.currentView === 'all-sales-view') {
-                await this.renderAllSales();
-            }
-            this.watchPendingTransfers();
-        },
-
         // Every transfer still waiting on a recipient for this sale (a sale can be offered to several people)
         _pendingLogIds(sale) {
             const ids = new Set((sale.pendingTransfers || []).map(t => t.logId));
@@ -5019,7 +5076,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     const unsub = window.fb.onSnapshot(
                         window.fb.doc(window.fb.db, 'shared_logs', id),
                         (snap) => {
-                            if (!snap.exists()) return;
+                            if (!snap.exists()) {
+                                const meta = snap.metadata || {};
+                                if (!meta.fromCache && !meta.hasPendingWrites) this._dropStalePending(id); // the server has never heard of it (a copy kept by this phone, or one still being sent, is not "never")
+                                return;
+                            }
                             const data = snap.data();
                             if (!data.claimed) return;
                             const stop = this._pendingWatchers.get(id);
@@ -5032,6 +5093,36 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             } catch (error) {
                 console.error('Could not watch pending transfers:', error);
+            }
+        },
+
+        // A sale marked as waiting on a transfer that the server does not have, and that was marked long enough ago for any send to have arrived
+        // (the app was closed before it went, or it was refused), is freed. Younger ones are looked at again once they are old enough.
+        async _dropStalePending(logId) {
+            try {
+                if (this._transfersInFlight && this._transfersInFlight.has(logId)) return; // still being sent from this phone
+                const sales = await DB.getAllSales();
+                const mine = sales.filter(s => !s.sharedAsLog && this._pendingLogIds(s).includes(logId));
+                if (!mine.length) return;
+                const markedAt = Math.min(...mine.map((s) => {
+                    const mark = [...(s.pendingTransfers || []), s.pendingTransfer].find(t => t && t.logId === logId);
+                    return Number(mark && mark.at) || new Date(s.timestamp).getTime() || 0; // (marks made before the time was kept use the sale's own time)
+                }));
+                const wait = markedAt + this.PENDING_GRACE_MS - Date.now();
+                if (wait > 0) { // still young: its watcher is set up again once it is old enough, and asks the server again
+                    clearTimeout(this._staleTimers && this._staleTimers[logId]);
+                    (this._staleTimers = this._staleTimers || {})[logId] = setTimeout(() => {
+                        const unsub = this._pendingWatchers && this._pendingWatchers.get(logId);
+                        if (unsub) { unsub(); this._pendingWatchers.delete(logId); }
+                        this.watchPendingTransfers();
+                    }, wait + 500);
+                    return;
+                }
+                const stop = this._pendingWatchers && this._pendingWatchers.get(logId);
+                if (stop) { stop(); this._pendingWatchers.delete(logId); }
+                await this._unmarkTransferPending(logId);
+            } catch (error) {
+                console.error('Could not check a transfer that never arrived:', error);
             }
         },
 
@@ -5432,7 +5523,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (e) { return ''; }
         },
 
-        // The receipt of an accepted transfer, drawn the way the sender's own receipt is, and saved to the phone as a picture
+        // The receipt of an accepted transfer, drawn the way the sender's own receipt is, and saved to the phone as a picture. Says whether it was saved.
         async _downloadTransferReceipt(log) {
             try {
                 const money = (n) => `\u20a6${this.formatNumber(n)}`;
@@ -5462,7 +5553,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     stamp: `TRANSFER \u00b7 ${sent.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} \u00b7 ${sent.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`
                 };
                 const blob = await new Promise(resolve => this._drawReceipt(model).toBlob(resolve, 'image/png'));
-                if (!blob) return;
+                if (!blob) return false;
                 const day = sent.toISOString().slice(0, 10);
                 const shop = String(log.senderStore || 'transfer').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'transfer';
                 const url = URL.createObjectURL(blob);
@@ -5474,8 +5565,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 link.click();
                 link.remove();
                 setTimeout(() => URL.revokeObjectURL(url), 60000);
+                return true;
             } catch (error) {
                 console.error('Could not save the transfer receipt:', error); // the transfer itself is already done: never let this get in its way
+                return false;
             }
         },
 
@@ -5663,7 +5756,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.hideModal();
             this.state.scannedLogData = null;
             this._nudgeAct('transfer');
-            this._downloadTransferReceipt(log); // the receipt for it is saved to the phone too (after the transfer is safely in; it never holds anything up)
+            this._receiptNudgeStart(log); // 4 seconds from now a message in the Profile card offers the receipt (a tap downloads it)
             await this.renderProducts();
             this.navigateTo('products-view');
             this.showCelebration({
@@ -6230,10 +6323,87 @@ document.addEventListener('DOMContentLoaded', () => {
             return true;
         },
 
+        // --- The receipt of a transfer that was just accepted ---
+        // 4 seconds after the transfer is accepted, a message (a primary one: it comes up by itself, with the loud beep) says the receipt can be
+        // downloaded with a tap. It comes back 3 more times within the same 24 hours, until it is downloaded. The receipt is not saved by itself:
+        // a phone only lets a page save a file after a tap, which is also why the message asks for one.
+        _receiptKey() { return `pika_xfer_receipt_${this.state.user.phone}`; },
+
+        _receiptNudgeStart(log) {
+            try {
+                if (!this.state.user || !window.PikaNudges) return;
+                const now = Date.now();
+                // What the receipt is drawn from, kept on this phone (without the pictures, which are what make a transfer big)
+                const keep = {
+                    senderStore: log.senderStore || '', senderId: log.senderId || '', senderLocation: log.senderLocation || '',
+                    timestamp: DB._normalizeTimestamp(log.timestamp).getTime(),
+                    items: (Array.isArray(log.items) ? log.items : []).map(i => ({ name: i.name, price: i.price, quantity: i.quantity, unit: i.unit, discount: i.discount, creditPaid: i.creditPaid, creditBalance: i.creditBalance }))
+                };
+                localStorage.setItem(this._receiptKey(), JSON.stringify(keep));
+                this._nudgeRun(async () => { const state = this._nudgeLoad(); PikaNudges.receiptStart(state, { store: log.senderStore }, now); this._nudgeSave(state); });
+                clearTimeout(this._receiptSoon);
+                this._receiptSoon = setTimeout(() => this._nudgeReceipts(), 4000);
+            } catch (e) {
+                console.error('Could not set up the receipt message:', e);
+            }
+        },
+
+        // Watches for the times the receipt message is due (while the app is open, once a minute; and whenever the app is opened or comes back)
+        _nudgeReceipts() {
+            if (!this.state.user || !window.PikaNudges) return;
+            let pending = false;
+            try { pending = !!this._nudgeLoad().receipt; } catch (e) { /* none */ }
+            if (!pending) return;
+            if (!this._receiptTimer) this._receiptTimer = setInterval(() => this._nudgeReceiptCheck(), 60000);
+            this._nudgeReceiptCheck();
+        },
+
+        _nudgeReceiptCheck() {
+            return this._nudgeRun(async () => {
+                if (!this.state.user || !window.PikaNudges || this._isWaiting()) { if (!this.state.user) { clearInterval(this._receiptTimer); this._receiptTimer = null; } return; }
+                const state = this._nudgeLoad();
+                const had = !!state.receipt;
+                if (!PikaNudges.receiptDue(state, Date.now())) {
+                    if (had && !state.receipt) { this._nudgeSave(state); try { localStorage.removeItem(this._receiptKey()); } catch (e) { /* kept */ } } // its day is over
+                    if (!state.receipt) { clearInterval(this._receiptTimer); this._receiptTimer = null; }
+                    return;
+                }
+                const ctx = await this._nudgeContext(state);
+                if (state.receipt.shown > 0 && ctx.busy) return; // not in a rush: a reminder waits while sales are coming in (the first one is the person's own action, so it never waits)
+                PikaNudges.receiptNudge(state, ctx);
+                state.freshAt = Date.now();
+                this._nudgeSave(state);
+                this._nudgeAlert(true);
+            });
+        },
+
+        // A tap on the receipt message: the receipt is drawn and saved to the phone, and the messages stop
+        async _receiptTap() {
+            if (this._receiptBusy) return;
+            this._receiptBusy = true;
+            try {
+                let log = null;
+                try { log = JSON.parse(localStorage.getItem(this._receiptKey())); } catch (e) { log = null; }
+                if (log && Array.isArray(log.items) && log.items.length) {
+                    if (!(await this._downloadTransferReceipt(log))) { this.showToast('Could not make the receipt. Tap to try again.'); return; }
+                    this.showToast('Receipt saved to your phone.');
+                } else {
+                    this.showToast('That receipt is no longer on this phone.');
+                }
+                try { localStorage.removeItem(this._receiptKey()); } catch (e) { /* kept */ }
+                await this._nudgeRun(async () => { const state = this._nudgeLoad(); PikaNudges.receiptDone(state); this._nudgeSave(state); });
+                await this._renderNudge(); // the card shows the next message at once
+            } finally {
+                this._receiptBusy = false;
+            }
+        },
+
         // A tap on the message goes where it points: money for stock opens WhatsApp, a customer opens their card, a product opens its tab
         _nudgeTap() {
             const go = this._nudgeGo, arg = this._nudgeArg;
-            if (go === 'funding') {
+            if (go === 'receipt') {
+                this._receiptTap();
+            } else if (go === 'funding') {
                 window.open(`https://wa.me/${this.WA_NUMBER}?text=${encodeURIComponent("I'm a PikaShot top seller and need money for stock.")}`, '_blank', 'noopener');
             } else if (go === 'customers') {
                 this.hideModal();
