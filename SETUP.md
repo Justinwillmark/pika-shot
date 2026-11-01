@@ -3,7 +3,7 @@
 ## Publishing
 - Quick way (as before): publish the project folder as it is.
 - Faster, harder-to-copy way: `npm install` once, then `npm run deploy`. It shrinks and scrambles the scripts into `dist/` and publishes that.
-- Every release: change `CACHE_NAME` in `serviceworker.js` (v44 -> v45 ...) so phones fetch the new files.
+- Every release: change `CACHE_NAME` in `serviceworker.js` (v45 -> v46 ...) so phones fetch the new files.
 
 ## Settings in one place (`config.js`)
 | Setting | What it does |
@@ -144,7 +144,7 @@ clearing browsing data or switching phones the picture comes back from the thumb
 - After "Forgot PIN" is confirmed on WhatsApp, the new PIN is typed twice (`new-pin` and `new-pin-confirm`). As soon as the second box has 6 digits that do not match the first, it says so under the box; Save PIN and log in does not go on until both are the same. Enter on the first box moves to the second; Enter on the second saves. Create Account's PIN box is as it was.
 
 ## Transfer to a customer
-- The "Transfer items" button on a receipt has a small line under its label, "to the retailer who bought" (white on the teal, 0.76rem, medium weight: easy to read without competing with the label). It is the `.btn-stack` style in `style.css`, which any button with a main line and a small line can use.
+- The "Transfer items" button on a receipt has a small line under its label, "to the retailer who bought" (white on the teal, 0.76rem, medium weight: easy to read without competing with the label). It is the `.btn-stack` style in `style.css`, which any button with a main line and a small line can use. The label above it is bold and a little bigger (1.1rem) so it holds its own, and on the receipt Close / Print / Share are slimmer (40px tall, a smaller label) to make room. Only the receipt's row is slimmer; Decline / Accept on an incoming transfer keep their size.
 - The box is titled "Customer phone number". Beside it is a small add-customer button that opens the phone's contacts. It only shows in browsers that have the contact picker (Chrome on Android); elsewhere it stays hidden and the number is typed. A chosen contact's first Nigerian mobile number is used (any way it is written: +234 803..., 0803..., 803...), and goes through the same check as a typed number.
 - A customer who is not on PikaShot gets the pop-up "Customer phone number is not on PikaShot. Please invite them on WhatsApp." The "WhatsApp invite" button opens WhatsApp on that customer's number with the message in `INVITE_TEXT` (`app.js`) already written. Nothing is sent by PikaShot itself: the person taps Send in WhatsApp.
 

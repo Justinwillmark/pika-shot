@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pika-shot-cache-v44';
+const CACHE_NAME = 'pika-shot-cache-v45';
 const LIB_CACHE_NAME = 'pika-shot-libs-v1'; // third-party scanner library, kept for offline scanning
 const ASSETS_TO_CACHE = [
     '/',
