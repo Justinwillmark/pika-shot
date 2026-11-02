@@ -1448,7 +1448,7 @@ button:focus { outline: none; }
 /* === PIN check === */
 .pin-modal { max-width: 340px; text-align: center; }
 .pin-icon { width: 48px; height: 48px; margin: 0 auto 12px; border-radius: 50%; background: #e6f4f5; color: var(--primary-color); display: flex; align-items: center; justify-content: center; }
-.pin-modal h2 { margin-bottom: 6px; }
+.pin-modal h2 { margin-bottom: 6px; overflow-wrap: anywhere; }
 .pin-modal #pin-confirm-text { margin-bottom: 16px; font-size: 0.9rem; }
 .pin-input-wrap input { width: 100%; height: 54px; padding: 0 0 0 0.5em; border: 1.5px solid #b4bec7; border-radius: 12px; background: #fff; color: #1d1d1d; text-align: center; font-size: 1.5rem; font-weight: 700; letter-spacing: 0.5em; }
 .pin-input-wrap input::placeholder { color: #c5cbd1; font-weight: 400; }
@@ -1792,7 +1792,9 @@ button:focus { outline: none; }
 .figures-toggle { position: relative; }
 .figures-toggle::after { content: ''; position: absolute; inset: -10px; }
 .edit-btn-icon::after { content: ''; position: absolute; inset: -7px; }
-.delete-btn-icon { top: 12px; right: 12px; width: 40px; height: 40px; }
+/* The trash icon of the product box: a small circle (30 px, the size of the pencil on the product cards). The thumb-sized area around it (44 px) cannot be seen. */
+.delete-btn-icon { top: 17px; right: 16px; width: 30px; height: 30px; padding: 6px; }
+.delete-btn-icon::after { content: ''; position: absolute; inset: -8px; }
 .filter-tab-btn { min-height: 38px; }
 .btn-icon-link { min-height: 40px; padding: 0 6px; }
 .see-all-btn { min-height: 44px; }

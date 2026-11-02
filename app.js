@@ -169,6 +169,7 @@ document.addEventListener('DOMContentLoaded', () => {
             incomingTransferChip: document.getElementById('incoming-transfer-chip'),
             declineTransferBtn: document.getElementById('decline-transfer-btn'),
             acceptTransferBtn: document.getElementById('accept-transfer-btn'),
+            pinConfirmTitle: document.getElementById('pin-confirm-title'),
             pinConfirmText: document.getElementById('pin-confirm-text'),
             pinInputWrap: document.getElementById('pin-input-wrap'),
             pinConfirmInput: document.getElementById('pin-confirm-input'),
@@ -1728,7 +1729,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         async removeSalesperson(phone, name) {
             const first = String(name).split(' ')[0];
-            const confirmed = await this.requestPin(`Remove ${first}? They are logged out right away, and their unconfirmed sales summaries are lost. Confirm any money you received first.`);
+            const confirmed = await this.requestPin(
+                `${first} will be logged out right away. Their daily sales cards will be gone, so confirm any money you received first. Their sales stay in your records.`,
+                `Remove ${first} as salesperson?`
+            );
             if (!confirmed) return;
             try {
                 await window.fb.deleteDoc(this._linkRef(phone));
@@ -2269,11 +2273,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         },
         // Asks for the account PIN. Resolves true only when it matches, false if the person backs out.
-        requestPin(message) {
+        // `title` says what the PIN is for (for something that cannot be undone, such as "Remove John as salesperson?"); without one it says "Enter your PIN".
+        requestPin(message, title) {
             return new Promise((resolve) => {
                 if (this._pinResolve) this._pinResolve(false); // a PIN check that was left open is dropped
                 this._pinResolve = resolve;
                 const el = this.elements;
+                el.pinConfirmTitle.textContent = title || 'Enter your PIN'; // (set every time, so one question's title never stays on the next)
                 el.pinConfirmText.textContent = message;
                 el.pinConfirmInput.value = '';
                 el.pinConfirmError.textContent = '';
