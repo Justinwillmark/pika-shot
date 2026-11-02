@@ -5978,12 +5978,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const creditSales = allSales.filter(s => s.saleType === 'credit' && !s.creditSettled);
 
             if (retailersData.length === 0 && creditSales.length === 0) {
-                const isRetailer = this.state.user && this.state.user.type === 'Retailer';
-                this.elements.retailerStockView.innerHTML = this._isSalesperson()
-                    ? '<p class="empty-state">Customers you transfer items to, and others who bought on credit show here.</p>'
-                    : isRetailer
-                        ? `<p class="empty-state">Make credit sales to see customers owing you here.</p>`
-                        : `<p class="empty-state">Sell and transfer items to the purchasing retailer or make credit sales to see customers here.</p>`;
+                // The same words for every kind of account
+                this.elements.retailerStockView.innerHTML = '<p class="empty-state">Customers you transfer items to, and others who bought on credit show here.</p>';
                 return;
             }
 
