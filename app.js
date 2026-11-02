@@ -265,12 +265,15 @@ document.addEventListener('DOMContentLoaded', () => {
             this.handleOnlineStatusChange = this.handleOnlineStatusChange.bind(this);
             window.addEventListener('online', () => {
                 this._showConnection(true);
-                if (!this.state.user) return;
+                if (!this.state.user) { this.ensureFirebase(); return; } // (a first open with no internet: sign-up needs the cloud)
                 this.ensureFirebase().then(() => { this.checkIncomingTransfers(); this.watchPendingTransfers(); });
             });
             window.addEventListener('offline', () => this._showConnection(false));
             this._showConnection(navigator.onLine, true);
             this.setupEventListeners();
+            DB.now = () => this._serverNow();
+            this._measureClock();
+            document.addEventListener('visibilitychange', () => { if (!document.hidden) this._measureClock(); });
 
             try {
                 await DB.init();
@@ -476,36 +479,36 @@ document.addEventListener('DOMContentLoaded', () => {
                     setTimeout(() => this.elements.selectContactBtn.classList.remove('success'), 2000);
                 };
                 
+                const choose = (name, phone) => {
+                    const tidy = this._localPhone(phone || '');
+                    const number = /^0[789]\d{9}$/.test(tidy) ? tidy : '';
+                    const shown = String(name || '').trim().slice(0, 60) || number;
+                    if (!shown) return;
+                    this.state.selectedContact = { name: shown, phone: number };
+                    this.elements.selectedContactName.textContent = shown;
+                    this.elements.selectedContactName.style.display = 'block';
+                    showContactSuccess();
+                };
+                const typeIt = async () => {
+                    const values = await this._askFields('Who is buying on credit?', [
+                        { key: 'name', label: 'Customer name', placeholder: 'e.g., Ada Obi' },
+                        { key: 'phone', label: 'Phone number', placeholder: '08012345678', inputmode: 'tel' }
+                    ]);
+                    if (values) choose(values.name, values.phone);
+                };
                 try {
-                    const props = ['name', 'tel'];
-                    const opts = { multiple: false };
                     if ('contacts' in navigator && 'ContactsManager' in window) {
-                        const contacts = await navigator.contacts.select(props, opts);
+                        const contacts = await navigator.contacts.select(['name', 'tel'], { multiple: false });
                         if (contacts.length > 0) {
-                            const contactName = contacts[0].name[0];
-                            this.state.selectedContact = { name: contactName, phone: contacts[0].tel ? contacts[0].tel[0] : '' };
-                            this.elements.selectedContactName.textContent = contactName;
-                            this.elements.selectedContactName.style.display = 'block';
-                            showContactSuccess();
+                            const tels = (contacts[0].tel || []).map(t => this._localPhone(t));
+                            choose((contacts[0].name || [])[0], tels.find(n => /^0[789]\d{9}$/.test(n)) || '');
                         }
                     } else {
-                        const name = prompt("Enter customer name:");
-                        if (name) {
-                            this.state.selectedContact = { name };
-                            this.elements.selectedContactName.textContent = name;
-                            this.elements.selectedContactName.style.display = 'block';
-                            showContactSuccess();
-                        }
+                        await typeIt();
                     }
                 } catch (ex) {
                     console.error("Contacts selection failed", ex);
-                    const name = prompt("Enter customer name:");
-                    if (name) {
-                        this.state.selectedContact = { name };
-                        this.elements.selectedContactName.textContent = name;
-                        this.elements.selectedContactName.style.display = 'block';
-                        showContactSuccess();
-                    }
+                    await typeIt();
                 }
             });
 
@@ -634,6 +637,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.scanSelectFromProductsBtn.addEventListener('click', () => {
                     this.state.isScanCanceled = true;
                     Camera.stop();
+                    if (this.state.currentView === 'camera-view') this._modalStale = true; // (the list takes the scanner's step in the history, so Back goes where the scan started, not to a scanner that is off)
                     this.showProductSelection();
                 });
             }
@@ -664,7 +668,21 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.acceptTransferBtn.addEventListener('click', this.acceptPikaLog.bind(this));
             this.elements.retryAddScanBtn.addEventListener('click', () => { this.hideModal(); this.startAddProduct(); });
             this.elements.cancelAddScanBtn.addEventListener('click', () => this.hideModal());
-            this.elements.productExistsOkBtn.addEventListener('click', () => this.hideModal());
+            this.elements.productExistsOkBtn.addEventListener('click', () => { const product = this.state.existingProduct; this.state.existingProduct = null; this.hideModal(); if (product) this.handleEditProduct(product); });
+            document.getElementById('product-exists-close-btn').addEventListener('click', () => { this.state.existingProduct = null; this.hideModal(); });
+            document.getElementById('add-unknown-product-btn').addEventListener('click', async () => { // a sale scan of a barcode the shop does not have yet: add it here
+                const barcode = this.state.unknownBarcode;
+                this.state.unknownBarcode = null;
+                this.hideModal();
+                if (!barcode || this._isSalesperson()) return;
+                if (!navigator.onLine) { say("You're offline. Connect to the internet to add a product.", "No internet"); return; }
+                if (!(await this._roomForProducts(1))) return;
+                if (await DB.getProductByBarcode(barcode)) return;
+                this.state.capturedBarcode = barcode;
+                this.state.capturedBlob = null;
+                this.state.editingProduct = null;
+                this._openProductForm({ source: 'barcode' });
+            });
             this.elements.seeStockLevelsBtn.addEventListener('click', () => { // it opens the page on whichever tab its label names
                 const word = this.elements.seeStockLevelsBtn.querySelector('.is-on, .is-in');
                 this.state.stockViewFilter = word && word.textContent === 'Salespeople' && !this._isSalesperson() ? 'salespeople' : 'customers';
@@ -873,6 +891,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.state.tempPhone = phone;
 
             try {
+                await this.ensureFirebase(); // (the app may have opened with no internet: the cloud was never reached)
                 // Check if user exists in Firestore
                 const docRef = window.fb.doc(window.fb.db, 'users', phone);
                 const docSnap = await window.fb.getDoc(docRef);
@@ -1272,13 +1291,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (typeof this._clockOffset !== 'number') {
                 let saved = 0;
                 try { saved = Number(localStorage.getItem('pika_clock_offset')) || 0; } catch (e) { /* nothing saved */ }
-                this._clockOffset = Math.abs(saved) < 86400000 ? saved : 0;
+                this._clockOffset = Number.isFinite(saved) ? saved : 0;
             }
             return this._clockOffset;
         },
         _serverNow() { return Date.now() - this._clockOffsetMs(); },
         _setClockOffset(off) {
-            if (!Number.isFinite(off) || Math.abs(off) >= 86400000) return;
+            if (!Number.isFinite(off) || Math.abs(off) >= 20 * 365 * 86400000) return; // (a phone that reset itself to an old date is days or years off: that is exactly what must be corrected)
             const before = this._clockOffsetMs();
             this._clockOffset = off;
             try { localStorage.setItem('pika_clock_offset', String(Math.round(off))); } catch (e) { /* the next open measures it again */ }
@@ -1286,20 +1305,44 @@ document.addEventListener('DOMContentLoaded', () => {
             if (Math.abs(off - before) > 2000 && this.state.user && this.elements.productSearchInput) this.renderProducts(this.elements.productSearchInput.value);
         },
 
-        // Sales are stamped with the phone's clock, so a wrong clock would put them on the wrong day on every phone
+        // The online time, from the web server's answer (its Date header): no database read, so it can be asked often.
+        // Sales are stamped with it, and an edit's 45 minutes are counted on it, so a wrong (or changed) phone clock changes neither.
+        async _measureClock(force) {
+            if (!navigator.onLine) return false;
+            const since = Date.now() - (this._clockMeasuredAt || 0);
+            if (!force && this._clockMeasuredAt && since >= 0 && since < 30000) return true; // (asked again at once if the phone's clock was moved: `since` jumps)
+            try {
+                const sent = Date.now();
+                const answer = await Promise.race([fetch(`/manifest.json?clock=${sent}`, { method: 'HEAD', cache: 'no-store' }), new Promise((_, reject) => setTimeout(() => reject(new Error('slow')), 4000))]);
+                const date = Date.parse(answer.headers.get('date') || '');
+                if (!Number.isFinite(date)) return false;
+                const back = Date.now();
+                this._setClockOffset(Math.round((sent + back) / 2 - (date + 500))); // (the header has whole seconds: half a second is added)
+                this._clockMeasuredAt = back;
+                this._warnClock(this._clockOffsetMs());
+                return true;
+            } catch (e) { return false; }
+        },
+
+        // Sales are stamped with the online clock, but a phone whose own clock is wrong still shows wrong times elsewhere
         async _checkClock(ref) {
             try {
                 const snap = await window.fb.getDocFromServer(ref);
                 const server = DB._stampMs(snap.exists() ? snap.data().lastSeen : null);
                 const off = Date.now() - server;
                 if (!server) return;
-                this._setClockOffset(off);
+                if (!this._clockMeasuredAt) this._setClockOffset(off); // (the web server's time, when known, is the closer one)
+                this._warnClock(off);
+            } catch (e) { /* the clock check is a bonus */ }
+        },
+        _warnClock(off) {
+            try {
                 if (Math.abs(off) < 5 * 60000) return;
                 if (Date.now() - (Number(localStorage.getItem('pika_clock_warned')) || 0) < 24 * 3600000) return;
                 localStorage.setItem('pika_clock_warned', String(Date.now()));
                 const minutes = Math.round(Math.abs(off) / 60000);
-                const size = minutes >= 120 ? `${Math.round(minutes / 60)} hours` : `${minutes} minutes`;
-                say(`Your phone's clock is about ${size} ${off > 0 ? 'ahead' : 'behind'}. Turn on automatic date and time, so your sales show the right time on every phone.`, 'Check your clock');
+                const size = minutes >= 2880 ? `${Math.round(minutes / 1440)} days` : minutes >= 120 ? `${Math.round(minutes / 60)} hours` : `${minutes} minutes`;
+                say(`Your phone's clock is about ${size} ${off > 0 ? 'ahead' : 'behind'}. Turn on automatic date and time. (PikaShot still records your sales at the right time.)`, 'Check your clock');
             } catch (e) { /* the clock check is a bonus */ }
         },
 
@@ -1415,6 +1458,8 @@ document.addEventListener('DOMContentLoaded', () => {
             input.value = '';
             document.getElementById('sp-code-error').textContent = '';
             document.getElementById('sp-code-btn').disabled = true;
+            const words = document.getElementById('sp-waiting-text');
+            if (words && this.state.user) words.textContent = `Give your admin your number, ${this.state.user.phone}. They add you under Customers & salespeople, then give you a 4-digit code to type here.`;
             this.showModal('sp-waiting-modal');
             setTimeout(() => input.focus(), 150);
         },
@@ -1435,7 +1480,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     error.textContent = 'That code is not right. Check it with your admin.';
                     return;
                 }
-                if (Date.now() - DB._normalizeTimestamp(invite.createdAt).getTime() > this.SALESPERSON_CODE_TTL_MS) {
+                if (this._serverNow() - DB._normalizeTimestamp(invite.createdAt).getTime() > this.SALESPERSON_CODE_TTL_MS) { // (the online clock)
                     error.textContent = 'This code has expired. Ask your admin for a new one and use it within 20 minutes of it being generated.';
                     return;
                 }
@@ -1497,7 +1542,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const me = this.state.user;
             const userSnap = await window.fb.getDoc(window.fb.doc(window.fb.db, 'users', phone));
             const found = userSnap.exists() ? userSnap.data() : null;
-            if (!found || found.type !== 'Salesperson' || !(found.pin || found.pinHash)) return { error: "This number hasn't signed up as a salesperson before." };
+            if (!found || found.type !== 'Salesperson' || !(found.pin || found.pinHash)) return { error: "This number is not signed up as a salesperson. Ask them to sign up in PikaShot as Salesperson, then try again." };
             const first = String(found.name || '').split(' ')[0] || phone;
 
             const linkSnap = await window.fb.getDoc(this._linkRef(phone));
@@ -1634,13 +1679,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
         async _drawSalespeople() {
             const view = this.elements.salespeopleView;
-            const people = this.state.salespeople || [];
+            const people = [...(this.state.salespeople || [])];
+            const sales = await DB.getAllSales();
+            if (!this.state.user) return; // logged out while this was loading
+            // A salesperson who was removed (or left) while some of their money was not confirmed stays here as "former",
+            // with the same button, until every day of theirs is confirmed: unconfirmed cash never drops out of sight
+            const linked = new Set(people.map(p => p.phone));
+            const me = this.state.user.phone;
+            sales.forEach(s => {
+                if (!s.recordedBy || s.moneyConfirmed || s.recordedBy === me || linked.has(s.recordedBy)) return;
+                linked.add(s.recordedBy);
+                people.push({ phone: s.recordedBy, name: s.recordedByName || s.recordedBy, former: true });
+            });
             if (!people.length) {
                 view.innerHTML = '<p class="empty-state">No salespeople yet. Tap the + button to add one.</p>';
                 return;
             }
-            const sales = await DB.getAllSales();
-            if (!this.state.user) return; // logged out while this was loading
             view.innerHTML = people.map(person => this._salespersonCard(person, sales.filter(s => s.recordedBy === person.phone && !s.moneyConfirmed))).join('');
         },
 
@@ -1652,8 +1706,8 @@ document.addEventListener('DOMContentLoaded', () => {
         _dayLabel(key) {
             const [y, m, d] = key.split('-').map(Number);
             const date = new Date(y, m - 1, d);
-            const today = this._dayKey(new Date());
-            const yesterday = this._dayKey(new Date(Date.now() - 86400000));
+            const today = this._dayKey(new Date(this._serverNow()));
+            const yesterday = this._dayKey(new Date(this._serverNow() - 86400000));
             const short = date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
             if (key === today) return `Today · ${short}`;
             if (key === yesterday) return `Yesterday · ${short}`;
@@ -1675,7 +1729,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     sum.discount += Number(sale.discount);
                     sum.discountedItems += qty;
                 }
-                if (sale.sharedAsLog || this._pendingLogIds(sale).length) sum.transfers++;
+                if (this._transferredByRecorder(sale)) sum.transfers++; // (accepted, and sent by the one who recorded it: not one the admin sent, not one still waiting)
                 if (sale.edited) sum.edits++;
             });
             return sum;
@@ -1711,8 +1765,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="card sp-card" data-phone="${e(person.phone)}" data-name="${e(person.name || person.phone)}">
                     <div class="sp-head">
                         <div class="sp-avatar">${e(initial)}</div>
-                        <div class="sp-id"><h4>${e(person.name || person.phone)}</h4><p>${e(person.phone)}</p></div>
-                        <button type="button" class="sp-remove" data-act="remove" aria-label="Remove ${e(person.name || person.phone)}">${trash}</button>
+                        <div class="sp-id"><h4>${e(person.name || person.phone)}</h4><p>${e(person.phone)}${person.former ? ' · no longer your salesperson' : ''}</p></div>
+                        ${person.former ? '' : `<button type="button" class="sp-remove" data-act="remove" aria-label="Remove ${e(person.name || person.phone)}">${trash}</button>`}
                     </div>
                     ${cards || '<p class="sp-empty">Nothing waiting. All money is confirmed.</p>'}
                 </div>`;
@@ -1728,7 +1782,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const at = Date.now();
             try {
                 // Only the sales that were on the card: anything recorded since gets its own card
-                await Promise.all(sales.map(s => DB.patchSale(s.id, { moneyConfirmed: true, moneyConfirmedAt: at })));
+                await Promise.all(sales.map(s => DB.patchSale(s.id, { moneyConfirmed: true, moneyConfirmedAt: at, confirmedTotal: Number(s.total) || 0 }))); // (the amount confirmed stays with the sale)
                 this.showToast(`Confirmed ₦${this.formatNumber(total)} from ${first}.`);
             } catch (error) {
                 console.error('Could not confirm the money:', error);
@@ -1740,7 +1794,7 @@ document.addEventListener('DOMContentLoaded', () => {
         async removeSalesperson(phone, name) {
             const first = String(name).split(' ')[0];
             const confirmed = await this.requestPin(
-                `${first} will be logged out right away. Their daily sales cards will be gone, so confirm any money you received first. Their sales stay in your records.`,
+                `${first} will be logged out right away. Their sales stay in your records, and any money not yet confirmed stays on their card until you confirm it.`,
                 `Remove ${first} as salesperson?`
             );
             if (!confirmed) return;
@@ -1860,7 +1914,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const e = this.elements;
                 const missing = !firstName ? e.firstNameInput : !lastName ? e.lastNameInput : !gender ? e.genderInput : (!location && !inherits) ? e.businessLocationInput
                     : (!business && !inherits) ? e.businessNameInput : !type ? document.getElementById('business-type-options') : e.createPinInput;
-                await this._needs(missing, missing === e.createPinInput ? 'Your PIN must be 6 numbers.' : 'Fill in every box.', 'Check your details'); return;
+                await this._needs(missing, missing === e.createPinInput ? 'Your PIN must be 6 numbers.' : missing.id === 'business-type-options' ? 'Choose your role.' : 'Fill in every box.', 'Check your details'); return;
             }
             if (!this._verifiedOnThisPhone(this.state.tempPhone)) { await this._verificationExpired(this.state.tempPhone, 'signup'); return; }
 
@@ -1893,6 +1947,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const answer = new Promise((resolve, reject) => setTimeout(() => reject(Object.assign(new Error('The server did not answer'), { code: 'timeout' })), 20000));
                 await Promise.race([DB.createAccount(newUser), answer]);
                 this.state.user = newUser;
+                window.fb.setDoc(this._verificationRef(newUser.phone), { phone: newUser.phone, code: 'used', purpose: 'signup', createdAt: window.fb.serverTimestamp(), verified: false }).catch(() => { /* it also runs out by itself within the hour */ });
                 this._claimDevice(newUser.phone);
                 try { localStorage.removeItem('pika_verified_phone'); } catch (e) { /* fine */ }
 
@@ -1929,6 +1984,23 @@ document.addEventListener('DOMContentLoaded', () => {
             this._refreshCustomerStock();
             this._nudgeOnOpen();
             this._nudgeReceipts(); // (a receipt message that is still due from an accepted transfer)
+            this._finishInterruptedAccept();
+        },
+
+        // Items claimed on this phone but never added (it closed, or lost power, in between): they are added now, once
+        async _finishInterruptedAccept() {
+            try {
+                const saved = await DB.getMeta('claiming');
+                if (!saved) return;
+                const log = JSON.parse(saved);
+                if (!log || !log.id || await DB.getMeta('applied:' + log.id)) { await DB.setMeta('claiming', ''); return; }
+                if (!this.state.firebaseReady) return; // (tried again on the next open)
+                const snap = await window.fb.getDoc(window.fb.doc(window.fb.db, 'shared_logs', log.id));
+                const data = snap.exists() ? snap.data() : null;
+                if (!data || !data.claimed || data.claimedBy !== this.state.user.phone || data.appliedAt || (data.claimedDevice && data.claimedDevice !== this._deviceId())) { await DB.setMeta('claiming', ''); return; }
+                this.state.scannedLogData = log;
+                await this._acceptLog();
+            } catch (e) { console.error('Could not finish an accepted transfer:', e); }
         },
 
         // --- Incoming transfers -------------------------------------------------------------------
@@ -2164,13 +2236,15 @@ document.addEventListener('DOMContentLoaded', () => {
         },
         // PikaShot's own pop-up for messages and questions. It sits above any open modal (that one stays as it was).
         // Resolves true for the main button, false for cancel, Esc, back or a tap outside.
-        _dialog({ title = '', text = '', ok = 'OK', cancel = '', danger = false }) {
+        _dialog({ title = '', text = '', ok = 'OK', cancel = '', danger = false, keepFields = false }) {
             const $ = (id) => document.getElementById(id);
             const layer = $('dialog-layer'), okBtn = $('dialog-ok'), cancelBtn = $('dialog-cancel');
             if (this._closeDialog) this._closeDialog(false); // a newer message replaces an older one
+            if (!keepFields) { $('dialog-fields').innerHTML = ''; $('dialog-fields').hidden = true; } // (boxes belong to the question that made them)
             $('dialog-title').textContent = title;
             $('dialog-title').hidden = !title;
             $('dialog-text').textContent = text;
+            $('dialog-text').hidden = !text;
             okBtn.textContent = ok;
             okBtn.className = `btn ${danger ? 'btn-danger' : 'btn-primary'}`;
             cancelBtn.textContent = cancel;
@@ -2195,6 +2269,19 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         },
         _say(text, title = 'Please check') { return this._dialog({ title, text }); },
+        // PikaShot's own pop-up with a few boxes to type in (never the browser's prompt). Resolves { key: value } on OK, or null.
+        async _askFields(title, fields, ok = 'OK') {
+            const box = document.getElementById('dialog-fields');
+            box.innerHTML = fields.map(f => `<div class="form-group"><label for="dlg-${f.key}">${this._esc(f.label)}</label><input type="text" id="dlg-${f.key}" maxlength="60" placeholder="${this._esc(f.placeholder || '')}" inputmode="${f.inputmode || 'text'}" autocomplete="off"></div>`).join('');
+            box.hidden = false;
+            const answer = this._dialog({ title, text: '', ok, cancel: 'Cancel', keepFields: true });
+            setTimeout(() => { const first = box.querySelector('input'); if (first) first.focus(); }, 60);
+            const yes = await answer;
+            const values = {};
+            fields.forEach(f => { const el = document.getElementById(`dlg-${f.key}`); values[f.key] = el ? el.value.trim() : ''; });
+            box.innerHTML = ''; box.hidden = true;
+            return yes ? values : null;
+        },
         // Says what is missing and, only once the person has read it and tapped OK, shakes the field that needs them
         async _needs(field, text, title) {
             await this._say(text, title);
@@ -2358,7 +2445,7 @@ document.addEventListener('DOMContentLoaded', () => {
         toggleOnboardingTooltip() {
             const tooltip = document.getElementById('onboarding-tooltip');
             if (!tooltip) return;
-            if (this.state.currentView === 'home-view' && this.state.productCount === 0) {
+            if (this.state.currentView === 'home-view' && this.state.productCount === 0 && !this._isSalesperson()) { // (a salesperson cannot add products)
                 tooltip.style.display = 'block';
             } else {
                 tooltip.style.display = 'none';
@@ -2449,9 +2536,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!byApp && update && update.style.display !== 'none') { this._restoreStep(); return; } // the update pop-up is only closed by its Okay: Back changes nothing
                 if (!byApp && this._closeDialog) { const close = this._closeDialog; this._restoreStep(); close(false); return; } // Back with a pop-up open closes the pop-up; nothing else moves
                 if (!byApp && this._modalLive) { this._backClosesModal(landed); return; } // Back with a modal open closes the modal
+                if (!byApp && this.state.isSelectionMode && this.state.user) { this.exitSelectionMode(); this._modalStale = false; this._restoreStep(); return; } // Back with sales picked lets go of them; the page stays
                 if (this._modalStale) { this._modalStale = false; this._rawBack(); return; } // the closed modal's step: on to the one before
                 if (landed.modal) { this._rawBack(); return; } // the step of a modal closed long ago
-                if (this._isWaiting()) return;
+                if (!this.state.user || this._isWaiting()) return; // (logged out: the steps left from before lead nowhere)
                 this.navigateTo(landed.view || 'home-view', true);
             } finally {
                 if (!(this._backPending > 0)) this._runSteps();
@@ -2569,7 +2657,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     this.elements.shareLogBtn.style.display = 'none';
                 }
             }
-            const date = new Date();
+            const date = new Date(this._serverNow());
             this.elements.welcomeDate.textContent = date.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
             // The shop's place (a salesperson's is their admin's), at the other end of the date's line; nothing shows if there is none
             const place = this.state.user ? String(this._shop().location || '').trim() : '';
@@ -2596,7 +2684,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             if (todaysSales.length === 0) {
-                this.elements.recentSalesList.innerHTML = `<p class="empty-state">No sales recorded today.</p>`;
+                this.elements.recentSalesList.innerHTML = `<p class="empty-state">No sales today. Tap Record sale to add one.</p>`;
             } else {
                 await this.renderSalesList(todaysSales, this.elements.recentSalesList, 6);
             }
@@ -2805,7 +2893,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         groupSalesByDate(sales) {
             const groups = {};
-            const today = new Date();
+            const today = new Date(this._serverNow());
             today.setHours(0, 0, 0, 0);
             const yesterday = new Date(today);
             yesterday.setDate(today.getDate() - 1);
@@ -2928,7 +3016,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             this.elements.productGrid.innerHTML = '';
-            this.elements.productSkuCount.textContent = `${allProducts.length} products`;
+            this.elements.productSkuCount.textContent = `${allProducts.length} ${allProducts.length === 1 ? 'product' : 'products'}`;
             const totalValue = allProducts.reduce((sum, p) => sum + ((Number(p.price) || 0) * (Number(p.stock) || 0)), 0);
             this.state.inventoryValue = allProducts.length === 0 ? null : `₦${this.formatNumber(totalValue)}`;
             this.applyFigureVisibility();
@@ -2974,7 +3062,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else if (filterType !== 'all') {
                     this.elements.productGrid.innerHTML = '<p class="empty-state">No products in this filter.</p>';
                 } else {
-                    this.elements.productGrid.innerHTML = '<p class="empty-state">No products added yet. Tap the "+" button to add your first product!</p>';
+                    this.elements.productGrid.innerHTML = '<p class="empty-state">No products yet. Tap + and scan a product barcode.</p>';
                 }
                 return;
             }
@@ -3002,8 +3090,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     badgeHtml = '<div class="restock-badge">Low stock!</div>';
                 }
 
-                const words = product.name.split(' ');
-                const displayName = words.length > 2 ? words.slice(0, 2).join(' ') + '...' : product.name;
+                const displayName = product.name; // (the whole name, two lines at most: see .product-card-info h4; "Coca Cola 50cl" and "35cl" stay apart)
 
                 const pencilIconSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>`;
                 card.innerHTML = `
@@ -3131,12 +3218,20 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         // How many products a transfer would add (the ones that match something already in the list are just topped up)
+        // What a transfer may carry: a few items with a name, a count above 0 and a price of 0 or more (nothing negative, nothing absurd)
+        _validLogItems(items) {
+            if (!Array.isArray(items) || !items.length || items.length > 200) return false;
+            return items.every(i => i && typeof i.name === 'string' && i.name.trim() && i.name.length <= 120
+                && Number.isFinite(Number(i.quantity)) && Number(i.quantity) > 0 && Number(i.quantity) <= 1000000
+                && Number.isFinite(Number(i.price)) && Number(i.price) >= 0 && Number(i.price) <= 100000000);
+        },
+
         _countNewProducts(items, products) {
             const known = [...products];
             let added = 0;
             for (const item of items || []) {
                 const name = String(item.name || '').toLowerCase();
-                const hit = known.find(p => (item.barcode && this._barcodesMatch(p.barcode, item.barcode)) || String(p.originalName || p.name || '').toLowerCase() === name);
+                const hit = known.find(p => (item.barcode && this._barcodesMatch(p.barcode, item.barcode)) || (String(p.originalName || p.name || '').toLowerCase() === name && (!item.barcode || !p.barcode)));
                 if (!hit) { added++; known.push({ barcode: item.barcode, name: item.name }); }
             }
             return added;
@@ -3292,7 +3387,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 { enableHighAccuracy: false, timeout: 10000, maximumAge: 600000 } // the general area is enough, and is found faster indoors
             );
         },
-        async handleCameraPermission() { try { const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }); stream.getTracks().forEach(track => track.stop()); await this.loadMainApp(); this.startRealtimeSync(); } catch (err) { console.error("Camera permission denied:", err); say("PikaShot needs your camera to scan. Allow it in your browser settings.", "Camera is off"); } },
+        async handleCameraPermission() {
+            try { const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }); stream.getTracks().forEach(track => track.stop()); }
+            catch (err) { console.error("Camera permission denied:", err); say("PikaShot needs your camera to scan barcodes. You can allow it later in your browser settings.", "Camera is off"); } // (they still go in: a blocked or missing camera must not keep them on this screen; each scan explains it again)
+            await this.loadMainApp(); this.startRealtimeSync();
+        },
         async loadCameraScannerInBackground() {
             try {
                 this.elements.sellItemBtnText.textContent = 'Loading...';
@@ -3415,10 +3514,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.showToast('Only your admin can add products.');
                 return;
             }
+            if (!navigator.onLine) { say("You're offline. Connect to the internet to add a product.", "No internet"); return; } // (saving a product needs it: said before the scan, not after the typing)
             if (!(await this._roomForProducts(1))) return;
             this._setCameraActions(false);
-            if (!this.state.cameraReady) { say("The scanner is still loading. Wait a moment and try again.", "Please wait"); return; }
-            if (!Camera.isSupported()) { say("This phone cannot scan barcodes.", "Cannot scan"); return; }
+            if (!(await this._scannerReady())) return;
             this.elements.scanFeedback.textContent = 'Scan product barcode';
             this.navigateTo('camera-view');
             Camera.startScan(
@@ -3456,7 +3555,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     this._back();
                     const existingProduct = await DB.getProductByBarcode(result.data);
                     if (existingProduct) {
-                        this.elements.productExistsMessage.textContent = `Product already exists as "${existingProduct.name}" in inventory.`;
+                        this.elements.productExistsMessage.textContent = `You already have "${existingProduct.name}". Tap Open to change its price or stock.`;
+                        this.state.existingProduct = existingProduct;
                         this.showModal('product-exists-modal');
                     } else {
                         this._handleSuccessfulScan();
@@ -3504,8 +3604,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const existing = await DB.getAllProducts();
                 if (existing.length === 0) { this.redirectToAddProducts(); return; }
             }
-            if (!this.state.cameraReady) { say("The scanner is still loading. Wait a moment and try again.", "Please wait"); return; }
-            if (!Camera.isSupported()) { say("This phone cannot scan barcodes.", "Cannot scan"); return; }
+            if (!navigator.onLine) { say("You're offline. Connect to the internet to record a sale.", "No internet"); return; } // (confirming a sale needs it: said before the scan, not after)
+            if (!(await this._scannerReady())) return;
             this._setCameraActions(true);
             this.elements.scanFeedback.textContent = 'Scanning for barcode...';
             this.navigateTo('camera-view');
@@ -3527,7 +3627,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             this._handleSuccessfulScan();
                             this.handleProductFound(product);
                         } else {
-                            this.handleSellScanNotFound(false);
+                            this.handleSellScanNotFound(false, result.data);
                         }
                     } else if (result.type === 'qrlog') {
                         this._handleSuccessfulScan();
@@ -3547,7 +3647,18 @@ document.addEventListener('DOMContentLoaded', () => {
             );
         },
 
-        handleSellScanNotFound(isTimeout) {
+        // The scanner can start: loaded, and able to read barcodes on this phone (a back-up reader that could not load once is tried again)
+        async _scannerReady() {
+            if (!this.state.cameraReady) { say("The scanner is still loading. Wait a moment and try again.", "Please wait"); return false; }
+            if (Camera._zxingFailed && !Camera.nativeUsable && navigator.onLine) await Camera._loadZXing();
+            if (!Camera.isSupported()) {
+                say(Camera._zxingFailed && !Camera.nativeUsable ? "The scanner needs internet the first time. Connect and try again." : "This phone cannot scan barcodes.", "Cannot scan");
+                return false;
+            }
+            return true;
+        },
+
+        handleSellScanNotFound(isTimeout, barcode) {
             this._logToFirestore('scan_logs', null, {
                 userId: this.state.user.phone,
                 type: 'sell_item',
@@ -3556,7 +3667,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 timestamp: window.fb.serverTimestamp()
             });
 
-            this.elements.scanFeedback.textContent = 'Product not found.';
+            this.elements.scanFeedback.textContent = isTimeout ? 'No barcode seen.' : 'Product not found.';
+            document.getElementById('entry-choice-title').textContent = isTimeout ? 'No barcode seen' : 'Not found';
+            document.getElementById('entry-choice-text').textContent = isTimeout
+                ? 'Hold the barcode inside the box, in good light. Or pick it from your products.'
+                : 'This item is not in your products.';
+            const canAdd = !isTimeout && typeof barcode === 'string' && !!barcode && !this._isSalesperson(); // (an owner can add what they just scanned)
+            this.state.unknownBarcode = canAdd ? barcode : null;
+            document.getElementById('add-unknown-product-btn').hidden = !canAdd;
             setTimeout(() => {
                 if (this.state.isScanCanceled) return;
                 this.showModal('entry-choice-modal');
@@ -3753,6 +3871,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.productBarcodeDisplay.style.display = 'block';
             }
 
+            let lastUnit = null; try { lastUnit = localStorage.getItem('pika_last_unit'); } catch (e) { /* not kept: the first unit stays */ }
+            if (lastUnit && Array.from(this.elements.productUnitInput.options).some(o => o.value === lastUnit && o.style.display !== 'none' && !o.dataset.extra)) this._setUnit(lastUnit); // (most shops add many products in the same unit)
             this._refreshUnitPicker();
             this.hideModal();
             this.showModal('product-form-modal');
@@ -3769,7 +3889,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // NEW: Enforce internet connection for product management
             if (!navigator.onLine) {
-                this.showToast("Internet connection required to manage products.");
+                this.showToast("You're offline. Connect to save this product.");
                 return;
             }
 
@@ -3802,6 +3922,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!productData.name) { await this._needs(form.productNameInput, 'Add the product name.', 'Check your entry'); return; }
             if (!(productData.price > 0)) { await this._needs(form.productPriceInput, 'Add the price. It must be more than 0.', 'Check your entry'); return; } // (an empty box, a 0 or letters all count as no price)
             if (form.productStockInput.value.trim() === '' || isNaN(productData.stock)) { await this._needs(form.productStockInput, 'Add how many are in stock.', 'Check your entry'); return; }
+            if (productData.price > 100000000) { await this._needs(form.productPriceInput, 'That price is too big. Check it.', 'Check your entry'); return; }
+            if (productData.stock > 1000000) { await this._needs(form.productStockInput, 'That stock is too big. Check it.', 'Check your entry'); return; }
 
             if (!productData.image) {
                 await this._needs(form.addChangePictureBtn, 'Add a photo of the product first.', 'Photo needed');
@@ -3825,7 +3947,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (before.unitToConfirm) changed.push('unitToConfirm'); // answering the unit question is a change to save, but it is not a hand edit
                 const counts = !before.needsSetup && !before.unitToConfirm;
                 if (counts && !(await this._checkEditQuota())) return;
-                saveOptions = { only: [...changed, 'editedAt', ...(before.needsSetup ? ['needsSetup'] : [])], counts };
+                let delta;
+                if (changed.includes('stock')) {
+                    delta = Number(productData.stock) - (Number(before.stock) || 0); // what the owner changed, from what they saw when the box opened
+                    if (delta < 0 && !before.needsSetup) {
+                        const ok = await this.requestPin(`Lower the stock of "${productData.name}" from ${this.formatNumber(before.stock)} to ${this.formatNumber(productData.stock)}? Sales take stock out by themselves.`, 'Lower the stock?');
+                        if (!ok) { this.showModal('product-form-modal'); return; }
+                    }
+                    const stored = await DB.getProduct(productData.id);
+                    productData.stock = Math.max(0, (Number(stored ? stored.stock : before.stock) || 0) + delta); // (a sale made meanwhile stays counted)
+                    productData.stockEdits = [...(Array.isArray(before.stockEdits) ? before.stockEdits : []).slice(-9), { at: this._serverNow(), from: Number(before.stock) || 0, to: Number(before.stock) + delta }];
+                    changed.splice(changed.indexOf('stock'), 1, 'stockEdits');
+                }
+                saveOptions = { only: [...changed, 'editedAt', ...(before.needsSetup ? ['needsSetup'] : [])], counts, delta };
             }
 
             await this._commitProductSave(productData, saveOptions);
@@ -3860,6 +3994,7 @@ document.addEventListener('DOMContentLoaded', () => {
             let options = null;
             if (saveOptions && saveOptions.only) {
                 options = { only: thumbChanged ? [...saveOptions.only, 'thumb'] : saveOptions.only, thumb: thumbChanged };
+                if (typeof saveOptions.delta === 'number') options.delta = saveOptions.delta;
             } else if (before) {
                 options = { thumb: thumbChanged }; // the whole product goes, the picture only if it is new
             } else {
@@ -3875,8 +4010,11 @@ document.addEventListener('DOMContentLoaded', () => {
             this.state.editingProduct = null;
             this.state.newProductKey = null;
 
+            if (!before) { try { localStorage.setItem('pika_last_unit', productData.unit); } catch (e) { /* only a convenience */ } }
+
             this.navigateTo('products-view');
             await this.renderProducts();
+            this.showToast(!before && this.state.productCount === 1 ? 'Saved. Tap Record sale when you sell it.' : 'Product saved.');
         },
 
         handleEditProduct(product) {
@@ -3959,7 +4097,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.showModal('product-form-modal');
                 return;
             }
-            await DB.deleteProduct(this.state.editingProduct.id);
+            const gone = this.state.editingProduct;
+            await DB.deleteProduct(gone.id);
+            if (gone.supplierId) this._removeFromSupplier(gone.supplierId, gone.originalName || gone.name); // (its supplier stops seeing its stock)
             this.hideModal();
             this.state.editingProduct = null;
             await this.renderProducts();
@@ -4097,6 +4237,11 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const editing = this.state.editingSale;
+            await this._measureClock(); // (the sale's time, and an edit's 45 minutes, are on the online clock: changing the phone's clock changes nothing)
+            if (editing) { // the sale as it is stored NOW: it may have been transferred, or its money confirmed, since the box opened
+                const fresh = (await DB.getAllSales()).find(s => s.id === editing.id);
+                if (!fresh || !this.isSaleEditable(fresh)) { say('This sale can no longer be edited.', 'Cannot edit'); return false; }
+            }
             if (editing && !this._isMySale(editing)) { say(`Only ${editing.recordedByName ? String(editing.recordedByName).split(' ')[0] : 'the person who recorded it'} can edit this sale.`, 'Cannot edit'); return false; } // (the Edit button is never shown for it: this only guards a box left open from before)
             // When editing, the original sale's quantity goes back into stock before the new quantity is taken out
             const availableStock = product ? product.stock + (editing ? editing.quantity : 0) : 0;
@@ -4136,14 +4281,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 discount: discount, // Save discount
                 saleType: activeRadio ? activeRadio.value : 'default',
                 customerName: customerName,
-                customerPhone: (this.state.selectedContact && this.state.selectedContact.phone) ? this.state.selectedContact.phone.trim().replace(/\s+/g, '') : null,
+                customerPhone: (this.state.selectedContact && this.state.selectedContact.phone) ? (this._localPhone(this.state.selectedContact.phone) || null) : null,
                 total: total,
-                timestamp: editing ? editing.timestamp : new Date(),
+                timestamp: editing ? editing.timestamp : new Date(this._serverNow()), // (the online clock: a phone whose clock is wrong still puts the sale on the right day)
                 image: (editing && editing.image) || product.image, // an edited sale keeps the picture it was sold with
                 sharedAsLog: false,
                 unit: product.unit
             };
-            if (editing) sale.edited = true;
+            if (editing) {
+                sale.edited = true;
+                sale.editedAt = this._serverNow();
+                // what it was before, kept with it: an edit can always be seen for what it changed
+                if (!editing.original) sale.original = { quantity: editing.quantity, total: editing.total, discount: editing.discount || 0, saleType: editing.saleType || 'default', customerName: editing.customerName || null };
+            }
             if (!editing && this._isSalesperson()) { // the admin sees who recorded it
                 sale.recordedBy = this.state.user.phone;
                 sale.recordedByName = this.state.user.name;
@@ -4151,17 +4301,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // A credit sale to a customer who has PikaShot is also sent to them. The copy's id comes from the sale's id,
             // so it can only ever exist once (not repeated when an existing sale is edited)
-            const transferTo = (!editing && sale.saleType === 'credit' && this.state.selectedContact && this.state.selectedContact.phone)
-                ? this.state.selectedContact.phone.trim().replace(/\s+/g, '') : null;
-            const sendTransfer = !!transferTo && transferTo.length >= 10 && !!this.state.firebaseReady && !!window.fb;
+            // Only to a customer who is really on PikaShot (not this shop, not a salesperson): a copy to anyone else would wait for ever
+            const transferTo = (!editing && sale.saleType === 'credit') ? await this._creditCopyTarget(sale.customerPhone) : null;
+            const sendTransfer = !!transferTo;
             if (sendTransfer) {
                 // The sale only counts as transferred once the recipient accepts it
-                sale.pendingTransfer = { logId: `xfer_${sale.id}`, to: transferTo, at: Date.now() };
+                sale.pendingTransfer = this._pendingMark(`xfer_${sale.id}`, transferTo);
                 sale.pendingTransfers = [sale.pendingTransfer];
             }
 
             // Saved on this phone in one step: the sale and the stock it takes out (for an edit: the difference). Nothing online comes first.
-            const done = editing ? await DB.editSale(sale, product.id) : await DB.recordSale(sale, product.id, -quantity);
+            let done;
+            if (editing) {
+                const changes = { id: sale.id, quantity: sale.quantity, discount: sale.discount, saleType: sale.saleType, customerName: sale.customerName, customerPhone: sale.customerPhone, total: sale.total, edited: true, editedAt: sale.editedAt };
+                if (sale.original) changes.original = sale.original;
+                done = await DB.editSale(changes, product.id, { guard: (stored) => this.isSaleEditable(stored) });
+                if (done.refused) { say('This sale can no longer be edited.', 'Cannot edit'); return false; }
+            } else {
+                done = await DB.recordSale(sale, product.id, -quantity);
+                if (done.missing) { say('This product is no longer available.', 'Not available'); return false; }
+            }
             if (done.product) product.stock = done.product.stock;
             if (!editing && !done.inserted) return true; // an earlier tap already recorded this sale: nothing more to do
 
@@ -4175,6 +4334,23 @@ document.addEventListener('DOMContentLoaded', () => {
             if (sendTransfer) this._sendCreditTransfer(sale, product, transferTo);
             this._reportSupplierStock(product);
             return true;
+        },
+
+        // Who a credit sale's copy goes to: an 11-digit number that is a PikaShot shop (not this phone, not this business, not a salesperson).
+        // Anything else (no number, a number not on PikaShot, no answer within a few seconds) sends no copy, and the sale stays free.
+        async _creditCopyTarget(phone) {
+            const to = this._localPhone(phone || '');
+            if (!/^0[789]\d{9}$/.test(to) || to === this.state.user.phone || to === this._businessPhone()) return null;
+            if (!this.state.firebaseReady || !window.fb) return null;
+            try {
+                const snap = await Promise.race([window.fb.getDoc(window.fb.doc(window.fb.db, 'users', to)), new Promise((_, reject) => setTimeout(() => reject(new Error('slow')), 5000))]);
+                return snap.exists() && snap.data().type !== 'Salesperson' ? to : null;
+            } catch (e) { return null; }
+        },
+
+        // The note on a sale that a transfer of it is waiting to be accepted: who sent it, from which phone, and when (online time)
+        _pendingMark(logId, to) {
+            return { logId, to, at: this._serverNow(), by: this.state.user.phone, device: this._deviceId() };
         },
 
         // The copy of a credit sale that goes to the customer's PikaShot. Its id is made from the sale's id, so it cannot be made twice.
@@ -4215,12 +4391,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!(this.state.firebaseReady && product.supplierId && this._businessPhone() && product.stockVisible !== false)) return;
             try {
                 const retailerDocRef = window.fb.doc(window.fb.db, `retailer_stocks/${product.supplierId}/supplied_retailers/${this._businessPhone()}`);
-                const updateData = {};
                 const firebaseProductName = product.originalName || product.name;
-                updateData[`products.${firebaseProductName}.stock`] = product.stock;
-                updateData[`products.${firebaseProductName}.lastSaleTimestamp`] = window.fb.serverTimestamp();
-                updateData.lastUpdate = window.fb.serverTimestamp();
-                window.fb.updateDoc(retailerDocRef, updateData).catch((error) => console.error("Failed to sync sale to Firebase:", error));
+                // (a map, never "products.<name>.stock": a dot in a name like "Eva water 1.5L" would split it, a slash would be refused)
+                window.fb.setDoc(retailerDocRef, { products: { [firebaseProductName]: { stock: product.stock, lastSaleTimestamp: window.fb.serverTimestamp() } }, lastUpdate: window.fb.serverTimestamp() }, { merge: true })
+                    .catch((error) => console.error("Failed to sync sale to Firebase:", error));
             } catch (error) {
                 console.error("Failed to sync sale to Firebase:", error);
             }
@@ -4442,7 +4616,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // A sale that is still new enough, and untouched, to be edited by whoever recorded it: its receding line shows for everyone who sees it (it tells how recent it is)
         _inEditWindow(sale) {
             if (!sale || sale.edited || sale.sharedAsLog || sale.pendingTransfer || sale.moneyConfirmed) return false;
-            const age = Date.now() - new Date(sale.timestamp).getTime();
+            const age = this._serverNow() - new Date(sale.timestamp).getTime(); // (the online clock: turning the phone's clock back does not reopen it)
             return age >= 0 && age < this.EDIT_WINDOW_MS;
         },
 
@@ -4454,8 +4628,8 @@ document.addEventListener('DOMContentLoaded', () => {
         _saleEditExtrasHtml(sale) {
             if (!this._inEditWindow(sale)) return '';
             const startMs = new Date(sale.timestamp).getTime();
-            const elapsed = Date.now() - startMs;
-            return `<div class="sale-edit-timer" data-expires="${startMs + this.EDIT_WINDOW_MS}" style="animation-duration: ${this.EDIT_WINDOW_MS / 1000}s; animation-delay: -${(elapsed / 1000).toFixed(2)}s"></div>`;
+            const elapsed = this._serverNow() - startMs;
+            return `<div class="sale-edit-timer" data-expires="${Date.now() + this.EDIT_WINDOW_MS - elapsed}" style="animation-duration: ${this.EDIT_WINDOW_MS / 1000}s; animation-delay: -${(elapsed / 1000).toFixed(2)}s"></div>`;
         },
 
         updateEditButton() {
@@ -4489,6 +4663,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         async handleEditSale() {
             if (this.state.selectedSales.size !== 1) return;
+            await this._measureClock();
             const saleId = [...this.state.selectedSales][0];
             const allSales = await DB.getAllSales();
             const sale = allSales.find(s => s.id === saleId);
@@ -4545,8 +4720,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const items = sales.map(sale => {
                 const gross = (Number(sale.quantity) || 0) * (Number(sale.price) || 0);
-                const paid = Number(sale.total) || 0;
                 const isCredit = sale.saleType === 'credit';
+                const paid = isCredit && sale.creditSettled ? gross : (Number(sale.total) || 0); // (a credit fully repaid shows as paid, with nothing due)
                 const discount = (!isCredit && sale.discount > 0) ? Number(sale.discount) : 0;
                 subtotal += gross;
                 discountTotal += discount;
@@ -4946,12 +5121,16 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const allSales = await DB.getAllSales();
                 const selectedSaleObjects = allSales.filter(s => this.state.selectedSales.has(s.id));
+                if (!selectedSaleObjects.length) throw Object.assign(new Error('No sales selected'), { empty: true }); // (the selection was let go while the box was open)
+                if (selectedSaleObjects.some(s => s.sharedAsLog)) throw Object.assign(new Error('Already accepted'), { accepted: true });
+                // Sales of one product at different prices are separate lines: each line's price is what was really charged
+                const lineKey = (sale) => `${sale.productId}|${Number(sale.price) || 0}`;
                 const groupedSales = selectedSaleObjects.reduce((acc, sale) => {
-                    const key = sale.productId;
+                    const key = lineKey(sale);
                     if (!acc[key]) {
                         acc[key] = { ...sale, quantity: 0 };
                     }
-                    acc[key].quantity += sale.quantity;
+                    acc[key].quantity += Number(sale.quantity) || 0;
                     return acc;
                 }, {});
 
@@ -4979,7 +5158,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             unit: product ? product.unit : (sale.unit || 'packets'),
                             barcode: product ? product.barcode : null
                         };
-                        Object.assign(item, this._settlementFields(selectedSaleObjects.filter(s => s.productId === sale.productId)));
+                        Object.assign(item, this._settlementFields(selectedSaleObjects.filter(s => lineKey(s) === lineKey(sale))));
                         return item;
                     })
                 };
@@ -4994,6 +5173,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     already = null;
                 }
                 logId = logRef.id;
+
+                // An earlier offer of any of these sales (a credit sale's automatic copy, or a transfer to someone else) that nobody has
+                // accepted is withdrawn first: otherwise accepting it would make this one fail, and its other items would never arrive.
+                for (const earlier of new Set(selectedSaleObjects.flatMap(s => this._pendingLogIds(s)).filter(id => id !== logId))) {
+                    const was = await this._withdrawTransfer(earlier);
+                    if (was === 'claimed') throw Object.assign(new Error('Already accepted'), { accepted: true });
+                }
 
                 // 1. On this phone first: the sales are marked "waiting for this person" before anything goes online. Whatever happens after (a slow line,
                 //    the app closed, the phone switched off) there is a record of this transfer here, so "Transferred" always appears once it is accepted.
@@ -5017,6 +5203,14 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (error) {
                 console.error("Error processing phone transfer:", error);
                 if (sentOnTheWay) return; // (cannot happen: the steps after sending catch their own errors)
+                if (error && error.empty) { this.hideLoader(); this.hideModal(); say('No sales are picked. Pick the sales again, then tap Receipt & transfer.', 'Nothing picked'); return; }
+                if (error && error.accepted) {
+                    this.hideLoader();
+                    await this.updateDashboard();
+                    if (this.state.currentView === 'all-sales-view') await this.renderAllSales();
+                    say('Some of these sales were already transferred and accepted. Pick the others and try again.', 'Already transferred');
+                    return;
+                }
                 if (marked) { try { await this._unmarkTransferPending(logId); } catch (e) { console.error('Could not free the sales of a transfer that did not go:', e); } }
                 say("The transfer did not go through. Check your internet and try again.", "Transfer failed");
             } finally {
@@ -5032,18 +5226,37 @@ document.addEventListener('DOMContentLoaded', () => {
         // Marks the sales behind a transfer as waiting for this person (it becomes "Transferred" when they accept)
         async _markTransferPending(saleIds, logId, to) {
             const allSales = await DB.getAllSales();
-            const at = Date.now();
+            const at = this._serverNow();
             const updates = [];
             (saleIds || []).forEach((saleId) => {
                 const sale = allSales.find(s => s.id === saleId);
                 if (!sale) return;
                 const earlier = sale.pendingTransfers || [];
                 if (earlier.some(t => t.logId === logId)) return; // already listed (the same transfer tried again)
-                sale.pendingTransfer = { logId, to, at }; // latest transfer
+                sale.pendingTransfer = { ...this._pendingMark(logId, to), at: at }; // latest transfer (who sent it, from which phone)
                 sale.pendingTransfers = [...earlier, sale.pendingTransfer];
                 updates.push(DB.updateSale(sale, ['pendingTransfer', 'pendingTransfers']));
             });
             await Promise.all(updates);
+        },
+
+        // Takes back an offer nobody has accepted (so it can never be accepted later). Answers 'withdrawn', 'claimed' (too late: it was
+        // accepted, and the sales are marked so) or 'gone' (the server never had it). Either way but 'claimed', its sales are freed here.
+        async _withdrawTransfer(logId) {
+            const ref = window.fb.doc(window.fb.db, 'shared_logs', logId);
+            let outcome = 'gone', data = null;
+            await window.fb.runTransaction(window.fb.db, async (tx) => {
+                const snap = await tx.get(ref);
+                outcome = 'gone'; data = null;
+                if (!snap.exists()) return;
+                data = snap.data();
+                if (data.claimed) { outcome = 'claimed'; return; }
+                outcome = 'withdrawn';
+                if (!data.voided) tx.update(ref, { voided: true, voidedAt: window.fb.serverTimestamp() });
+            });
+            if (outcome === 'claimed') { await this.handleTransferAccepted(logId, data); return outcome; }
+            await this._unmarkTransferPending(logId);
+            return outcome;
         },
 
         // A transfer that never reached the server: its sales are free again (to edit, or to transfer again)
@@ -5091,7 +5304,7 @@ document.addEventListener('DOMContentLoaded', () => {
             sales.forEach(sale => {
                 if (sale.saleType === 'credit') {
                     const gross = (Number(sale.quantity) || 0) * (Number(sale.price) || 0);
-                    const part = Number(sale.total) || 0;
+                    const part = sale.creditSettled ? gross : (Number(sale.total) || 0); // (fully repaid: nothing is owing any more)
                     onCredit = true;
                     paid += part;
                     balance += Math.max(0, gross - part);
@@ -5204,7 +5417,10 @@ document.addEventListener('DOMContentLoaded', () => {
                                 return;
                             }
                             const data = snap.data();
-                            if (!data.claimed) return;
+                            if (!data.claimed) {
+                                if (data.voided) { const stop = this._pendingWatchers.get(id); if (stop) { stop(); this._pendingWatchers.delete(id); } this._unmarkTransferPending(id); } // withdrawn, or taken through another transfer: it will never be accepted
+                                return;
+                            }
                             const stop = this._pendingWatchers.get(id);
                             if (stop) { stop(); this._pendingWatchers.delete(id); }
                             this.handleTransferAccepted(id, data);
@@ -5226,11 +5442,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 const sales = await DB.getAllSales();
                 const mine = sales.filter(s => !s.sharedAsLog && this._pendingLogIds(s).includes(logId));
                 if (!mine.length) return;
-                const markedAt = Math.min(...mine.map((s) => {
-                    const mark = [...(s.pendingTransfers || []), s.pendingTransfer].find(t => t && t.logId === logId);
-                    return Number(mark && mark.at) || new Date(s.timestamp).getTime() || 0; // (marks made before the time was kept use the sale's own time)
-                }));
-                const wait = markedAt + this.PENDING_GRACE_MS - Date.now();
+                const marks = mine.map((s) => [...(s.pendingTransfers || []), s.pendingTransfer].find(t => t && t.logId === logId));
+                const markedAt = Math.min(...mine.map((s, i) => Number(marks[i] && marks[i].at) || new Date(s.timestamp).getTime() || 0)); // (marks made before the time was kept use the sale's own time)
+                // the phone that made the mark knows whether it is still sending it: it frees the sales after 5 minutes. Any other phone
+                // (the admin's, or a second phone) waits a day, so a transfer still queued on a phone with a bad line is never undone.
+                const mineToSend = marks.some(m => m && m.device && m.device === this._deviceId()) || marks.every(m => !m || !m.device);
+                const wait = markedAt + (mineToSend ? this.PENDING_GRACE_MS : 24 * 3600000) - this._serverNow();
                 if (wait > 0) { // still young: its watcher is set up again once it is old enough, and asks the server again
                     clearTimeout(this._staleTimers && this._staleTimers[logId]);
                     (this._staleTimers = this._staleTimers || {})[logId] = setTimeout(() => {
@@ -5265,9 +5482,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (affected.length === 0) return;
 
             await Promise.all(affected.map(sale => {
+                const mark = [...(sale.pendingTransfers || []), sale.pendingTransfer].find(t => t && t.logId === logId) || {};
                 sale.sharedAsLog = true;
-                sale.transferredTo = logData.claimedBy || (sale.pendingTransfer && sale.pendingTransfer.to);
-                return DB.updateSale(sale, ['sharedAsLog', 'transferredTo']);
+                sale.transferredTo = logData.claimedBy || mark.to || (sale.pendingTransfer && sale.pendingTransfer.to);
+                sale.transferredBy = logData.sentBy || mark.by || logData.senderId || null; // (a salesperson's transfer carries `sentBy`; the business's own is its phone)
+                sale.transferredAt = this._serverNow();
+                return DB.updateSale(sale, ['sharedAsLog', 'transferredTo', 'transferredBy', 'transferredAt']);
             }));
 
             await this.updateDashboard();
@@ -5426,7 +5646,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (!logSnap.exists()) throw taken();
                     const current = logSnap.data();
                     outcome = 'ok'; // (this part can run again if two phones clash)
-                    if (current.claimed && current.claimedBy === me) { outcome = current.appliedAt ? 'applied' : 'resume'; return; } // mine from an earlier try
+                    if (current.claimed && current.claimedBy === me) { // mine from an earlier try: only the phone that claimed it may finish adding it
+                        outcome = current.appliedAt || (current.claimedDevice && current.claimedDevice !== this._deviceId()) ? 'applied' : 'resume';
+                        return;
+                    }
                     if (current.claimed || current.voided) throw taken();
                     const claimSnaps = [];
                     for (const ref of claimRefs) claimSnaps.push(await tx.get(ref));
@@ -5437,6 +5660,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         claimed: true,
                         claimedAt: window.fb.serverTimestamp(),
                         claimedBy: me,
+                        claimedDevice: this._deviceId(),
                         claimedByName: this.state.user.name || null,
                         claimedByBusiness: this.state.user.business || null
                     });
@@ -5527,6 +5751,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     if (logData.voided) {
                         say("This transfer is no longer available.", "Not available");
+                        return;
+                    }
+                    if (logData.targetPhone && logData.targetPhone !== this.state.user.phone && logData.targetPhone !== this._businessPhone()) {
+                        say("This transfer was sent to someone else.", "Not for you");
                         return;
                     }
 
@@ -5716,6 +5944,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
+            // Only transfers that exist online, and whose items make sense, can be accepted (a home-made code could carry anything)
+            if (!log.id) { this.hideModal(); this.state.scannedLogData = null; say('This transfer cannot be accepted. Ask the sender to send it again from PikaShot.', 'Not accepted'); return; }
+            if (!this._validLogItems(log.items)) { this.hideModal(); this.state.scannedLogData = null; say('This transfer has items that cannot be right, so it was not accepted. Ask the sender to send it again.', 'Not accepted'); return; }
+            if (log.targetPhone && log.targetPhone !== this.state.user.phone && log.targetPhone !== this._businessPhone()) { this.hideModal(); this.state.scannedLogData = null; say('This transfer was sent to someone else.', 'Not for you'); return; }
+
             // Added already (this phone remembers it): nothing more to do
             const addedBefore = async () => { this.hideModal(); this.state.scannedLogData = null; say('These items are already in your products.', 'Already added'); };
             if (log.id && await DB.getMeta('applied:' + log.id)) { await addedBefore(); return; }
@@ -5723,7 +5956,9 @@ document.addEventListener('DOMContentLoaded', () => {
             // Only the first person to accept gets the products
             this.showLoader();
             let claim;
+            try { await DB.setMeta('claiming', JSON.stringify(log)); } catch (e) { /* only a safety net */ } // (if the app closes between claiming and adding, it finishes on the next open)
             try { claim = await this._claimTransfer(log); } finally { this.hideLoader(); }
+            if (claim !== 'ok' && claim !== 'resume') { try { await DB.setMeta('claiming', ''); } catch (e) { /* fine */ } }
             if (claim === 'applied') { await addedBefore(); return; }
             if (claim === 'taken') {
                 this.hideModal();
@@ -5755,7 +5990,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 // Fall back to name matching if no barcode match
                 if (!existingProduct) {
-                    existingProduct = allProducts.find(p => (p.originalName || p.name).toLowerCase() === originalName.toLowerCase());
+                    existingProduct = allProducts.find(p => (p.originalName || p.name).toLowerCase() === originalName.toLowerCase() && (!barcode || !p.barcode));
                 }
 
                 let finalProduct;
@@ -5764,8 +5999,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (existingProduct) {
                     const previousSupplier = existingProduct.supplierId;
                     const previousKey = existingProduct.originalName || existingProduct.name;
-                    if (previousSupplier && previousSupplier !== supplierId) {
-                        staleSupplierEntries.push([previousSupplier, previousKey]); // only the last supplier sees this stock
+                    if (previousSupplier && (previousSupplier !== supplierId || previousKey !== originalName)) {
+                        staleSupplierEntries.push([previousSupplier, previousKey]); // only the last supplier sees this stock, under one name
                     }
                     existingProduct.stock += stockToAdd;
                     existingProduct.supplierId = supplierId;
@@ -5827,7 +6062,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             await Promise.all(productUpdates);
             if (log.id) { // written down so this transfer can never be added a second time, even from another phone or after logging out
-                DB.setMeta('applied:' + log.id, Date.now());
+                await DB.setMeta('applied:' + log.id, Date.now());
+                DB.setMeta('claiming', '');
                 if (this.state.firebaseReady) window.fb.updateDoc(window.fb.doc(window.fb.db, 'shared_logs', log.id), { appliedAt: window.fb.serverTimestamp() }).catch(() => { /* the phone's own note still stops it */ });
             }
 
@@ -5941,8 +6177,14 @@ document.addEventListener('DOMContentLoaded', () => {
         // Nobody else of the business's is read, shown or counted in their messages.
         _transferredTo(sales) {
             const phones = new Set();
-            (sales || []).forEach(s => { if (s.sharedAsLog && s.transferredTo) phones.add(String(s.transferredTo)); });
+            (sales || []).forEach(s => { if (this._transferredByRecorder(s) && s.transferredTo) phones.add(String(s.transferredTo)); });
             return phones;
+        },
+        // A sale that was transferred (and accepted) by the person who recorded it. Older sales that do not say who sent them count, as before.
+        _transferredByRecorder(sale) {
+            if (!sale || !sale.sharedAsLog) return false;
+            if (!sale.transferredBy || !sale.recordedBy) return true;
+            return String(sale.transferredBy) === String(sale.recordedBy);
         },
 
         // A wholesaler's customers (the ones who accepted their transfers): read once and kept for 10 minutes.
@@ -6059,7 +6301,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const customerCards = []; // { time, html } - newest first, whatever kind of card it is
 
             for (const sale of creditSales) {
-                const matchedRetailer = sale.customerPhone ? retailersData.find(r => r.id === sale.customerPhone) : null;
+                const matchedRetailer = sale.customerPhone ? retailersData.find(r => r.id === this._localPhone(sale.customerPhone)) : null; // (older sales may hold "+234...")
                 customerCards.push({ time: new Date(sale.timestamp).getTime() || 0, html: this.buildCreditCard(sale, matchedRetailer) });
                 if (matchedRetailer) {
                     renderedCreditCustomers.add(matchedRetailer.id);
@@ -6123,7 +6365,7 @@ document.addEventListener('DOMContentLoaded', () => {
         formatCreditDate(value) {
             const date = DB._normalizeTimestamp(value);
             const dayStart = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-            const daysAgo = Math.round((dayStart(new Date()) - dayStart(date)) / 86400000);
+            const daysAgo = Math.round((dayStart(new Date(this._serverNow())) - dayStart(date)) / 86400000);
             if (daysAgo === 0) return 'Today';
             if (daysAgo === 1) return 'Yesterday';
             const thisYear = date.getFullYear() === new Date().getFullYear();
@@ -6167,7 +6409,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const byName = (sale.recordedBy && sale.recordedBy !== this.state.user.phone) ? (sale.recordedByName || 'a salesperson') : '';
 
             return `
-                <div class="card credit-card" data-credit-id="${sale.id}" data-customer-name="${e(sale.customerName)}"${retailer ? ` data-retailer-id="${e(retailer.id)}"` : ''}>
+                <div class="card credit-card" data-credit-id="${e(sale.id)}" data-customer-name="${e(sale.customerName)}"${retailer ? ` data-retailer-id="${e(retailer.id)}"` : ''}>
                     <div class="credit-top">
                         <div class="credit-who">
                             <h4><span class="credit-name">${e(sale.customerName)}</span><span class="credit-pill">Credit</span></h4>
@@ -6181,7 +6423,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="credit-bar" role="img" aria-label="${money(paid)} of ${money(worth)} paid"><span style="width: ${paidPercent}%"></span></div>
                     <div class="credit-paid"><span>${money(paid)} paid</span><span>${money(worth)} total</span></div>
                     ${stockHtml}
-                    <button type="button" class="delete-credit-btn" data-id="${sale.id}">${checkIcon}<span>Fully repaid?</span></button>
+                    <button type="button" class="delete-credit-btn" data-id="${e(sale.id)}">${checkIcon}<span>Fully repaid?</span></button>
                 </div>
             `;
         },

@@ -35,6 +35,7 @@
         <div class="modal-content dialog-card" role="alertdialog" aria-modal="true" aria-labelledby="dialog-title" aria-describedby="dialog-text">
             <h2 id="dialog-title"></h2>
             <p id="dialog-text"></p>
+            <div id="dialog-fields" class="dialog-fields" hidden></div>
             <div class="modal-actions modal-actions-inline">
                 <button type="button" id="dialog-cancel" class="btn btn-secondary btn-cancel" hidden></button>
                 <button type="button" id="dialog-ok" class="btn btn-primary">OK</button>
@@ -176,11 +177,11 @@
                 <div class="reg-fields">
                     <div class="form-group">
                         <label for="first-name">First name</label>
-                        <input type="text" id="first-name" placeholder="e.g., Chiamaka" autocomplete="given-name" required>
+                        <input type="text" id="first-name" maxlength="40" placeholder="e.g., Chiamaka" autocomplete="given-name" required>
                     </div>
                     <div class="form-group">
                         <label for="last-name">Last name</label>
-                        <input type="text" id="last-name" placeholder="e.g., Uko" autocomplete="family-name" required>
+                        <input type="text" id="last-name" maxlength="40" placeholder="e.g., Uko" autocomplete="family-name" required>
                     </div>
 
                     <div class="form-row">
@@ -222,7 +223,7 @@
 
                     <div class="form-group" id="business-name-group">
                         <label for="business-name">Business name</label>
-                        <input type="text" id="business-name" placeholder="e.g., Amaka's Provisions" autocomplete="off" required>
+                        <input type="text" id="business-name" maxlength="60" placeholder="e.g., Amaka's Provisions" autocomplete="off" required>
                     </div>
 
                     <div class="form-group">
@@ -506,8 +507,8 @@
         <ul id="unit-menu" class="unit-menu" role="listbox" aria-labelledby="unit-label" hidden></ul>
 
         <div id="add-product-failed-modal" class="modal-content" style="display:none;">
-            <h2>Product not found</h2>
-            <p>No barcode was detected. Please ensure the barcode is clear and well-lit.</p>
+            <h2>No barcode seen</h2>
+            <p>Hold the barcode inside the box, in good light.</p>
             <div class="modal-actions modal-actions-inline">
                 <button id="cancel-add-scan-btn" class="btn btn-secondary btn-cancel" data-back>Cancel</button>
                 <button id="retry-add-scan-btn" class="btn btn-primary">Try again</button>
@@ -515,10 +516,11 @@
         </div>
 
         <div id="product-exists-modal" class="modal-content" style="display:none;">
-            <h2>Product exists</h2>
-            <p id="product-exists-message">This product is already in your inventory.</p>
-            <div class="modal-actions">
-                <button id="product-exists-ok-btn" class="btn btn-primary" data-back>OK</button>
+            <h2>You have this product</h2>
+            <p id="product-exists-message">This product is already in your products.</p>
+            <div class="modal-actions modal-actions-inline">
+                <button id="product-exists-close-btn" class="btn btn-secondary btn-cancel" data-back>Close</button>
+                <button id="product-exists-ok-btn" class="btn btn-primary">Open</button>
             </div>
         </div>
 
@@ -556,7 +558,7 @@
                 </div>
                 <div class="form-group" id="product-name-group">
                     <label for="product-name">Product name</label>
-                    <input type="text" id="product-name" placeholder="e.g., Indomie Chicken" autocomplete="off" enterkeyhint="next" required>
+                    <input type="text" id="product-name" maxlength="60" placeholder="e.g., Indomie Chicken" autocomplete="off" enterkeyhint="next" required>
                 </div>
                 <div class="form-row">
                     <div class="form-group unit-group" id="unit-group">
@@ -654,12 +656,13 @@
         </div>
 
         <div id="entry-choice-modal" class="modal-content" style="display:none;">
-            <h2>Not found</h2>
-            <p>This item is not in your products.</p>
+            <h2 id="entry-choice-title">Not found</h2>
+            <p id="entry-choice-text">This item is not in your products.</p>
             <div class="modal-actions">
                 <button id="retry-sell-scan-btn" class="btn btn-secondary">Try again</button>
                 <button id="select-from-products-btn" class="btn btn-primary">Select from products</button>
             </div>
+            <button type="button" id="add-unknown-product-btn" class="btn btn-secondary" style="margin-top: 12px;" hidden>Add as new product</button>
              <button type="button" id="cancel-entry-choice-btn" class="btn btn-secondary btn-cancel" style="margin-top: 12px;" data-back>Cancel</button>
         </div>
 
@@ -757,7 +760,7 @@
 
         <div id="sp-waiting-modal" class="modal-content" style="display:none;">
             <h2>Waiting for confirmation</h2>
-            <p>We're waiting for a business to confirm you as their salesperson. Reach out to your admin for the 4-digit code.</p>
+            <p id="sp-waiting-text">We're waiting for a business to confirm you as their salesperson. Reach out to your admin for the 4-digit code.</p>
             <div class="form-group">
                 <label for="sp-code-input">4-digit code</label>
                 <input type="text" id="sp-code-input" class="sp-code-input" inputmode="numeric" maxlength="4" placeholder="••••" autocomplete="off" enterkeyhint="go">

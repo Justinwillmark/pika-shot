@@ -545,14 +545,8 @@ const Camera = {
             return;
         }
 
-        // Check if it's a pika-log QR code (old version)
-        try {
-            const jsonData = JSON.parse(detectedValue);
-            if (jsonData && jsonData.pikaLogVersion === 1) {
-                onResult({ type: 'qrlog', data: jsonData });
-                return;
-            }
-        } catch (e) { /* Not a pika log, treat as regular barcode */ }
+        // (Old-style transfer codes, the whole transfer written inside the code, are no longer accepted: nothing online stops
+        // one being used again and again, and anyone can make one. Every transfer now lives online and is opened by its id.)
 
         // It's a regular barcode
         onResult({ type: 'barcode', data: detectedValue });

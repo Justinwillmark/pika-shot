@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pika-shot-cache-v61';
+const CACHE_NAME = 'pika-shot-cache-v62';
 const LIB_CACHE_NAME = 'pika-shot-libs-v1'; // third-party scanner library, kept for offline scanning
 const ASSETS_TO_CACHE = [
     '/',
@@ -45,6 +45,7 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
+    if (event.request.method !== 'GET') return; // (only reads are kept: anything else goes straight to the network)
     // The admin dashboard is never kept in this cache, so it is always the latest version.
     if (/^\/admin(-init)?(\.html|\.js|\.css)?$/.test(new URL(event.request.url).pathname)) return;
 

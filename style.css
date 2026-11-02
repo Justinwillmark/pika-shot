@@ -1929,3 +1929,16 @@ a.privacy-link-trigger { display: inline-block; padding: 8px 2px; margin: -8px 0
     .app-container.in-app[data-view="camera-view"] .menu-btn,
     .app-container.in-app[data-view="camera-view"] .home-pane-title { opacity: 0.45; pointer-events: none; }
 }
+
+/* Product cards show the whole name, on two lines at most ("Coca Cola 50cl" and "Coca Cola 35cl" stay apart) */
+.product-card-info h4 { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+/* The last row of products scrolls clear of the + button */
+#products-view .product-grid { padding-bottom: 90px; }
+/* Boxes to type in, inside PikaShot's own pop-up (the credit customer's name and number) */
+.dialog-fields { margin: 4px 0 18px; text-align: left; }
+.dialog-fields .form-group { margin-bottom: 12px; }
+.dialog-fields .form-group:last-child { margin-bottom: 0; }
+.dialog-fields label { display: block; margin-bottom: 6px; font-size: 0.85rem; font-weight: 600; color: var(--text-color); }
+.dialog-fields input { width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 10px; font: inherit; font-size: 1rem; user-select: text; -webkit-user-select: text; }
+.dialog-fields input:focus { outline: none; border-color: var(--primary-color); }
+.dialog-fields[hidden], #dialog-text[hidden] { display: none; }

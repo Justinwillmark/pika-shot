@@ -50,6 +50,12 @@ service cloud.firestore {
         && request.resource.data.lastSeen == request.time;
     }
 
+    // What an account is (store owner, retailer, salesperson) and its number never change after sign-up
+    function identityUnchanged() {
+      return request.resource.data.get('type', null) == resource.data.get('type', null)
+        && request.resource.data.get('phone', null) == resource.data.get('phone', null);
+    }
+
     // A product picture is a small thumbnail kept with the product; nothing bigger is stored.
     function thumbOk() {
       return !('thumb' in request.resource.data)
@@ -61,6 +67,7 @@ service cloud.firestore {
       // A new account needs a number confirmed on WhatsApp.
       allow create: if request.auth != null && signupVerified(phoneNumber);
       allow update: if request.auth != null
+        && identityUnchanged()
         && (pinFieldsUnchanged() || pinUpgrade() || signupVerified(phoneNumber));
       // An account is looked up by its number. Only the dashboard may list everyone, or delete an account.
       allow get: if request.auth != null;
@@ -102,7 +109,9 @@ service cloud.firestore {
     match /salesperson_invites/{phone} {
       allow get, delete: if request.auth != null;
       allow create, update: if request.auth != null
-        && request.resource.data.keys().hasOnly(['phone', 'code', 'businessPhone', 'businessName', 'businessType', 'createdAt']);
+        && request.resource.data.keys().hasOnly(['phone', 'code', 'businessPhone', 'businessName', 'businessType', 'createdAt'])
+        && request.resource.data.phone == phone
+        && request.resource.data.createdAt == request.time; // (stamped by the server: a code cannot be made to last longer)
     }
     match /salesperson_links/{phone} {
       allow read, delete: if request.auth != null;
@@ -111,7 +120,8 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/salesperson_invites/$(phone))
         && get(/databases/$(database)/documents/salesperson_invites/$(phone)).data.businessPhone == request.resource.data.businessPhone
         && request.time < get(/databases/$(database)/documents/salesperson_invites/$(phone)).data.createdAt + duration.value(25, 'm')
-        && request.resource.data.keys().hasOnly(['phone', 'name', 'businessPhone', 'businessName', 'businessType', 'confirmedAt']);
+        && request.resource.data.keys().hasOnly(['phone', 'name', 'businessPhone', 'businessName', 'businessType', 'confirmedAt'])
+        && request.resource.data.phone == phone;
     }
 
     // --- SIGN-UP AND PIN-RESET NUMBER CHECK (WhatsApp code) ---

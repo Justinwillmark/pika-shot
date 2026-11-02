@@ -173,17 +173,22 @@ const DB = {
         };
     },
 
-    _applySale(store, raw) {
+    _applySale(store, raw, docId) {
         const s = { ...raw };
+        if (s.id === undefined || s.id === null) s.id = docId; // (the document's own id: a record with none would stop the whole sync)
         if (typeof s.id === 'string' && !isNaN(s.id)) s.id = Number(s.id);
+        if (s.id === undefined || s.id === null || s.timestamp == null || s.quantity == null) return; // half a sale (only a change, never the sale): nothing to show
         s.timestamp = this._normalizeTimestamp(s.timestamp);
         this._putSalePreservingImage(store, s);
     },
 
-    _applyProduct(store, raw) {
+    _applyProduct(store, raw, docId) {
         const p = { ...raw };
+        if (p.id === undefined || p.id === null) p.id = docId;
         if (typeof p.id === 'string' && !isNaN(p.id)) p.id = Number(p.id);
+        if (p.id === undefined || p.id === null) return;
         if (p.deleted) { store.delete(p.id); return; }
+        if (!p.name) return; // half a product (only a stock change reached the cloud): never a nameless product on the list
         const getReq = store.get(p.id);
         getReq.onsuccess = () => {
             const existing = getReq.result;
@@ -213,6 +218,7 @@ const DB = {
             }
             throw error;
         }
+        if (this._dataRoot() !== phone) return snaps; // logged out (or another account) while this was on its way
         let newest = since;
         await new Promise((resolve, reject) => {
             const tx = this.db.transaction(kind, 'readwrite');
@@ -220,7 +226,7 @@ const DB = {
             snaps.forEach(doc => {
                 const data = doc.data();
                 newest = Math.max(newest, this._stampMs(data.lastUpdate));
-                if (kind === 'products') this._applyProduct(store, data); else this._applySale(store, data);
+                if (kind === 'products') this._applyProduct(store, data, doc.id); else this._applySale(store, data, doc.id);
             });
             tx.oncomplete = () => resolve();
             tx.onerror = () => reject(tx.error);
@@ -233,6 +239,9 @@ const DB = {
     // while this one was away are removed here. Run once a day: the product list is small.
     async _reconcileProducts(phone) {
         const snaps = await this._pull('products', phone, true);
+        if (this._dataRoot() !== phone) return;
+        // An answer from this phone's own saved copy (no internet) may be missing products: nothing is removed on its word
+        if (snaps.metadata && snaps.metadata.fromCache) return;
         const inCloud = new Set();
         snaps.forEach(doc => { const d = doc.data(); if (!d.deleted) inCloud.add(String(doc.id)); });
         const local = await this.getAllProducts();
@@ -340,15 +349,13 @@ const DB = {
             let changed = false;
             let newest = cursor;
 
+            if (this._realtimePhone !== phone) return; // (logged out meanwhile)
             snapshot.docChanges().forEach((change) => {
+                if (change.type === 'removed') return; // (never a delete: see above)
                 changed = true;
-                if (change.type === 'removed') {
-                    store.delete(Number(change.doc.id));
-                    return;
-                }
                 const data = change.doc.data();
                 newest = Math.max(newest, this._stampMs(data.lastUpdate));
-                if (kind === 'products') this._applyProduct(store, data); else this._applySale(store, data);
+                if (kind === 'products') this._applyProduct(store, data, change.doc.id); else this._applySale(store, data, change.doc.id);
             });
 
             tx.oncomplete = () => {
@@ -527,7 +534,7 @@ const DB = {
                 const found = products.get(productId);
                 found.onsuccess = () => {
                     const product = found.result;
-                    if (!product) return;
+                    if (!product) { result.missing = true; result.inserted = false; tx.abort(); return; } // (nothing is saved: the sale and its stock go together, or not at all)
                     product.stock = (Number(product.stock) || 0) + delta;
                     products.put(product);
                     result.product = product;
@@ -540,22 +547,26 @@ const DB = {
                 }
                 resolve(result);
             };
-            tx.onerror = tx.onabort = () => reject(tx.error || new Error('Could not save the sale'));
+            tx.onerror = tx.onabort = () => { if (result.missing) resolve(result); else reject(tx.error || new Error('Could not save the sale')); };
         });
     },
 
     // Saves a change to a sale already recorded, and moves the stock by the DIFFERENCE between the quantity stored and the new one.
     // Doing the same edit again changes nothing (the difference is then zero).
-    editSale(sale, productId) {
+    editSale(changes, productId, options) {
+        options = options || {};
         return new Promise((resolve, reject) => {
             const tx = this.db.transaction(['sales', 'products'], 'readwrite');
             const sales = tx.objectStore('sales'), products = tx.objectStore('products');
-            const result = { delta: 0, product: null };
-            const before = sales.get(sale.id);
+            const result = { delta: 0, product: null, sale: null, refused: false };
+            const before = sales.get(changes.id);
             before.onsuccess = () => {
-                const was = before.result ? Number(before.result.quantity) || 0 : Number(sale.quantity) || 0;
-                result.delta = was - (Number(sale.quantity) || 0);
-                sales.put(sale);
+                const stored = before.result;
+                if (!stored || (options.guard && !options.guard(stored))) { result.refused = true; return; } // (sold, transferred, money confirmed, or too late since the box opened)
+                const was = Number(stored.quantity) || 0;
+                result.delta = was - (Number(changes.quantity) || 0);
+                result.sale = { ...stored, ...changes };
+                sales.put(result.sale);
                 if (!result.delta) return;
                 const found = products.get(productId);
                 found.onsuccess = () => {
@@ -567,8 +578,10 @@ const DB = {
                 };
             };
             tx.oncomplete = () => {
-                this._syncToCloud('sales', sale.id, sale);
-                if (result.product) this._pushProduct(result.product, { delta: result.delta });
+                if (!result.refused) {
+                    this._syncToCloud('sales', changes.id, { ...changes }); // only what the edit changed: a field another phone set meanwhile (money confirmed, transferred) stays
+                    if (result.product) this._pushProduct(result.product, { delta: result.delta });
+                }
                 resolve(result);
             };
             tx.onerror = tx.onabort = () => reject(tx.error || new Error('Could not save the sale'));
@@ -623,12 +636,14 @@ const DB = {
             const allSalesRequest = store.getAll();
 
             allSalesRequest.onsuccess = () => {
-                const today = new Date();
+                const today = new Date(this.now());
                 today.setHours(0, 0, 0, 0);
+                const tomorrow = new Date(today);
+                tomorrow.setDate(today.getDate() + 1);
 
                 const todaysSales = allSalesRequest.result.filter(sale => {
                     const saleDate = this._normalizeTimestamp(sale.timestamp);
-                    return saleDate >= today;
+                    return saleDate >= today && saleDate < tomorrow; // (a sale stamped by a phone whose clock ran ahead is not "today" twice)
                 });
                 resolve(todaysSales);
             };
@@ -637,6 +652,9 @@ const DB = {
             };
         });
     },
+
+    // The time "now" for the day's sales: the app sets this to the online clock (a phone's own clock can be wrong)
+    now() { return Date.now(); },
 
     // --- SCAN COUNTS (per day, on this phone; the app adds up the other phones' counts from the account) ---
     _today() { return new Date().toISOString().split('T')[0]; },

@@ -125,7 +125,7 @@
                     const at = Number(s.creditSettledAt);
                     if (owed > 0 && at && nowMs - at >= 0 && nowMs - at <= 2 * DAY) settled.push({ name: s.customerName, amt: owed, at });
                 } else if (owed > 0) {
-                    const key = String(s.customerPhone || s.customerName || '').toLowerCase();
+                    const key = String((s.customerPhone && String(s.customerPhone).replace(/\D/g, '').replace(/^234(?=\d{10}$)/, '0')) || s.customerName || '').toLowerCase(); // (one customer, whatever way the number was written)
                     const rec2 = debtors.get(key) || { key, name: s.customerName || 'A customer', owed: 0, oldest: di, oldestDate: d, oldestId: s.id };
                     rec2.owed += owed;
                     if (di < rec2.oldest) { rec2.oldest = di; rec2.oldestDate = d; rec2.oldestId = s.id; }
