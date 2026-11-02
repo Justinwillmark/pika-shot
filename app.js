@@ -3599,10 +3599,23 @@ document.addEventListener('DOMContentLoaded', () => {
             const follow = () => { if (this._unitMenuOpen()) this._placeUnitMenu(); };
             window.addEventListener('resize', follow);
             if (window.visualViewport) { window.visualViewport.addEventListener('resize', follow); window.visualViewport.addEventListener('scroll', follow); }
-            btn.closest('.modal-content').addEventListener('scroll', follow, { passive: true });
+            (btn.closest('.pf-scroll') || btn.closest('.modal-content')).addEventListener('scroll', follow, { passive: true });
+            this._watchProductScroll();
             select.addEventListener('change', () => this._refreshUnitPicker());
             ask.addEventListener('click', (e) => { const b = e.target.closest('[data-unit]'); if (b) { this._setUnit(b.dataset.unit); this._hideUnitAsk(); } });
             this._refreshUnitPicker();
+        },
+        // A product box that is opened afresh starts at its top (the browser keeps how far a hidden box was scrolled)
+        _productBoxToTop() { const scroller = document.getElementById('product-form-scroll'); if (scroller) scroller.scrollTop = 0; },
+        // A soft edge above Cancel / Save while part of the product box is hidden beneath the scrolling top (the keypad is up, or a short screen)
+        _watchProductScroll() {
+            const scroller = document.getElementById('product-form-scroll'), footer = document.getElementById('product-form-footer');
+            if (!scroller || !footer) return;
+            const edge = () => footer.classList.toggle('more', scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight > 2);
+            scroller.addEventListener('scroll', edge, { passive: true });
+            if (window.ResizeObserver) new ResizeObserver(edge).observe(scroller);
+            window.addEventListener('resize', edge);
+            if (window.visualViewport) window.visualViewport.addEventListener('resize', edge);
         },
         _unitMenuOpen() { return !!this._unitIsOpen; },
         // The list floats above the product box, under the Unit field: the box itself never changes (no growing, no scrolling, nothing covered
@@ -3703,6 +3716,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this._refreshUnitPicker();
             this.hideModal();
             this.showModal('product-form-modal');
+            this._productBoxToTop();
         },
 
         async handleSaveProduct(e) {
@@ -3889,6 +3903,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             this.showModal('product-form-modal');
+            this._productBoxToTop();
             // A received item was counted in another unit (bottles against sachets): once the box is open, ask which it is
             if (!isSalesperson && product.unitToConfirm && this._unitKey(product.unitToConfirm) !== this._unitKey(product.unit)) {
                 setTimeout(() => { if (this.state.editingProduct === product && this._modalLive) this._askUnit(product); }, 450);
