@@ -6225,7 +6225,62 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (this._updateInstallBox) this._updateInstallBox();
             });
         },
-        registerServiceWorker() { if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('/serviceworker.js').then(reg => console.log('Service Worker registered.')).catch(err => console.error('Service Worker registration failed:', err)); }); } },
+        // --- Updates: a new version reaches people by itself (nobody should ever have to clear their browsing data) ---
+        // The new service worker takes over as soon as it is ready (see serviceworker.js). The screen is still running the old code at that moment,
+        // so the app reloads itself, but only when nothing is going on. An installed app can stay open for days, so it also looks for a new version
+        // whenever it comes back to the front and every 30 minutes.
+        registerServiceWorker() {
+            if (!('serviceWorker' in navigator)) return;
+            const hadController = !!navigator.serviceWorker.controller; // false on the first visit: there is no older version to replace
+            navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController && !this._updatePending && !this._updateDone) this._updateReady(); });
+            const register = () => navigator.serviceWorker.register('/serviceworker.js').then((reg) => {
+                this._swReg = reg;
+                this._checkForUpdate();
+            }).catch(err => console.error('Service Worker registration failed:', err));
+            if (document.readyState === 'complete') register(); else window.addEventListener('load', register);
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible') this._checkForUpdate();
+                if (this._updatePending) this._updateTries();
+            });
+            setInterval(() => this._checkForUpdate(), 30 * 60000);
+            try { // the page that loads right after an update says so once
+                if (sessionStorage.getItem('pika_updated')) { sessionStorage.removeItem('pika_updated'); setTimeout(() => this.showToast('PikaShot is updated to the latest version.'), 1500); }
+            } catch (e) { /* no message */ }
+        },
+        _checkForUpdate() { if (this._swReg && navigator.onLine) this._swReg.update().catch(() => { /* offline or busy: it looks again later */ }); },
+        _updateReady() {
+            this._updatePending = true;
+            this._updateTries();
+        },
+        // The new version is in charge: load it at the first moment nothing is going on (looked at again every 10 seconds)
+        _updateTries() {
+            clearTimeout(this._updateTimer);
+            if (!this._updatePending || this._updateDone) return;
+            if (this._quietNow()) {
+                let recent = false; // (a way out of any reload loop: not twice within a minute)
+                try { recent = Date.now() - Number(sessionStorage.getItem('pika_updated_at') || 0) < 60000; } catch (e) { /* no guard */ }
+                if (!recent) {
+                    this._updateDone = true;
+                    try { sessionStorage.setItem('pika_updated', '1'); sessionStorage.setItem('pika_updated_at', String(Date.now())); } catch (e) { /* no message */ }
+                    location.reload();
+                    return;
+                }
+            }
+            this._updateTimer = setTimeout(() => this._updateTries(), 10000);
+        },
+        // Nothing half-finished on the screen: no box or message open, nothing being typed, no scanner, nothing being saved, no sales picked, not signing up or in
+        _quietNow() {
+            const shown = (id) => { const el = document.getElementById(id); return !!el && el.style.display !== 'none' && el.style.display !== ''; };
+            if (!this.state.user) return false;
+            if (shown('modal-container') || shown('dialog-layer') || shown('celebration-overlay')) return false;
+            if (this.elements.loader.style.display !== 'none') return false;
+            if (this.state.currentView === 'camera-view' || /^onboarding/.test(this.state.currentView || '')) return false;
+            if (this.state.isSelectionMode || (this.state.selectedSales && this.state.selectedSales.size)) return false;
+            if (Object.values(this._busy || {}).some(Boolean) || this._confirmingSale) return false;
+            const typing = document.activeElement;
+            if (typing && /^(INPUT|TEXTAREA|SELECT)$/.test(typing.tagName)) return false;
+            return true;
+        },
 
         async showProfileModal() {
             if (this.state.user) {

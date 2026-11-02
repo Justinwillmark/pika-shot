@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pika-shot-cache-v49';
+const CACHE_NAME = 'pika-shot-cache-v50';
 const LIB_CACHE_NAME = 'pika-shot-libs-v1'; // third-party scanner library, kept for offline scanning
 const ASSETS_TO_CACHE = [
     '/',
@@ -15,13 +15,17 @@ const ASSETS_TO_CACHE = [
     '/icons/icon-512.png'
 ];
 
+// A new version takes over as soon as it is ready. Without this, the new version sits "waiting" for every open copy of the app to be closed, and an installed
+// app is hardly ever closed: people kept running the old version for days, until they cleared their browsing data.
 self.addEventListener('install', event => {
     event.waitUntil(
         caches.open(CACHE_NAME)
             .then(cache => {
                 console.log('Opened cache');
-                return cache.addAll(ASSETS_TO_CACHE);
+                // `reload` fetches every file from the server, never from the browser's own saved copies: a stale copy can never land in the new version's cache
+                return cache.addAll(ASSETS_TO_CACHE.map(url => new Request(url, { cache: 'reload' })));
             })
+            .then(() => self.skipWaiting()) // (only once every file is saved: a half-saved version never takes over)
     );
 });
 
@@ -36,7 +40,7 @@ self.addEventListener('activate', event => {
                     }
                 })
             );
-        })
+        }).then(() => self.clients.claim()) // the copies of the app that are open now are served by this version too (the app then reloads itself: see registerServiceWorker in app.js)
     );
 });
 
