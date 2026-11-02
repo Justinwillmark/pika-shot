@@ -5,6 +5,12 @@
 - Faster, harder-to-copy way: `npm install` once, then `npm run deploy`. It shrinks and scrambles the scripts into `dist/` and publishes that.
 - Every release: change `CACHE_NAME` in `serviceworker.js` (v49 -> v50 ...) so phones fetch the new files.
 
+## Link preview (WhatsApp, Facebook, X, Telegram)
+- When the app's link is shared, the chat app fetches the page and reads the `og:` and `twitter:` tags in the `<head>` of `index.html` to build the preview: the picture `icons/share-card.png` (1200 x 630, the app's teal with the scanner icon, the name and "Track daily sales, stock and customers. For free."), a title and a line of text. Those apps do not run the page's scripts, so the tags must stay as plain text in `index.html`, and the addresses in them must be the full ones.
+- The tags use `https://pika-shot.netlify.app/` (`og:url`, `og:image`, `twitter:image`). If the app ever moves to another address, change those three.
+- To change the picture, replace `icons/share-card.png` with any 1200 x 630 picture under 300 KB (WhatsApp skips larger ones). It sits in `icons/`, so the build copies it into `dist/` by itself. Nothing about the preview needs a cache version change: only those apps' crawlers read it, never the installed app.
+- After publishing: chat apps remember what they saw for a link for several days. To see the new preview at once, share the link with something added, for example `https://pika-shot.netlify.app/?v=2` (it opens the same app). Facebook and Instagram can also be told to look again at https://developers.facebook.com/tools/debug/ ("Scrape again").
+
 ## Settings in one place (`config.js`)
 | Setting | What it does |
 | --- | --- |
