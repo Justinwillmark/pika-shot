@@ -286,10 +286,12 @@
             <button id="menu-btn" class="menu-btn" aria-label="Menu">
                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
             </button>
-            <button id="back-arrow-btn" class="back-btn" style="display: none;">
-               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+            <button id="back-arrow-btn" class="back-btn" style="display: none;" aria-label="Back">
+               <svg class="icon-back" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+               <svg class="icon-close" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
             </button>
-            <div style="display: flex; justify-content: center; align-items: center; margin: 0 45px; overflow: hidden; position: relative;">
+            <h1 class="home-pane-title" aria-hidden="true">My shop</h1><!-- (wide screens only: the title over the left half, where the shop stays open; the page open on the right has the title below) -->
+            <div class="header-title-wrap" style="display: flex; justify-content: center; align-items: center; margin: 0 45px; overflow: hidden; position: relative;">
                 <h1 id="header-title" style="margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">My shop</h1>
                 <select id="all-sales-time-filter" style="display: none; width: 40px; height: 40px; margin-left: 0; padding: 0; background-color: transparent; border: none; color: transparent; outline: none; cursor: pointer; appearance: none; -webkit-appearance: none; background-image: url('data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'24\' height=\'24\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%23000\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'><polyline points=\'6 9 12 15 18 9\'></polyline></svg>'); background-repeat: no-repeat; background-position: center; background-size: 20px; flex-shrink: 0;">
                     <option value="all" style="color: var(--text-color);">All sales</option>
@@ -434,6 +436,13 @@
                 <button id="add-salesperson-fab" class="fab" style="display: none;">
                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                 </button>
+            </div>
+
+            <!-- Wide screens only: the right half while no page is open on it -->
+            <div id="pane-empty" class="pane-empty" aria-hidden="true">
+                <img src="icons/icon-192.png" alt="" width="84" height="84">
+                <h2>PikaShot</h2>
+                <p>Tap a card or a button on the left. It opens here.</p>
             </div>
 
         </main>

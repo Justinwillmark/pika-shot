@@ -1877,3 +1877,55 @@ a.privacy-link-trigger { display: inline-block; padding: 8px 2px; margin: -8px 0
 .policy-modal ul { margin: 0 0 8px; padding-left: 18px; font-size: 0.9rem; line-height: 1.5; color: var(--text-light); }
 .policy-modal li { margin-bottom: 4px; }
 .policy-modal .modal-actions { margin-top: 16px; }
+
+/* === Wide screens (a laptop or a desktop): two halves ===
+   The shop stays open in the left half; whatever is tapped on it (products, all sales, customers, the scanner) opens in the right half,
+   like WhatsApp Web. The pages are the same ones, only where they sit changes. A phone never reaches this (even turned sideways, it is too short). */
+.home-pane-title, .pane-empty, .back-btn .icon-close { display: none; }
+.pane-empty img { border-radius: 20px; opacity: 0.9; }
+.pane-empty h2 { margin-top: 14px; font-size: 1.35rem; color: var(--text-color); }
+.pane-empty p { margin-top: 6px; max-width: 260px; font-size: 0.95rem; line-height: 1.45; }
+
+@media (min-width: 900px) and (min-height: 560px) {
+    .app-container.in-app { --split-left: min(50vw, 600px); max-width: none; }
+
+    /* The header: the shop's title over the left half, the open page's title (and its close button) over the right half */
+    .app-container.in-app .app-header { min-height: 60px; padding: 0; justify-content: flex-start; }
+    .app-container.in-app .home-pane-title { display: block; flex: 0 0 var(--split-left); align-self: stretch; margin: 0; padding: 0 54px; line-height: 60px; border-right: 1px solid var(--border-color); }
+    .app-container.in-app .header-title-wrap { flex: 1 1 auto; min-width: 0; }
+    .app-container.in-app[data-view="home-view"] .header-title-wrap { visibility: hidden; } /* (nothing is open on the right) */
+    .app-container.in-app .menu-btn { display: flex !important; } /* (the menu always stays with the shop) */
+    .app-container.in-app .back-btn { left: calc(var(--split-left) + 10px); }
+    .app-container.in-app .back-btn .icon-back { display: none; }
+    .app-container.in-app .back-btn .icon-close { display: block; }
+    .app-container.in-app .add-to-homescreen-btn { right: calc(100% - var(--split-left) + 16px); }
+
+    /* The pages: home on the left, the page that was tapped on the right */
+    .app-container.in-app .main-content { position: relative; }
+    .app-container.in-app #main-content > .view { position: absolute; top: 0; bottom: 0; left: var(--split-left); right: 0; width: auto; height: auto; padding-bottom: 100px; }
+    .app-container.in-app #main-content > .view:not(#home-view) { padding-inline: max(0px, calc((100vw - var(--split-left) - 860px) / 2)); } /* (on a very wide screen the page keeps a readable width, in the middle of its half) */
+    .app-container.in-app #main-content > #home-view { display: flex; left: 0; right: auto; width: var(--split-left); padding-bottom: 80px; border-right: 1px solid var(--border-color); }
+    .app-container.in-app .pane-empty { position: absolute; top: 0; bottom: 0; left: var(--split-left); right: 0; flex-direction: column; align-items: center; justify-content: center; padding: 24px; text-align: center; color: var(--text-light); }
+    .app-container.in-app #home-view.active ~ .pane-empty { display: flex; }
+    .app-container.in-app .offline-banner-inner { right: auto; width: calc(var(--split-left) - 28px); }
+
+    /* Bars and buttons stay inside the half they belong to */
+    .app-container.in-app .bottom-nav { right: auto; width: var(--split-left); max-width: none; margin: 0; border-right: 1px solid var(--border-color); }
+    .app-container.in-app .receipt-actions { right: auto; width: var(--split-left); max-width: none; margin: 0; }
+    .app-container.in-app .receipt-actions.on-right { left: var(--split-left); right: 0; width: auto; }
+    .app-container.in-app .fab { bottom: 28px; right: 32px; }
+    .app-container.in-app .camera-container { left: var(--split-left); right: 0; width: auto; }
+
+    /* A mouse: the buttons of the shell say they can be pressed */
+    .app-container.in-app :is(.nav-btn, .nav-btn-main, .menu-btn, .back-btn, .fab) { cursor: pointer; }
+    @media (hover: hover) {
+        .app-container.in-app .nav-btn:hover { color: var(--primary-color); }
+        .app-container.in-app :is(.menu-btn, .back-btn):hover { background: rgba(0, 0, 0, 0.05); border-radius: 50%; }
+    }
+
+    /* While the scanner is on, the left half waits (as the whole phone screen would) */
+    .app-container.in-app[data-view="camera-view"] #home-view,
+    .app-container.in-app[data-view="camera-view"] .bottom-nav,
+    .app-container.in-app[data-view="camera-view"] .menu-btn,
+    .app-container.in-app[data-view="camera-view"] .home-pane-title { opacity: 0.45; pointer-events: none; }
+}

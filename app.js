@@ -325,8 +325,18 @@ document.addEventListener('DOMContentLoaded', () => {
             if (this.elements.itemsSoldCard) {
                 this.elements.itemsSoldCard.addEventListener('click', () => this.navigateTo('all-sales-view'));
             }
-            this.elements.backArrowBtn.addEventListener('click', () => this._back());
+            this.elements.backArrowBtn.addEventListener('click', () => this._closePage());
             window.addEventListener('popstate', this.handlePopState.bind(this));
+            // Wide screens: Esc cancels a selection, or else closes the page open on the right (like its close button), when nothing else is open
+            document.addEventListener('keydown', (e) => {
+                if (e.key !== 'Escape' || !this._isSplit()) return;
+                const tag = document.activeElement && document.activeElement.tagName;
+                if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+                const update = document.getElementById('update-layer');
+                if (this.elements.modalContainer.style.display === 'flex' || this._closeDialog || (update && update.style.display !== 'none')) return;
+                if (this.state.isSelectionMode) { this.exitSelectionMode(); return; }
+                this._closePage();
+            });
 
             // Onboarding Listeners
             this.elements.checkPhoneBtn.addEventListener('click', this.handleCheckPhone.bind(this));
@@ -2128,6 +2138,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (viewToShow) {
                 viewToShow.classList.add('active');
                 this.state.currentView = viewId;
+                // Marks for the wide-screen layout (two halves): whether the shop itself is showing, and which page is open (see style.css)
+                this.elements.appContainer.dataset.view = viewId;
+                this.elements.appContainer.classList.toggle('in-app', ['home-view', 'products-view', 'all-sales-view', 'stock-levels-view', 'camera-view'].includes(viewId));
                 this._syncBanner();
                 if (!viewId.includes('onboarding') && viewId !== 'location-permission-view' && viewId !== 'camera-permission-view') {
                     this.updateHeader(viewId);
@@ -2456,13 +2469,27 @@ document.addEventListener('DOMContentLoaded', () => {
             if (both) this._stockLinkTimer = setInterval(() => this._turnStockLink(), 8000);
         },
         _turnStockLink() {
-            if (document.hidden || this.state.currentView !== 'home-view') return; // only when it can be seen
+            if (document.hidden || (this.state.currentView !== 'home-view' && !this._isSplit())) return; // only when it can be seen (on a wide screen it always is)
             const words = Array.from(this.elements.seeStockLevelsBtn.querySelectorAll('.stock-link-word'));
             if (words.length < 2) return;
             const shown = words.find(w => w.classList.contains('is-on') || w.classList.contains('is-in')) || words[0];
             const next = words[0] === shown ? words[1] : words[0];
             shown.classList.remove('is-on', 'is-in'); shown.classList.add('is-out');
             next.classList.remove('is-out'); next.classList.add('is-in');
+        },
+
+        // A wide screen (a laptop or desktop) shows two halves: the shop on the left, the page that was tapped on the right (see style.css)
+        _isSplit() {
+            return this.elements.appContainer.classList.contains('in-app') && !!window.matchMedia && window.matchMedia('(min-width: 900px) and (min-height: 560px)').matches;
+        },
+
+        // The arrow of the header, and Esc on a wide screen. On a phone it is Back. On a wide screen the page on the right closes and the shop stands alone:
+        // not "back", which could show another page (one opened from the shop, then another from the page after it)
+        _closePage() {
+            const onRight = ['products-view', 'all-sales-view', 'stock-levels-view'].includes(this.state.currentView);
+            if (this._isSplit() && onRight && !this.state.productSelectionMode) this.navigateTo('home-view'); // (choosing a product for a sale does go back, to the scanner)
+            else if (this._isSplit() && !onRight) return; // (nothing is open on the right, or it is the scanner, which has its own Cancel)
+            else this._back();
         },
 
         // The pages that carry the offline banner (the others, like the scanner, do not)
@@ -4354,6 +4381,7 @@ document.addEventListener('DOMContentLoaded', () => {
         enterSelectionMode(element, sale) {
             this.state.isSelectionMode = true;
             document.querySelectorAll('.sale-item').forEach(el => el.classList.add('selectable'));
+            this.elements.receiptActions.classList.toggle('on-right', !element.closest('#home-view')); // (wide screens: the bar sits under the half the sale is in)
             this.elements.receiptActions.classList.add('visible');
             this.elements.selectionModeHint.textContent = 'Tap to select more items';
             this.toggleSaleSelection(element, sale);
