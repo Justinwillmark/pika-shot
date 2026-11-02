@@ -2544,6 +2544,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const date = new Date();
             this.elements.welcomeDate.textContent = date.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+            // The shop's place (a salesperson's is their admin's), at the other end of the date's line; nothing shows if there is none
+            const place = this.state.user ? String(this._shop().location || '').trim() : '';
+            const placeEl = document.getElementById('welcome-place');
+            if (placeEl) { placeEl.textContent = place; placeEl.hidden = !place; }
 
             const todaysSales = await DB.getSalesToday();
             const totalSales = todaysSales.reduce((sum, sale) => sum + sale.total, 0);
