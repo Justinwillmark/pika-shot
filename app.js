@@ -999,7 +999,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 try { localStorage.setItem('pika_verified_phone', JSON.stringify({ phone, at })); } catch (e) { /* fine */ }
             } // a PIN reset keeps its record until the new PIN is saved, so closing the app here loses nothing
             const status = document.getElementById('wa-status');
-            status.textContent = reset ? 'Confirmed. Opening new PIN…' : 'Confirmed. Opening Create Account…';
+            status.textContent = reset ? 'Confirmed. Opening new PIN…' : 'Confirmed. Opening Create account…';
             status.classList.add('ok');
             setTimeout(() => {
                 this._resetVerificationUI();
@@ -2503,7 +2503,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (this.state.productSelectionMode && viewId === 'products-view') {
                 title = 'Select a product';
             } else {
-                const titles = { 'home-view': 'My Shop', 'products-view': 'My Products', 'all-sales-view': 'All Sales', 'stock-levels-view': 'Customers & Salespeople' };
+                const titles = { 'home-view': 'My shop', 'products-view': 'My products', 'all-sales-view': 'All sales', 'stock-levels-view': 'Customers & salespeople' };
                 if (this.state.user && this.state.user.type === 'Salesperson' && viewId === 'stock-levels-view') {
                     title = 'Customers';
                 } else if (viewId === 'all-sales-view') {
@@ -2514,7 +2514,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     } else if (selectedOption) {
                         title = selectedOption.text;
                     } else {
-                        title = 'All Sales';
+                        title = 'All sales';
                     }
                 } else {
                     title = titles[viewId] || 'PikaShot';
@@ -2554,7 +2554,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.seeAllContainer.style.display = todaysSales.length > 6 ? 'block' : 'none';
             this.elements.selectionModeHint.style.display = todaysSales.length > 0 ? 'block' : 'none';
 
-            // Logic for "See last sales" button
+            // Logic for "See previous sales" button
             const allSales = await DB.getAllSales();
             const previousSalesExist = allSales.length > todaysSales.length;
 
@@ -2570,14 +2570,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 await this.renderSalesList(todaysSales, this.elements.recentSalesList, 6);
             }
 
-            // From the third sale, give the page the height of a six-sale day so it scrolls comfortably
-            const list = this.elements.recentSalesList;
-            if (todaysSales.length >= 3 && todaysSales.length < 6) {
-                const firstItem = list.querySelector('.sale-item');
-                const rowHeight = ((firstItem && firstItem.offsetHeight) || 64) + 10; // item + its bottom margin
-                list.style.minHeight = `${rowHeight * 6}px`;
-            } else {
-                list.style.minHeight = '';
+            // From the third sale, give the page the height of a six-sale day so it scrolls comfortably. The extra room goes below "See previous sales"
+            // (a spacer), not into the list: the button always sits right under the sales that are there, and the page is exactly as tall as it was.
+            const list = this.elements.recentSalesList, spacer = document.getElementById('sales-spacer');
+            list.style.minHeight = '';
+            if (spacer) {
+                spacer.style.height = '0px';
+                if (todaysSales.length >= 3 && todaysSales.length < 6) {
+                    const firstItem = list.querySelector('.sale-item');
+                    const rowHeight = ((firstItem && firstItem.offsetHeight) || 64) + 10; // item + its bottom margin
+                    spacer.style.height = `${Math.max(0, rowHeight * 6 - list.offsetHeight)}px`;
+                }
             }
         },
 
@@ -2667,7 +2670,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     discountMark = '<sup class="discount-mark">**</sup>';
                 }
 
-                saleEl.innerHTML = `<div class="sale-item-overlay">Previously Transferred</div><img src="${imageUrl}" alt="${this._esc(sale.productName)}"><div class="sale-info"><p>${this._esc(sale.productName)}</p><span>${this.formatNumber(sale.quantity)} x &#8358;${this.formatNumber(sale.price)}</span></div><p class="sale-price">${discountMark}&#8358;${this.formatNumber(sale.total)}</p>${this._saleEditExtrasHtml(sale)}`;
+                saleEl.innerHTML = `<div class="sale-item-overlay">Previously transferred</div><img src="${imageUrl}" alt="${this._esc(sale.productName)}"><div class="sale-info"><p>${this._esc(sale.productName)}</p><span>${this.formatNumber(sale.quantity)} x &#8358;${this.formatNumber(sale.price)}</span></div><p class="sale-price">${discountMark}&#8358;${this.formatNumber(sale.total)}</p>${this._saleEditExtrasHtml(sale)}`;
 
                 this.addSaleItemEventListeners(saleEl, sale);
                 this._appendSaleEl(targetElement, saleEl, sale);
@@ -2761,7 +2764,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         numberingHtml = `<span style="font-weight: bold; margin-right: 12px; color: var(--text-color); font-size: 1.1em; display: flex; align-items: center;">${index + 1}.</span>`;
                     }
 
-                    saleEl.innerHTML = `<div class="sale-item-overlay">Previously Transferred</div>${numberingHtml}<img src="${imageUrl}" alt="${this._esc(sale.productName)}"><div class="sale-info"><p>${this._esc(sale.productName)}</p><span>${this.formatNumber(sale.quantity)} x &#8358;${this.formatNumber(sale.price)}</span></div><p class="sale-price">${discountMark}&#8358;${this.formatNumber(sale.total)}</p>${this._saleEditExtrasHtml(sale)}`;
+                    saleEl.innerHTML = `<div class="sale-item-overlay">Previously transferred</div>${numberingHtml}<img src="${imageUrl}" alt="${this._esc(sale.productName)}"><div class="sale-info"><p>${this._esc(sale.productName)}</p><span>${this.formatNumber(sale.quantity)} x &#8358;${this.formatNumber(sale.price)}</span></div><p class="sale-price">${discountMark}&#8358;${this.formatNumber(sale.total)}</p>${this._saleEditExtrasHtml(sale)}`;
                     this.addSaleItemEventListeners(saleEl, sale);
                     this._appendSaleEl(groupContainer, saleEl, sale);
                 });
@@ -2954,7 +2957,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 let badgeHtml = '';
                 if (product.stock <= 0) {
-                    badgeHtml = '<div class="out-of-stock-badge">Out of Stock</div>';
+                    badgeHtml = '<div class="out-of-stock-badge">Out of stock</div>';
                 } else if (this._isSalesperson()) {
                     if (isLow(product)) badgeHtml = '<div class="restock-badge">Low stock!</div>';
                 } else if (product.isSalesperson) {
@@ -3267,7 +3270,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.state.cameraReady = true;
                 this.elements.addNewProductBtn.classList.remove('disabled');
                 this.elements.sellItemBtnMain.classList.remove('disabled');
-                this.elements.sellItemBtnText.textContent = 'Record Sale';
+                this.elements.sellItemBtnText.textContent = 'Record sale';
                 console.log("Barcode scanner ready.");
             } catch (error) {
                 console.error("Failed to initialize scanner:", error);
@@ -3534,7 +3537,7 @@ document.addEventListener('DOMContentLoaded', () => {
         handleConfirmPicture() {
             this.hideModal();
             const btn = this.elements.addChangePictureBtn;
-            const originalContent = '<span>Snap Image</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>';
+            const originalContent = '<span>Snap image</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>';
             btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
             btn.classList.add('success');
             setTimeout(() => {
@@ -3695,12 +3698,12 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.productForm.reset();
             this._hideUnitAsk();
             this._closeUnitMenu();
-            this.elements.productFormTitle.textContent = 'Add New Product';
+            this.elements.productFormTitle.textContent = 'Add new product';
             this.elements.deleteProductBtn.style.display = 'none';
             const picBtn = this.elements.addChangePictureBtn;
             picBtn.style.display = 'flex';
             picBtn.classList.remove('success');
-            picBtn.innerHTML = '<span>Snap Image</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>';
+            picBtn.innerHTML = '<span>Snap image</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>';
             this.elements.productIdInput.value = '';
             this.elements.productBarcodeDisplay.style.display = 'none';
             this.elements.productSourceInfo.style.display = 'none';
@@ -3853,11 +3856,11 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.productForm.reset();
             this._hideUnitAsk();
             this._closeUnitMenu();
-            this.elements.productFormTitle.textContent = 'Edit Product';
+            this.elements.productFormTitle.textContent = 'Edit product';
             this.elements.deleteProductBtn.style.display = 'flex';
             const picBtn = this.elements.addChangePictureBtn;
             picBtn.style.display = 'flex';
-            picBtn.innerHTML = '<span>Snap Image</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>';
+            picBtn.innerHTML = '<span>Snap image</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>';
 
             if (product.image) {
                 picBtn.classList.add('success');
@@ -3973,7 +3976,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.state.editingSale = null;
             this.state.sellingProduct = product;
             this.state.saleKey = this._newId(); // this box makes ONE sale: every tap on Confirm is that same sale
-            this.elements.saleModalTitle.textContent = 'Confirm Sale';
+            this.elements.saleModalTitle.textContent = 'Confirm sale';
             this.elements.saleProductImage.src = product.image ? URL.createObjectURL(product.image) : (this._safeImageUrl(product.thumb) || 'icons/icon-192.png');
             this.elements.saleProductName.textContent = product.name;
             this.elements.saleProductStock.textContent = `Stock: ${this.formatNumber(product.stock)} ${product.unit} left`;
@@ -4033,7 +4036,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             let discount = 0;
             let partPayment = null;
-            let customerName = 'Walk-in Customer';
+            let customerName = 'Walk-in customer';
             const activeRadio = Array.from(this.elements.saleTypeRadios).find(r => r.checked);
             
             if (activeRadio && activeRadio.value === 'discount') {
@@ -4436,7 +4439,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.exitSelectionMode();
             this.handleProductFound(product); // opens the confirm sale modal with defaults
             this.state.editingSale = sale;
-            this.elements.saleModalTitle.textContent = 'Edit Sale';
+            this.elements.saleModalTitle.textContent = 'Edit sale';
 
             // Pre-fill the modal with this sale's details
             this.elements.saleProductStock.textContent = `Stock: ${this.formatNumber(product.stock + sale.quantity)} ${product.unit} left`;
@@ -4479,7 +4482,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 subtotal += gross;
                 discountTotal += discount;
                 paidTotal += paid;
-                if (sale.customerName && sale.customerName !== 'Walk-in Customer') customers.add(sale.customerName);
+                if (sale.customerName && String(sale.customerName).toLowerCase() !== 'walk-in customer') customers.add(sale.customerName);
 
                 const subs = [];
                 if (discount > 0) {
@@ -4718,7 +4721,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 try {
                     await navigator.share({
                         files: [new File([blob], 'pikashot-receipt.png', { type: 'image/png' })],
-                        title: 'Your Receipt',
+                        title: 'Your receipt',
                         text: 'Here is your receipt from ' + this._shop().name,
                     });
                     this._nudgeAct('receipt');
