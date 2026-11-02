@@ -4097,6 +4097,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const editing = this.state.editingSale;
+            if (editing && !this._isMySale(editing)) { say(`Only ${editing.recordedByName ? String(editing.recordedByName).split(' ')[0] : 'the person who recorded it'} can edit this sale.`, 'Cannot edit'); return false; } // (the Edit button is never shown for it: this only guards a box left open from before)
             // When editing, the original sale's quantity goes back into stock before the new quantity is taken out
             const availableStock = product ? product.stock + (editing ? editing.quantity : 0) : 0;
             const unitPrice = editing ? editing.price : (product ? product.price : 0);
@@ -4430,14 +4431,28 @@ document.addEventListener('DOMContentLoaded', () => {
         // A product that was just edited shows the same receding line, over a longer stretch
         PRODUCT_EDIT_MARK_MS: 45 * 60 * 1000,
 
-        isSaleEditable(sale) {
+        // A sale is its recorder's own: a sale a salesperson recorded carries their phone (`recordedBy`); the business's own sales carry none.
+        // So an admin can see a salesperson's sales (and send them, and confirm their money) but never edit them, and a salesperson edits only theirs.
+        _isMySale(sale) {
+            const me = this.state.user && this.state.user.phone;
+            if (!sale || !me) return false;
+            return this._isSalesperson() ? sale.recordedBy === me : (!sale.recordedBy || sale.recordedBy === me); // (a salesperson's own carry their phone; the business's carry none)
+        },
+
+        // A sale that is still new enough, and untouched, to be edited by whoever recorded it: its receding line shows for everyone who sees it (it tells how recent it is)
+        _inEditWindow(sale) {
             if (!sale || sale.edited || sale.sharedAsLog || sale.pendingTransfer || sale.moneyConfirmed) return false;
             const age = Date.now() - new Date(sale.timestamp).getTime();
             return age >= 0 && age < this.EDIT_WINDOW_MS;
         },
 
+        // ...but only the one who recorded it can edit it
+        isSaleEditable(sale) {
+            return this._isMySale(sale) && this._inEditWindow(sale);
+        },
+
         _saleEditExtrasHtml(sale) {
-            if (!this.isSaleEditable(sale)) return '';
+            if (!this._inEditWindow(sale)) return '';
             const startMs = new Date(sale.timestamp).getTime();
             const elapsed = Date.now() - startMs;
             return `<div class="sale-edit-timer" data-expires="${startMs + this.EDIT_WINDOW_MS}" style="animation-duration: ${this.EDIT_WINDOW_MS / 1000}s; animation-delay: -${(elapsed / 1000).toFixed(2)}s"></div>`;
