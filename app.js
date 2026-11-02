@@ -696,7 +696,7 @@ document.addEventListener('DOMContentLoaded', () => {
             ];
             fieldsToFormat.forEach(input => {
                 input.addEventListener('input', (e) => {
-                    const originalValue = this.unformatNumber(e.target.value);
+                    const originalValue = Math.abs(this.unformatNumber(e.target.value)); // (an amount is never below 0: a minus sign typed on a keyboard is dropped)
                     const formattedValue = this.formatNumber(originalValue);
                     if (e.target.value !== formattedValue) {
                         e.target.value = formattedValue;
@@ -2661,7 +2661,7 @@ document.addEventListener('DOMContentLoaded', () => {
             let right = null;
             if (sale.edited) right = { text: 'Edited', cls: 'edited' };
             else if (sale.saleType === 'credit') right = { text: 'Credit', cls: 'credit' };
-            else if (sale.saleType === 'discount' || sale.discount > 0) right = { text: 'Discounted', cls: 'discounted' };
+            else if (Number(sale.discount) > 0) right = { text: 'Discounted', cls: 'discounted' }; // (a sale saved as "discount" with no amount was an ordinary sale)
             const left = sale.sharedAsLog ? { text: 'Transferred', cls: 'transferred' } : null;
             return { right, left };
         },
@@ -3800,7 +3800,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const form = this.elements;
             if (!productData.name) { await this._needs(form.productNameInput, 'Add the product name.', 'Check your entry'); return; }
-            if (form.productPriceInput.value.trim() === '' || isNaN(productData.price)) { await this._needs(form.productPriceInput, 'Add the price.', 'Check your entry'); return; }
+            if (!(productData.price > 0)) { await this._needs(form.productPriceInput, 'Add the price. It must be more than 0.', 'Check your entry'); return; } // (an empty box, a 0 or letters all count as no price)
             if (form.productStockInput.value.trim() === '' || isNaN(productData.stock)) { await this._needs(form.productStockInput, 'Add how many are in stock.', 'Check your entry'); return; }
 
             if (!productData.image) {
@@ -4037,24 +4037,35 @@ document.addEventListener('DOMContentLoaded', () => {
                 discount = this.unformatNumber(this.elements.discountAmountInput.value) || 0;
             }
 
+            // A discount can never be more than the total, and a credit part payment never more than the total (the box shakes and holds the most it can be).
+            // Not while the quantity box is empty (the total is 0 only for a moment while they type the new number): what they typed must stay.
+            const paidInput = this.elements.discountAmountInput;
+            const shakeAmount = () => {
+                const wrap = this.elements.discountInputWrapper;
+                wrap.classList.remove('input-error-shake');
+                void wrap.offsetWidth; // lets the shake play again if it was just playing
+                wrap.classList.add('input-error-shake');
+                setTimeout(() => wrap.classList.remove('input-error-shake'), 500);
+            };
+            if (discount > subtotal && quantity > 0) {
+                discount = Math.round(subtotal);
+                paidInput.value = this.formatNumber(discount);
+                shakeAmount();
+            }
+
             const total = Math.max(0, Math.round(subtotal - discount));
             this.elements.saleTotalPrice.textContent = `₦${this.formatNumber(total)}`;
 
-            // Credit: a part payment can never be more than the total, and what is left to pay shows as they type
+            // Credit: what is left to pay shows as they type
             const owing = this.elements.amountOwing;
-            const paidInput = this.elements.discountAmountInput;
             if (activeRadio && activeRadio.value === 'credit' && paidInput.value.trim() !== '') {
                 let paid = this.unformatNumber(paidInput.value) || 0;
-                if (paid > total) {
+                if (paid > total && quantity > 0) {
                     paid = total;
                     paidInput.value = this.formatNumber(total);
-                    const wrap = this.elements.discountInputWrapper;
-                    wrap.classList.remove('input-error-shake');
-                    void wrap.offsetWidth; // lets the shake play again if it was just playing
-                    wrap.classList.add('input-error-shake');
-                    setTimeout(() => wrap.classList.remove('input-error-shake'), 500);
+                    shakeAmount();
                 }
-                owing.innerHTML = `Owing: <strong>₦${this.formatNumber(total - paid)}</strong>`;
+                owing.innerHTML = `Owing: <strong>₦${this.formatNumber(Math.max(0, total - paid))}</strong>`;
                 owing.style.display = 'block';
             } else {
                 owing.style.display = 'none';
@@ -4093,7 +4104,17 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!product) { say('This product is no longer available.', 'Not available'); return false; }
             if (quantity <= 0) { await this._needs(this.elements.saleQuantityInput, 'Enter how many you are selling.', 'Check your entry'); return false; }
             if (quantity > availableStock) { await this._needs(this.elements.saleQuantityInput, `Only ${this.formatNumber(availableStock)} ${product.unit} left in stock.`, 'Not enough stock'); return false; }
-            if (partPayment !== null && partPayment > Math.round(quantity * unitPrice)) { await this._needs(this.elements.discountAmountInput, 'The part payment cannot be more than the total.', 'Check the amount'); return false; }
+            // A sale is only what it says it is: the price must be there, a discount sale needs a discount, a credit sale needs something still owing
+            const gross = Math.round(quantity * unitPrice);
+            if (!(unitPrice > 0)) { say('This product has no price yet, so it cannot be sold. Add its price in My products first.', 'No price'); return false; }
+            if (activeRadio && activeRadio.value === 'discount') {
+                if (!(discount > 0)) { await this._needs(this.elements.discountAmountInput, 'Enter how much to take off. For no discount, slide the switch to the middle.', 'Discount needed'); return false; }
+                if (discount > gross) { await this._needs(this.elements.discountAmountInput, 'The discount cannot be more than the total.', 'Check the amount'); return false; }
+            }
+            if (partPayment !== null) {
+                if (!(partPayment >= 0) || partPayment > gross) { await this._needs(this.elements.discountAmountInput, 'The part payment cannot be more than the total.', 'Check the amount'); return false; }
+                if (partPayment === gross) { await this._needs(this.elements.discountAmountInput, 'They paid everything, so nothing is owing. For a normal sale, slide the switch to the middle. Or enter a smaller part payment.', 'Check the amount'); return false; }
+            }
 
             let total = Math.max(0, Math.round((quantity * unitPrice) - discount));
             if (activeRadio && activeRadio.value === 'credit') {
@@ -4476,7 +4497,8 @@ document.addEventListener('DOMContentLoaded', () => {
             // Pre-fill the modal with this sale's details
             this.elements.saleProductStock.textContent = `Stock: ${this.formatNumber(product.stock + sale.quantity)} ${product.unit} left`;
             this.elements.saleQuantityInput.value = this.formatNumber(sale.quantity);
-            const typeRadio = Array.from(this.elements.saleTypeRadios).find(r => r.value === (sale.saleType || 'default')) ||
+            const wasType = (sale.saleType === 'discount' && !(Number(sale.discount) > 0)) ? 'default' : (sale.saleType || 'default'); // (a "discount" sale saved with no amount was an ordinary sale)
+            const typeRadio = Array.from(this.elements.saleTypeRadios).find(r => r.value === wasType) ||
                 Array.from(this.elements.saleTypeRadios).find(r => r.value === 'default');
             typeRadio.checked = true;
             typeRadio.dispatchEvent(new Event('change')); // resets the discount / part-payment fields
