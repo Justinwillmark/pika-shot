@@ -2426,6 +2426,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (byApp) this._backPending--;
             try {
                 const landed = event.state || {};
+                const update = document.getElementById('update-layer');
+                if (!byApp && update && update.style.display !== 'none') { this._restoreStep(); return; } // the update pop-up is only closed by its Okay: Back changes nothing
                 if (!byApp && this._closeDialog) { const close = this._closeDialog; this._restoreStep(); close(false); return; } // Back with a pop-up open closes the pop-up; nothing else moves
                 if (!byApp && this._modalLive) { this._backClosesModal(landed); return; } // Back with a modal open closes the modal
                 if (this._modalStale) { this._modalStale = false; this._rawBack(); return; } // the closed modal's step: on to the one before
@@ -4122,7 +4124,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         ...this._settlementFields([sale])
                     }]
                 };
-                await this._attachItemImages(logData.items, [sale], [product]);
+                this._creditSending = (this._creditSending || 0) + 1; // (a reload now would lose the copy: an update waits for this)
+                try { await this._attachItemImages(logData.items, [sale], [product]); } finally { this._creditSending--; }
                 await window.fb.setDoc(window.fb.doc(window.fb.db, 'shared_logs', sale.pendingTransfer.logId), logData);
                 this._nudgeAct('transfer');
             } catch (error) {
@@ -6227,12 +6230,13 @@ document.addEventListener('DOMContentLoaded', () => {
         },
         // --- Updates: a new version reaches people by itself (nobody should ever have to clear their browsing data) ---
         // The new service worker takes over as soon as it is ready (see serviceworker.js). The screen is still running the old code at that moment,
-        // so the app reloads itself, but only when nothing is going on. An installed app can stay open for days, so it also looks for a new version
-        // whenever it comes back to the front and every 30 minutes.
+        // so a pop-up says an update is ready, but only when nothing is going on (never over a sale, a form or the scanner). Its one button, Okay,
+        // loads the new version. An installed app can stay open for days, so it also looks for a new version whenever it comes back to the front
+        // and every 30 minutes.
         registerServiceWorker() {
             if (!('serviceWorker' in navigator)) return;
             const hadController = !!navigator.serviceWorker.controller; // false on the first visit: there is no older version to replace
-            navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController && !this._updatePending && !this._updateDone) this._updateReady(); });
+            navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController && !this._updatePending) this._updateReady(); });
             const register = () => navigator.serviceWorker.register('/serviceworker.js').then((reg) => {
                 this._swReg = reg;
                 this._checkForUpdate();
@@ -6243,40 +6247,74 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (this._updatePending) this._updateTries();
             });
             setInterval(() => this._checkForUpdate(), 30 * 60000);
-            try { // the page that loads right after an update says so once
-                if (sessionStorage.getItem('pika_updated')) { sessionStorage.removeItem('pika_updated'); setTimeout(() => this.showToast('PikaShot is updated to the latest version.'), 1500); }
-            } catch (e) { /* no message */ }
+            // If the phone's database is upgraded by a newer copy of the app in another window, this copy lets go of it (or the upgrade would hang) and has to load the new version
+            DB.onVersionChange = () => this._updateReady(true);
+            DB.onBlocked = () => this.showToast('Close any other PikaShot window to finish updating.');
         },
         _checkForUpdate() { if (this._swReg && navigator.onLine) this._swReg.update().catch(() => { /* offline or busy: it looks again later */ }); },
-        _updateReady() {
+        // A new version is in charge. `urgent`: this copy can no longer work (its database was taken over), so there is no waiting for a quiet moment.
+        _updateReady(urgent) {
             this._updatePending = true;
-            this._updateTries();
+            this._updateTries(urgent);
         },
-        // The new version is in charge: load it at the first moment nothing is going on (looked at again every 10 seconds)
-        _updateTries() {
+        // Says so at the first moment nothing is going on (looked at again every 10 seconds)
+        _updateTries(urgent) {
             clearTimeout(this._updateTimer);
-            if (!this._updatePending || this._updateDone) return;
-            if (this._quietNow()) {
-                let recent = false; // (a way out of any reload loop: not twice within a minute)
-                try { recent = Date.now() - Number(sessionStorage.getItem('pika_updated_at') || 0) < 60000; } catch (e) { /* no guard */ }
-                if (!recent) {
-                    this._updateDone = true;
-                    try { sessionStorage.setItem('pika_updated', '1'); sessionStorage.setItem('pika_updated_at', String(Date.now())); } catch (e) { /* no message */ }
-                    location.reload();
-                    return;
-                }
-            }
+            if (!this._updatePending || this._updateAsked) return;
+            let recent = false; // (a way out of any loop: once an update was started, it is not offered again for a minute)
+            try { recent = Date.now() - Number(sessionStorage.getItem('pika_updated_at') || 0) < 60000; } catch (e) { /* no guard */ }
+            if (urgent || (!recent && this._quietNow())) { this._showUpdateNotice(); return; }
             this._updateTimer = setTimeout(() => this._updateTries(), 10000);
         },
-        // Nothing half-finished on the screen: no box or message open, nothing being typed, no scanner, nothing being saved, no sales picked, not signing up or in
+        // The pop-up: one button. Nothing else closes it (not a tap beside it, not Escape, not the Back button): the old screen must not carry on beside the new files.
+        _showUpdateNotice() {
+            const layer = document.getElementById('update-layer'), ok = document.getElementById('update-ok');
+            if (!layer || !ok) { this._applyUpdate(); return; }
+            this._updateAsked = true;
+            clearTimeout(this._updateTimer);
+            if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); // puts the keyboard away
+            ok.disabled = false;
+            ok.textContent = 'Okay';
+            layer.style.display = 'flex';
+            ok.onclick = () => this._applyUpdate();
+            layer.onclick = (e) => e.stopPropagation();
+            if (!this._updateKeys) {
+                this._updateKeys = (e) => { // Escape does nothing; Tab stays on the one button
+                    if (layer.style.display === 'none') return;
+                    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); }
+                    else if (e.key === 'Tab') { e.preventDefault(); ok.focus({ preventScroll: true }); }
+                };
+                document.addEventListener('keydown', this._updateKeys, true);
+            }
+            ok.focus({ preventScroll: true });
+        },
+        // Okay: whatever is only in memory is sent first (scan counts are sent in batches), and what is still on its way to the cloud gets a moment to
+        // arrive (anything that has not arrived stays saved on the phone and goes later), then the new version loads
+        async _applyUpdate() {
+            if (this._updateApplying) return;
+            this._updateApplying = true;
+            const ok = document.getElementById('update-ok');
+            if (ok) { ok.disabled = true; ok.textContent = 'Updating…'; }
+            const within = (job, ms) => Promise.race([Promise.resolve().then(job), new Promise(r => setTimeout(r, ms))]).catch(() => { /* it only helps */ });
+            await within(() => this._flushScans(), 1500);
+            await within(() => (window.fb && window.fb.waitForPendingWrites) ? window.fb.waitForPendingWrites(window.fb.db) : null, 3000);
+            try { sessionStorage.setItem('pika_updated_at', String(Date.now())); } catch (e) { /* no guard */ }
+            location.reload();
+            setTimeout(() => { // (if the reload did not happen, the button works again)
+                this._updateApplying = false;
+                if (ok) { ok.disabled = false; ok.textContent = 'Okay'; }
+            }, 8000);
+        },
+        // Nothing half-finished on the screen: no box or message open, nothing being typed, no scanner, nothing being saved or sent, no sales picked, not signing up or in
         _quietNow() {
             const shown = (id) => { const el = document.getElementById(id); return !!el && el.style.display !== 'none' && el.style.display !== ''; };
             if (!this.state.user) return false;
             if (shown('modal-container') || shown('dialog-layer') || shown('celebration-overlay')) return false;
             if (this.elements.loader.style.display !== 'none') return false;
             if (this.state.currentView === 'camera-view' || /^onboarding/.test(this.state.currentView || '')) return false;
-            if (this.state.isSelectionMode || (this.state.selectedSales && this.state.selectedSales.size)) return false;
-            if (Object.values(this._busy || {}).some(Boolean) || this._confirmingSale) return false;
+            if (this.state.isSelectionMode || this.state.productSelectionMode || (this.state.selectedSales && this.state.selectedSales.size)) return false;
+            if (Object.values(this._busy || {}).some(Boolean) || this._confirmingSale || this._receiptBusy) return false;
+            if (this._creditSending) return false; // a credit sale's copy for the customer is being put together (once it is handed to the phone's own queue it is safe)
             const typing = document.activeElement;
             if (typing && /^(INPUT|TEXTAREA|SELECT)$/.test(typing.tagName)) return false;
             return true;

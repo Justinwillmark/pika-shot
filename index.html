@@ -41,6 +41,16 @@
             </div>
         </div>
     </div>
+    <!-- Shown when a new version of the app is ready (see "Updates" in app.js). It can only be closed with Okay, which loads the new version -->
+    <div id="update-layer" class="dialog-layer update-layer" style="display:none;">
+        <div class="modal-content dialog-card" role="alertdialog" aria-modal="true" aria-labelledby="update-title" aria-describedby="update-text">
+            <h2 id="update-title">PikaShot update</h2>
+            <p id="update-text">A new version is ready with the latest fixes and features. Tap Okay to update.</p>
+            <div class="modal-actions">
+                <button type="button" id="update-ok" class="btn btn-primary">Okay</button>
+            </div>
+        </div>
+    </div>
     <div id="toast" class="toast"></div>
     <div id="celebration-overlay" class="celebration-overlay" style="display: none;" role="dialog" aria-modal="true"></div>
 

@@ -5,6 +5,9 @@ import {
     getFirestore, enableMultiTabIndexedDbPersistence, collection, doc, getDoc, getDocFromServer, setDoc, getDocs, serverTimestamp, updateDoc,
     onSnapshot, query, addDoc, deleteDoc, writeBatch, where, runTransaction, deleteField, increment, arrayUnion, Timestamp
 } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore.js";
+// Taken by name from the whole module, not imported by name: if this version of the library did not have it, a named import would stop the whole app from
+// starting, while this is simply empty and the app skips the one wait that uses it (before an update, to let saved changes reach the cloud)
+import * as firestoreModule from "https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyBKu623PDECcc1gYVe4xof6AVUxDlW7B_A",
@@ -54,5 +57,6 @@ window.fb = {
     deleteField,
     increment,
     arrayUnion,
-    Timestamp
+    Timestamp,
+    waitForPendingWrites: firestoreModule.waitForPendingWrites
 };

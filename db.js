@@ -30,8 +30,16 @@ const DB = {
                 reject("Database error");
             };
 
+            // A newer copy of the app (another window, after an update) is upgrading this database: it waits until every older copy lets go.
+            // This copy lets go at once and says so (the app then asks for the update), so the upgrade can never hang.
+            request.onblocked = () => { console.warn('The database upgrade is waiting for another PikaShot window to close.'); if (this.onBlocked) this.onBlocked(); };
+
             request.onsuccess = (event) => {
                 this.db = event.target.result;
+                this.db.onversionchange = () => {
+                    try { this.db.close(); } catch (e) { /* already closed */ }
+                    if (this.onVersionChange) this.onVersionChange();
+                };
                 // Try to load user to get phone number for cloud sync
                 this.getUser().then(user => this.setIdentity(user));
                 resolve();
