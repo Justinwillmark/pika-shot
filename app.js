@@ -5081,7 +5081,7 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         // A customer who is not on PikaShot yet: WhatsApp opens on their number with the invite already written
-        INVITE_TEXT: 'Track daily sales, manage inventory and customers easily, for free. Use PikaShot today: https://pika-shot.netlify.app',
+        INVITE_TEXT: 'Track your daily sales, manage inventory and customers easily, for free airtime. Use PikaShot today: https://pika-shot.netlify.app',
         _inviteOnWhatsApp() {
             const phone = this._localPhone(this.elements.transferPhoneInput.value);
             const who = phone.length === 11 ? '234' + phone.slice(1) : ''; // international form, no "+" and no leading 0
