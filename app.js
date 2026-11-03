@@ -2548,7 +2548,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (viewId === 'home-view') {
                 this.elements.menuBtn.style.display = 'block';
                 this.elements.backArrowBtn.style.display = 'none';
-                if (this._chimeWaiting) { const loud = this._chimeWaiting === 'loud'; this._chimeWaiting = false; setTimeout(() => this._nudgeChime(loud), 600); } // a message came while scanning: now it can be heard (if it still fits the limits)
+                if (this._chimeWaiting) { const kind = this._chimeWaiting; this._chimeWaiting = false; setTimeout(() => this._nudgeChime(kind), 600); } // a message came while scanning: now it can be heard (if it still fits the limits)
             } else {
                 this.elements.menuBtn.style.display = 'none';
                 this.elements.backArrowBtn.style.display = 'block';
@@ -6780,28 +6780,48 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         // A new message has arrived by itself: the menu button gets its dot and ripple, and a soft double beep plays:
-        // a clear one for messages worth stopping for (`loud`), a very quiet one for all the others
-        _nudgeAlert(loud) {
+        // a clear one for messages worth stopping for ('loud'), a very quiet one for all the others ('quiet'),
+        // and the clear one for every 4th of the others that comes up in Pidgin ('pidgin'; the 3 in between get the quiet one)
+        _nudgeAlert(kind) {
             this._nudgeShake();
-            this._nudgeChime(!!loud);
+            if (kind === 'pidgin') {
+                const rec = this._chimeLoad();
+                if (rec.pg !== undefined && rec.pg < 3) { rec.pg++; this._chimeSave(rec); kind = 'quiet'; } // (counted when it arrives, scanner or not; 0 again once a Pidgin beep plays)
+            }
+            this._nudgeChime(kind === true ? 'loud' : kind || 'quiet');
         },
 
-        // Two kinds of double beep, both kept within limits so they never become a nuisance. It waits until the person is out of the scanner,
+        _chimeLoad() {
+            let rec = {};
+            try { rec = JSON.parse(localStorage.getItem(`pika_chime_${this.state.user.phone}`)) || {}; } catch (e) { rec = {}; }
+            const today = PikaNudges.todayIndex();
+            if (rec.day !== today) rec = { day: today, n: 0, q: 0, p: 0, at: rec.at || 0, last: rec.last || rec.at || 0, pg: rec.pg }; // (the Pidgin count carries over from one day to the next)
+            return rec;
+        },
+        _chimeSave(rec) {
+            try { localStorage.setItem(`pika_chime_${this.state.user.phone}`, JSON.stringify(rec)); } catch (e) { /* the limits just start again */ }
+        },
+
+        // Three kinds of double beep, all kept within limits so they never become a nuisance. It waits until the person is out of the scanner,
         // and a beep that did not play (see below) is not counted.
         //   important (money owed, stock, a win): louder, at most 4 a day, at least 15 minutes after the last important one
+        //   Pidgin (every 4th): the same clear sound, at most 4 a day, at least 10 minutes after the last beep of any kind; it never uses up or holds back an important one
         //   all the others: very quiet, at most 6 a day, at least 10 minutes after the last beep of any kind
-        _nudgeChime(loud) {
+        _nudgeChime(kind) {
             if (!this.state.user) return;
-            if (this.state.currentView === 'camera-view') { if (loud || !this._chimeWaiting) this._chimeWaiting = loud ? 'loud' : 'quiet'; return; } // not over the scanner's own beeps: it plays once they are back home
-            const key = `pika_chime_${this.state.user.phone}`, today = PikaNudges.todayIndex(), now = Date.now();
-            let rec = {};
-            try { rec = JSON.parse(localStorage.getItem(key)) || {}; } catch (e) { rec = {}; }
-            if (rec.day !== today) rec = { day: today, n: 0, q: 0, at: rec.at || 0, last: rec.last || rec.at || 0 };
-            if (loud ? (rec.n || 0) >= 4 || now - (rec.at || 0) < 15 * 60000 : (rec.q || 0) >= 6 || now - (rec.last || rec.at || 0) < 10 * 60000) return;
-            if (!this._playNudgeChime(loud)) return;
-            if (loud) { rec.n = (rec.n || 0) + 1; rec.at = now; } else rec.q = (rec.q || 0) + 1;
+            const rank = { quiet: 1, pidgin: 2, loud: 3 };
+            if (this.state.currentView === 'camera-view') { if ((rank[kind] || 1) > (rank[this._chimeWaiting] || 0)) this._chimeWaiting = kind; return; } // not over the scanner's own beeps: it plays once they are back home (the most important one waiting)
+            const rec = this._chimeLoad(), now = Date.now();
+            const sinceAny = now - (rec.last || rec.at || 0);
+            if (kind === 'loud' ? (rec.n || 0) >= 4 || now - (rec.at || 0) < 15 * 60000
+                : kind === 'pidgin' ? (rec.p || 0) >= 4 || sinceAny < 10 * 60000
+                : (rec.q || 0) >= 6 || sinceAny < 10 * 60000) return; // (a Pidgin one held back stays due: the next Pidgin message tries again)
+            if (!this._playNudgeChime(kind !== 'quiet')) return;
+            if (kind === 'loud') { rec.n = (rec.n || 0) + 1; rec.at = now; }
+            else if (kind === 'pidgin') { rec.p = (rec.p || 0) + 1; rec.pg = 0; }
+            else rec.q = (rec.q || 0) + 1;
             rec.last = now;
-            try { localStorage.setItem(key, JSON.stringify(rec)); } catch (e) { /* the limits just start again */ }
+            this._chimeSave(rec);
         },
 
         // Warm, calm and a little excited: two soft notes going up (D5 then A5), each with a quiet octave above for sparkle.
@@ -6920,19 +6940,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!this.state.user || !window.PikaNudges) return;
                 const state = this._nudgeLoad();
                 PikaNudges.act(state, kind, new Date());
-                let arrived = false, loud = false;
+                let arrived = false, beep = 'quiet';
                 if (kind === 'sale' && !state.welcomed) { // the very first sale gets a welcome, straight away
                     const total = await DB.countSales();
-                    if (total === 1) { PikaNudges.welcome(state, null); arrived = true; loud = true; }
+                    if (total === 1) { PikaNudges.welcome(state, null); arrived = true; beep = 'loud'; }
                     else if (total > 1) state.welcomed = true; // an account that was selling long before this existed
                 }
                 if (!arrived && state.actions >= PikaNudges.EVERY) { // the 5th action: the next message comes up now
-                    loud = !!PikaNudges.show(state, await this._nudgeContext(state)).chime;
+                    const view = PikaNudges.show(state, await this._nudgeContext(state));
+                    beep = view.chime ? 'loud' : view.pidgin ? 'pidgin' : 'quiet';
                     arrived = true;
                 }
                 if (arrived) state.freshAt = Date.now();
                 this._nudgeSave(state);
-                if (arrived) this._nudgeAlert(loud);
+                if (arrived) this._nudgeAlert(beep);
             });
         },
 
@@ -6946,7 +6967,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const arrived = PikaNudges.onOpen(state, ctx);
                 if (arrived) state.freshAt = Date.now();
                 this._nudgeSave(state);
-                if (arrived) this._nudgeAlert(PikaNudges.chimes(state.id)); else this._nudgeShake();
+                if (arrived) this._nudgeAlert(PikaNudges.chimes(state.id) ? 'loud' : state.pidgin ? 'pidgin' : 'quiet'); else this._nudgeShake();
             });
         },
 

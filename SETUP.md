@@ -3,7 +3,7 @@
 ## Publishing
 - Quick way (as before): publish the project folder as it is.
 - Faster, harder-to-copy way: `npm install` once, then `npm run deploy`. It shrinks and scrambles the scripts into `dist/` and publishes that.
-- Every release: change `CACHE_NAME` in `serviceworker.js` (v65 -> v66 ...) so phones fetch the new files. (`npm run build` / `npm run deploy` stamp a version of their own on the published copy, a short code that changes whenever any file changes, so with those the number can never be forgotten.)
+- Every release: change `CACHE_NAME` in `serviceworker.js` (v68 -> v69 ...) so phones fetch the new files. (`npm run build` / `npm run deploy` stamp a version of their own on the published copy, a short code that changes whenever any file changes, so with those the number can never be forgotten.)
 - How a new version reaches phones by itself: see "New versions reach phones by themselves" below.
 
 ## New versions reach phones by themselves
@@ -92,14 +92,17 @@ clearing browsing data or switching phones the picture comes back from the thumb
 
 ## Profile messages (`nudges.js`)
 - The one message in the Profile card comes from `nudges.js`. All the words, and when each one applies, are in the `CATALOG` list at the top of that file.
-- Three kinds take turns, never the same kind twice in a row: free airtime, business insights, motivation (light Pidgin is only used in motivation).
+- Three kinds take turns, never the same kind twice in a row: free airtime, business insights, motivation. Motivation is mostly in Pidgin; most airtime, insight and welcome-back messages have a Pidgin twin next to the English one (`pick1` in `CATALOG`): one of the two is picked each time, and the words stay the same until the message changes.
 - It changes after every 5 actions (sales, scans, transfers, receipts shared or printed, in any mix). Each person gets their own shuffled order.
 - Keep each message to 8 words or fewer with one emoji, in plain words.
 - When a new message arrives by itself (the 5th action, a welcome, or a nudge on app open) the menu (hamburger) button gets a warm dot and its three lines ripple for 30 seconds.
   The dot stays until the Profile is opened.
 - A soft double beep goes with it, in two strengths (`_playNudgeChime` in `app.js`; the numbers are in one place if you want them louder or quieter):
-  - **Important** messages beep clearly: money owed, stock running out or customers short, "Need money for stock", a win (a record day, a customer paying back) and the welcome
-    (`chime: true` in `CATALOG`, about 1 message in 5; the receipt of an accepted transfer is one too). At most 4 a day, at least 15 minutes after the last important one.
+  - **Important** messages beep clearly: money owed, stock running out or customers short, "Need money for stock", a win (a record day, a customer paying back), the welcome and every free airtime message
+    (`chime: true` in `CATALOG`, about 1 message in 2; the receipt of an accepted transfer is one too). At most 4 a day, at least 15 minutes after the last important one.
+  - **Pidgin** messages that are not important get the clear beep too, but only every 4th one (the 1st, 5th, 9th... Pidgin message; the 3 in between get the soft beep).
+    At most 4 a day, at least 10 minutes after the last beep of any kind. They have their own count, so they never use up or hold back an important beep.
+    `show()` in `nudges.js` says whether the words shown are Pidgin (`pidgin`); the count of Pidgin messages since the last Pidgin beep is `pg` in `pika_chime_<phone>` (`_nudgeAlert` in `app.js`).
   - **All the other** messages (tips, encouragement) beep about 5 times softer (14 dB down). At most 6 a day, at least 10 minutes after the last beep of any kind, so a quiet one never follows an important one closely.
   - An important beep is never held back by quiet ones. Both wait until the person is out of the scanner (so they never sit on top of scan beeps; if both kinds are waiting, the important one plays),
     and neither plays, nor is counted, if the phone has not been touched since the app opened (browsers do not allow sound before a tap).
@@ -107,7 +110,7 @@ clearing browsing data or switching phones the picture comes back from the thumb
   a credit reminder (below) when the app opens, and the receipt of a transfer that was just accepted (4 seconds after it, then 3 more times that day: see Accepted transfers).
 
 **Things people can act on** (they go first, but never two insights in a row, and not while someone is serving customers: 4 or more sales in the last half hour)
-- A customer owes on credit: after 3 days unpaid, "{name} owes {amount} since {day}", then again every 3 days until "Fully repaid?" is pressed (each customer has their own 3 days, the biggest debt first, never late at night).
+- A customer owes on credit: after 3 days unpaid, "{name} owes {amount} since {day}" (or "{name} still dey owe {amount}. Remind am."), then again every 3 days until "Fully repaid?" is pressed (each customer has their own 3 days, the biggest debt first, never late at night).
   A tap opens Customers at that credit card. When the app opens and a reminder is due, it is said then (once a day).
 - "You're running low on {product}" (best seller first, each product at most every 2 days), and "{product} is out of stock. Restock soon" (only for products that sold in the last 30 days). A tap opens My products on the Low stock or Out of stock tab, at that product.
 - Wholesalers and their salespeople: "{customer} is low on / out of {product}" (nothing left first, each customer at most every 3 days), and "{n} customers need stock" when 3 or more are low. A tap opens Customers at that customer. (A salesperson hears only about their own customers: see Salespeople and customers.)
