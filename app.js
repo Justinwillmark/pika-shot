@@ -1491,7 +1491,7 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('sp-code-error').textContent = '';
             document.getElementById('sp-code-btn').disabled = true;
             const words = document.getElementById('sp-waiting-text');
-            if (words && this.state.user) words.textContent = `Give your admin your number, ${this.state.user.phone}, to add as salesperson, then give you a 4-digit code to type here.`;
+            if (words && this.state.user) words.textContent = `Ask your admin to add your number (${this.state.user.phone}) as a salesperson for their store. Then enter the 4-digit code they give you here.`;
             this.showModal('sp-waiting-modal');
             setTimeout(() => input.focus(), 150);
         },
