@@ -1574,7 +1574,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const me = this.state.user;
             const userSnap = await window.fb.getDoc(window.fb.doc(window.fb.db, 'users', phone));
             const found = userSnap.exists() ? userSnap.data() : null;
-            if (!found || found.type !== 'Salesperson' || !(found.pin || found.pinHash)) return { error: "This number is not signed up as a salesperson. Ask them to sign up in PikaShot as Salesperson, then try again." };
+            if (!found || found.type !== 'Salesperson' || !(found.pin || found.pinHash)) return { error: "This number is not signed up as a salesperson on PikaShot. Ask them to do so, then try again." };
             const first = String(found.name || '').split(' ')[0] || phone;
 
             const linkSnap = await window.fb.getDoc(this._linkRef(phone));
