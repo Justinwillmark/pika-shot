@@ -1251,7 +1251,7 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         _tooManyDevices() {
-            say(`This account is already logged in on ${LIMITS.maxDevices} phones. Log out on one of them, or tap "Forgot PIN?" to reset your PIN and start fresh.`, 'Too many phones');
+            say(`This account is already logged in on ${LIMITS.maxDevices} phones. Log out on one of them, or tap "Forgot PIN?" to reset your PIN.`, 'Too many phones');
         },
 
         // Gives this phone's place back (logging out)
@@ -1459,7 +1459,7 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('sp-code-error').textContent = '';
             document.getElementById('sp-code-btn').disabled = true;
             const words = document.getElementById('sp-waiting-text');
-            if (words && this.state.user) words.textContent = `Give your admin your number, ${this.state.user.phone}. They add you under Customers & salespeople, then give you a 4-digit code to type here.`;
+            if (words && this.state.user) words.textContent = `Give your admin your number, ${this.state.user.phone}, to add as salesperson, then give you a 4-digit code to type here.`;
             this.showModal('sp-waiting-modal');
             setTimeout(() => input.focus(), 150);
         },
@@ -2684,7 +2684,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             if (todaysSales.length === 0) {
-                this.elements.recentSalesList.innerHTML = `<p class="empty-state">No sales today. Tap Record sale to add one.</p>`;
+                this.elements.recentSalesList.innerHTML = `<p class="empty-state">No sales recorded today.</p>`;
             } else {
                 await this.renderSalesList(todaysSales, this.elements.recentSalesList, 6);
             }
