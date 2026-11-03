@@ -3,7 +3,7 @@
 ## Publishing
 - Quick way (as before): publish the project folder as it is.
 - Faster, harder-to-copy way: `npm install` once, then `npm run deploy`. It shrinks and scrambles the scripts into `dist/` and publishes that.
-- Every release: change `CACHE_NAME` in `serviceworker.js` (v62 -> v63 ...) so phones fetch the new files. (`npm run build` / `npm run deploy` stamp a version of their own on the published copy, a short code that changes whenever any file changes, so with those the number can never be forgotten.)
+- Every release: change `CACHE_NAME` in `serviceworker.js` (v63 -> v64 ...) so phones fetch the new files. (`npm run build` / `npm run deploy` stamp a version of their own on the published copy, a short code that changes whenever any file changes, so with those the number can never be forgotten.)
 - How a new version reaches phones by itself: see "New versions reach phones by themselves" below.
 
 ## New versions reach phones by themselves
@@ -229,6 +229,8 @@ clearing browsing data or switching phones the picture comes back from the thumb
 
 ## Create a new PIN
 - After "Forgot PIN" is confirmed on WhatsApp, the new PIN is typed twice (`new-pin` and `new-pin-confirm`). As soon as the second box has 6 digits that do not match the first, it says so under the box; Save PIN and log in does not go on until both are the same. Enter on the first box moves to the second; Enter on the second saves. Create account's PIN box is as it was.
+- **The screen closes 20 minutes after the number was confirmed** (`RESET_TTL_MS`, counted on the online clock from `verifiedAt`, so closing and reopening the app does not restart it; `_watchNewPinScreen`). Then the confirmation is spent online too, the boxes are emptied, and they land on the Log in screen: "The new PIN screen closed after 20 minutes. Tap \"Forgot PIN?\" to start again." Saving after that time is refused the same way. A new account's check still lasts an hour.
+- The number on it is partly hidden: "Choose a new 6-digit PIN for 07089***883" (`_maskPhone`: the first 5 digits, then the last 3).
 
 ## Transfer to a customer
 - The "Transfer items" button on a receipt has a small line under its label, "to the retailer who bought" (white on the teal, 0.76rem, medium weight: easy to read without competing with the label). It is the `.btn-stack` style in `style.css`, which any button with a main line and a small line can use. The label above it is bold and a little bigger (1.1rem) so it holds its own, and on the receipt Close / Print / Share are slimmer (40px tall, a smaller label) to make room. Only the receipt's row is slimmer; Decline / Accept on an incoming transfer keep their size.

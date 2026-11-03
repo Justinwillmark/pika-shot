@@ -918,6 +918,7 @@ document.addEventListener('DOMContentLoaded', () => {
         WA_NUMBER: '2347089319883',
         CODE_TTL_MS: 20 * 60 * 1000,
         VERIFIED_TTL_MS: 60 * 60 * 1000, // after the dashboard confirms a number they have this long to finish; then they verify again
+        RESET_TTL_MS: 20 * 60 * 1000, // a PIN reset is shorter: the "Create a new PIN" screen closes 20 minutes after the number was confirmed
 
         _pendingVerification() {
             try { return JSON.parse(localStorage.getItem('pika_signup_code')); } catch (e) { return null; }
@@ -937,16 +938,22 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (e) { return false; }
         },
         // Confirmed on the dashboard, and not too long ago
-        _verifiedFresh(d, marginMs = 0) { // (marginMs: some of the hour kept back, so a request on its way is not refused at the last second)
+        _verifiedFresh(d, marginMs = 0) { // (marginMs: some of the time kept back, so a request on its way is not refused at the last second)
             if (!d || !d.verified) return false;
-            return Date.now() - DB._normalizeTimestamp(d.verifiedAt).getTime() < this.VERIFIED_TTL_MS - marginMs;
+            const allowed = d.purpose === 'reset' ? this.RESET_TTL_MS : this.VERIFIED_TTL_MS; // (a new PIN: 20 minutes; a new account: an hour)
+            return this._serverNow() - DB._normalizeTimestamp(d.verifiedAt).getTime() < allowed - marginMs;
+        },
+        // "07089319883" -> "07089***883": the number is recognisable without being shown in full
+        _maskPhone(phone) {
+            const p = String(phone || '');
+            return p.length >= 9 ? `${p.slice(0, 5)}***${p.slice(-3)}` : p;
         },
         // They took more than an hour after being confirmed: tell them, and start a new check
         async _verificationExpired(phone, purpose) {
             this._verifiedMem = null;
             try { localStorage.removeItem('pika_verified_phone'); } catch (e) { /* fine */ }
             this._savePending(null);
-            say('Your number check expired after 1 hour. Please verify again.', 'Verify again');
+            say(purpose === 'reset' ? 'The new PIN screen closed after 20 minutes. Please verify your number again.' : 'Your number check expired after 1 hour. Please verify again.', 'Verify again');
             this.showLoader();
             try { await this.startPhoneVerification(phone, purpose); }
             catch (error) { console.error('Could not start a new number check:', error); this.showView('onboarding-step-1'); }
@@ -1033,15 +1040,40 @@ document.addEventListener('DOMContentLoaded', () => {
             setTimeout(() => {
                 this._resetVerificationUI();
                 if (reset) {
-                    document.getElementById('newpin-phone').textContent = phone;
+                    document.getElementById('newpin-phone').textContent = this._maskPhone(phone);
                     document.getElementById('new-pin').value = '';
                     document.getElementById('new-pin-confirm').value = '';
                     document.getElementById('new-pin-match').hidden = true;
                     this.showView('onboarding-step-newpin');
+                    this._watchNewPinScreen(phone, confirmed);
                 } else {
                     this.showView('onboarding-step-register');
                 }
             }, 900);
+        },
+
+        // The "Create a new PIN" screen stays 20 minutes from when the number was confirmed (closing and reopening the app does not
+        // restart it). Then the confirmation is spent online too, and they start again from their number.
+        _watchNewPinScreen(phone, confirmed) {
+            clearInterval(this._newPinTimer);
+            const from = confirmed && confirmed.verifiedAt ? DB._normalizeTimestamp(confirmed.verifiedAt).getTime() : this._serverNow();
+            const until = from + this.RESET_TTL_MS;
+            const check = async () => {
+                if (this.state.currentView !== 'onboarding-step-newpin') { clearInterval(this._newPinTimer); return; } // (saved, or they left)
+                if (this._serverNow() < until) return;
+                clearInterval(this._newPinTimer);
+                document.getElementById('new-pin').value = '';
+                document.getElementById('new-pin-confirm').value = '';
+                document.getElementById('new-pin-match').hidden = true;
+                this._pending = null;
+                this._savePending(null);
+                if (window.fb) window.fb.setDoc(this._verificationRef(phone), { phone, code: 'used', purpose: 'reset', createdAt: window.fb.serverTimestamp(), verified: false }).catch(() => { /* it is refused at saving anyway */ });
+                this.state.tempPhone = phone;
+                this.showView('onboarding-step-login');
+                say('The new PIN screen closed after 20 minutes. Tap "Forgot PIN?" to start again.', 'Time is up');
+            };
+            this._newPinTimer = setInterval(check, 5000);
+            check();
         },
 
         // Forgot PIN: the same WhatsApp check, then a new PIN replaces the old one everywhere
@@ -1127,14 +1159,14 @@ document.addEventListener('DOMContentLoaded', () => {
         async _restorePhoneVerification() {
             const p = this._pendingVerification();
             if (!p || !p.phone) return;
-            if (Date.now() - p.createdAt > this.CODE_TTL_MS + this.VERIFIED_TTL_MS) { this._savePending(null); return; } // too old to still be good, confirmed or not
+            if (Date.now() - p.createdAt > this.CODE_TTL_MS + (p.purpose === 'reset' ? this.RESET_TTL_MS : this.VERIFIED_TTL_MS)) { this._savePending(null); return; } // too old to still be good, confirmed or not
             try {
                 const snap = await window.fb.getDoc(this._verificationRef(p.phone));
                 const d = snap.exists() ? snap.data() : null;
                 if (d && d.verified && d.code === p.code) {
                     if (this._verifiedFresh(d)) { this._pending = p; this._phoneVerified(p.phone, d); return; }
-                    this._savePending(null); // confirmed more than an hour ago: they start again
-                    say('Your number check expired after 1 hour. Please verify again.', 'Verify again');
+                    this._savePending(null); // confirmed too long ago: they start again
+                    say(p.purpose === 'reset' ? 'The new PIN screen closed after 20 minutes. Tap "Forgot PIN?" to start again.' : 'Your number check expired after 1 hour. Please verify again.', 'Verify again');
                     return;
                 }
             } catch (e) { /* offline: show the code anyway */ }
