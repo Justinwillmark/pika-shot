@@ -1954,3 +1954,8 @@ a.privacy-link-trigger { display: inline-block; padding: 8px 2px; margin: -8px 0
 @supports (width: 1cqi) {
     .card-badges > div { font-size: clamp(0.5rem, calc((100cqi - 66px) / 8), 0.7rem); padding: 4px clamp(4px, 4cqi, 8px); }
 }
+
+/* Invite customer: "Go back" and "WhatsApp invite" each stay on one line on small phones */
+#invite-customer-modal .modal-actions-inline .btn { padding-left: 12px; padding-right: 12px; white-space: nowrap; }
+#invite-customer-modal .modal-actions-inline .btn-secondary { flex-basis: 40%; }
+#invite-customer-modal .modal-actions-inline .btn-primary { flex-basis: 60%; }
