@@ -1942,3 +1942,15 @@ a.privacy-link-trigger { display: inline-block; padding: 8px 2px; margin: -8px 0
 .dialog-fields input { width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 10px; font: inherit; font-size: 1rem; user-select: text; -webkit-user-select: text; }
 .dialog-fields input:focus { outline: none; border-color: var(--primary-color); }
 .dialog-fields[hidden], #dialog-text[hidden] { display: none; }
+
+/* Product card labels sit one under the other in the top corner: "New stock today!", then Out of stock / Low stock! */
+.card-badges { position: absolute; top: 8px; right: 8px; z-index: 4; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; max-width: calc(100% - 50px); }
+.card-badges > div { position: static; max-width: none; white-space: nowrap; }
+/* Each label stays on one line: its text is sized to the card it sits on (the card's own width, so it fits on a narrow phone and on a
+   wide screen alike), between 8 px and the usual 11 px, leaving room for the pencil on the left */
+.product-card { container-type: inline-size; }
+.card-badges { left: 44px; right: 8px; max-width: none; }
+.card-badges > div { font-size: clamp(0.5rem, 2.4vw, 0.7rem); padding: 4px clamp(5px, 2vw, 8px); }
+@supports (width: 1cqi) {
+    .card-badges > div { font-size: clamp(0.5rem, calc((100cqi - 66px) / 8), 0.7rem); padding: 4px clamp(4px, 4cqi, 8px); }
+}

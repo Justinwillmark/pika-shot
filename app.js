@@ -1491,7 +1491,7 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('sp-code-error').textContent = '';
             document.getElementById('sp-code-btn').disabled = true;
             const words = document.getElementById('sp-waiting-text');
-            if (words && this.state.user) words.textContent = `Ask your admin to add your number (${this.state.user.phone}) as a salesperson for their store. Then enter the 4-digit code they give you here.`;
+            if (words && this.state.user) words.textContent = `Ask your admin to add your number (${this._maskPhone(this.state.user.phone)}) as a salesperson for their store. Then enter the 4-digit code they give you here.`;
             this.showModal('sp-waiting-modal');
             setTimeout(() => input.focus(), 150);
         },
@@ -2088,6 +2088,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         _queueIncomingTransfer(logData) {
             if (!logData || !logData.id || logData.voided || logData.claimed) return;
+            if (!this._validLogItems(logData.items)) return; // (a transfer whose items cannot be right is never offered: it could not be accepted anyway)
             if (!this._promptedTransfers) this._promptedTransfers = new Set();
             if (this._promptedTransfers.has(logData.id)) return; // already shown this session
             this._promptedTransfers.add(logData.id);
@@ -3028,6 +3029,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (this.toggleOnboardingTooltip) this.toggleOnboardingTooltip();
             
             allProducts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)); // Sort by newest first
+            // At midnight the "New stock today!" labels go: the list is drawn again then (on the online clock)
+            clearTimeout(this._midnightTimer);
+            { const next = new Date(this._serverNow()); next.setHours(24, 0, 0, 0); this._midnightTimer = setTimeout(() => { if (this.state.user) this.renderProducts(this.elements.productSearchInput.value); }, Math.max(1000, next.getTime() - this._serverNow() + 1000)); }
             if (!this._isSalesperson()) allProducts.sort((a, b) => this._freshSince(b) - this._freshSince(a)); // items just received and not opened yet go first (the rest keep their order)
 
             if (this.state.productSelectionMode) {
@@ -3106,21 +3110,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 card.dataset.productId = product.id;
                 const imageUrl = product.image ? URL.createObjectURL(product.image) : (this._safeImageUrl(product.thumb) || 'icons/icon-192.png');
 
-                let badgeHtml = '';
+                // Labels in the top corner, one under the other: "New stock today!" (an item accepted today, until midnight, opened or not),
+                // then the stock label (Out of stock, or Low stock!) right under it
+                const badges = [];
+                if (!this._isSalesperson() && this._arrivedToday(product)) badges.push('<div class="setup-badge">New stock today!</div>');
                 if (product.stock <= 0) {
-                    badgeHtml = '<div class="out-of-stock-badge">Out of stock</div>';
+                    badges.push('<div class="out-of-stock-badge">Out of stock</div>');
                 } else if (this._isSalesperson()) {
-                    if (isLow(product)) badgeHtml = '<div class="restock-badge">Low stock!</div>';
+                    if (isLow(product)) badges.push('<div class="restock-badge">Low stock!</div>');
                 } else if (product.isSalesperson) {
                     // a salesperson's only setup step is the picture, which usually arrives with the transfer now
                     if (!product.image && (product.needsSetup === 'price' || product.needsSetup === 'barcode-and-price')) {
-                        badgeHtml = '<div class="setup-badge">Add image</div>';
+                        badges.push('<div class="setup-badge">Add image</div>');
                     }
-                } else if (this._freshSince(product)) { // received, and not opened yet
-                    badgeHtml = `<div class="setup-badge">${product.needsSetup === 'price' || product.needsSetup === 'barcode-and-price' ? 'New: Add price' : 'New stock'}</div>`; // (the second is an older flag: the same step now)
                 } else if (isLow(product)) {
-                    badgeHtml = '<div class="restock-badge">Low stock!</div>';
+                    badges.push('<div class="restock-badge">Low stock!</div>');
                 }
+                const badgeHtml = badges.length ? `<div class="card-badges">${badges.join('')}</div>` : '';
 
                 const displayName = product.name; // (the whole name, two lines at most: see .product-card-info h4; "Coca Cola 50cl" and "35cl" stay apart)
 
@@ -3166,6 +3172,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (product.freshAt) return Number(product.freshAt) || 0;
             if (product.freshAt === undefined && (product.needsSetup === 'price' || product.needsSetup === 'barcode-and-price')) return new Date(product.createdAt).getTime() || 1; // (received before arrivals were tracked: new until opened)
             return 0;
+        },
+        // Accepted today (on the online clock): the "New stock today!" label stays until midnight, whether the product was opened or not.
+        // (`arrivedAt` is the accept time and is never cleared; older arrivals only have `freshAt`, which opening clears.)
+        _arrivedToday(product) {
+            if (!product || product.isSalesperson) return false;
+            const at = Number(product.arrivedAt) || Number(product.freshAt) || 0;
+            return at > 0 && this._dayKey(at) === this._dayKey(this._serverNow());
         },
         async _markSeen(product) {
             if (!this._freshSince(product)) return;
@@ -6007,7 +6020,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const productUpdates = [];
             const staleSupplierEntries = []; // [supplierId, productKey] pairs to take off earlier suppliers
             let updatedProductsForFirebase = {};
-            const arrivedAt = Date.now();
+            const arrivedAt = this._serverNow(); // (the online clock: "today" is the same day on every phone)
             let itemNo = 0;
 
             for (const item of log.items) {
@@ -6079,11 +6092,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     };
                     allProducts.push(finalProduct); // so a repeated barcode/name inside the same transfer is merged too
                 }
+                if (!isSalesperson) finalProduct.arrivedAt = arrivedAt; // (kept: the "New stock today!" label lasts until midnight)
                 if (!isSalesperson) finalProduct.freshAt = arrivedAt - itemNo++; // new until the owner opens it: on top of "My products" meanwhile (the transfer's first item highest)
                 if (existingProduct) {
                     // the stock is added to whatever it is now; the fields that changed are sent, nothing else
                     productUpdates.push(DB.saveProduct(finalProduct, { delta: stockToAdd, thumb: thumbSentHere,
-                        only: ['supplierId', 'barcode', 'needsSetup', 'lockedUntilOOS', 'isSalesperson', 'originalName', 'wholesalerPrice', 'unitToConfirm', 'freshAt', 'thumb'] }));
+                        only: ['supplierId', 'barcode', 'needsSetup', 'lockedUntilOOS', 'isSalesperson', 'originalName', 'wholesalerPrice', 'unitToConfirm', 'freshAt', 'arrivedAt', 'thumb'] }));
                 } else {
                     productUpdates.push(DB.saveProduct(finalProduct, { thumb: true }));
                 }
