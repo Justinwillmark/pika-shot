@@ -175,7 +175,7 @@
 
         // Received items waiting for the owner's own price, the latest arrivals first: a selling price to set (still at the sender's price),
         // or a new cost to check (the item came at a different cost from the one kept)
-        const arrived = (p) => Number(p.arrivedAt) || Number(p.freshAt) || 0;
+        const arrived = (p) => Number(p.newSince) || Number(p.arrivedAt) || Number(p.freshAt) || 0;
         const priceToSet = products
             .filter(p => !p.isSalesperson && (p.needsSetup === 'price' || p.needsSetup === 'barcode-and-price'))
             .sort((a, b) => arrived(b) - arrived(a))

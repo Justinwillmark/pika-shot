@@ -1999,3 +1999,16 @@ a.privacy-link-trigger { display: inline-block; padding: 8px 2px; margin: -8px 0
 .sales-group-profit { font-size: 0.75rem; font-weight: 600; color: var(--text-light); line-height: 1.3; }
 .sales-group-profit.loss { color: #b4505c; }
 .sales-group-profit .profit-note { font-weight: 400; }
+
+/* The camera's snap button (product photos): a round shutter above Cancel. The picture is taken when it is tapped, never by itself. */
+.snap-photo-btn {
+    position: absolute; left: 50%; bottom: 96px; z-index: 11; width: 72px; height: 72px; padding: 0; transform: translateX(-50%);
+    display: flex; align-items: center; justify-content: center; border: 4px solid #fff; border-radius: 50%;
+    background: rgba(255, 255, 255, 0.22); box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35); cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.snap-photo-btn[hidden] { display: none; }
+.snap-photo-dot { width: 54px; height: 54px; border-radius: 50%; background: #fff; transition: transform 0.12s ease, background-color 0.15s; }
+.snap-photo-btn:active .snap-photo-dot { transform: scale(0.88); }
+.snap-photo-btn:disabled { cursor: default; }
+.snap-photo-btn:disabled .snap-photo-dot { background: var(--primary-color); transform: scale(0.8); }
+.snap-photo-btn:focus-visible { outline: none; box-shadow: 0 0 0 4px rgba(0, 140, 149, 0.6); }

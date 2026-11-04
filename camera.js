@@ -579,7 +579,28 @@ const Camera = {
     // first (Cancel, Back, a new scan); { blob: null, reported: true } when the camera would not open (the person was told why).
     // The settle time counts from the moment pictures are really coming in, never from the tap: a slow phone is not made to wait
     // for its own start-up and a full countdown on top of it.
-    async capturePhoto(countdownElement, feedbackElement) {
+    // The product photo: the camera opens, and the picture is taken when the person taps the snap button (never by itself).
+    // A tap before the camera has settled (focus, brightness, the light coming on) is kept: the picture is taken as soon as it has.
+    async capturePhoto(countdownElement, feedbackElement, snapButton) {
+        const shot = { tapped: false };
+        if (snapButton) {
+            snapButton.hidden = false;
+            snapButton.disabled = false;
+            snapButton.onclick = () => {
+                if (shot.tapped) return;
+                shot.tapped = true;
+                snapButton.disabled = true;
+                if (feedbackElement) feedbackElement.textContent = 'Hold still...';
+            };
+        } else shot.tapped = true; // (no button: as before, the picture is taken once the camera is ready)
+        try {
+            return await this._capturePhoto(countdownElement, feedbackElement, shot);
+        } finally {
+            if (snapButton) { snapButton.hidden = true; snapButton.onclick = null; }
+        }
+    },
+
+    async _capturePhoto(countdownElement, feedbackElement, shot) {
         this.stop();
         const session = this._session;
         this.isScanning = true;
@@ -609,7 +630,7 @@ const Camera = {
         };
         let started = begin();                 // when pictures started coming in
         let lastTime = video.currentTime, lastMove = started, torchAt = 0, restarted = false;
-        say('Snapping Image');
+        if (!shot.tapped) { say('Point at the product, then tap the button.'); showCount(0); } // (no countdown until the button is tapped)
 
         // Settle: focus and brightness need a moment, and the light changes the brightness when it comes on
         for (;;) {
@@ -634,6 +655,7 @@ const Camera = {
             // Wait for the light only if it is on its way: a phone with no light never makes the person wait for one
             const lightComing = this.torchPref !== false && !torchAt && (this._torchSupported() ? sinceStart < this.PHOTO_LIGHT_WAIT_MS : sinceStart < 1000);
             const readyAt = Math.max(started + this.PHOTO_SETTLE_MS, torchAt ? torchAt + this.PHOTO_LIGHT_SETTLE_MS : 0);
+            if (!shot.tapped) continue; // (the camera stays open until the snap button is tapped)
             if (!lightComing && now >= readyAt) break;
             showCount(Math.max(1, Math.ceil((readyAt - now) / 1000)));
         }

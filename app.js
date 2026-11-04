@@ -427,7 +427,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.addNewProductBtn.addEventListener('click', this.startAddProduct.bind(this));
             this.elements.productForm.addEventListener('submit', this.handleSaveProduct.bind(this));
             this.elements.deleteProductBtn.addEventListener('click', this.handleDeleteProduct.bind(this));
-            this.elements.cancelProductFormBtn.addEventListener('click', () => this.hideModal());
+            this.elements.cancelProductFormBtn.addEventListener('click', () => this._cancelProductForm());
             this.elements.cancelScanBtn.addEventListener('click', () => { this.state.isScanCanceled = true; Camera.stop(); this._back(); });
             this.elements.retakePictureBtn.addEventListener('click', this.handleRetakePicture.bind(this));
             this.elements.confirmPictureBtn.addEventListener('click', this.handleConfirmPicture.bind(this));
@@ -2537,7 +2537,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (viewId === 'products-view' && !this.state.productSelectionMode) {
                 this.elements.productSearchInput.value = '';
-                const tab = this.state.openProductsOn || 'all'; // a message can open it on the Low stock or Out of stock tab
+                const tab = this.state.openProductsOn || 'all'; // a message can open it on the Low stock, Out of stock or New tab
                 this.state.openProductsOn = null;
                 this.state.productFilter = tab;
                 this.elements.productFilterTabs.forEach(btn => {
@@ -3062,11 +3062,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.state.productCount = allProducts.length;
             if (this.toggleOnboardingTooltip) this.toggleOnboardingTooltip();
             
-            allProducts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)); // Sort by newest first
-            // At midnight the "New stock today!" labels go: the list is drawn again then (on the online clock)
-            clearTimeout(this._midnightTimer);
-            { const next = new Date(this._serverNow()); next.setHours(24, 0, 0, 0); this._midnightTimer = setTimeout(() => { if (this.state.user) this.renderProducts(this.elements.productSearchInput.value); }, Math.max(1000, next.getTime() - this._serverNow() + 1000)); }
-            if (!this._isSalesperson()) allProducts.sort((a, b) => this._freshSince(b) - this._freshSince(a)); // items just received and not opened yet go first (the rest keep their order)
+            allProducts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)); // Sort by newest first (received items keep their place: the New tab is where they come first)
 
             if (this.state.productSelectionMode) {
                 // Picking a product to sell: best sellers first (in-stock before out-of-stock) so there is less scrolling.
@@ -3098,11 +3094,17 @@ document.addEventListener('DOMContentLoaded', () => {
             const isLow = (p) => p.stock > 0 && p.stock < lowLevel;
             this._setTabCount('restock', 'Low stock', allProducts.filter(isLow).length);
             this._setTabCount('outofstock', 'Out of stock', allProducts.filter(p => p.stock <= 0).length);
+            const newOnes = allProducts.filter(p => this._isNewStock(p)).sort((a, b) => this._newSince(b) - this._newSince(a)); // (the latest received first)
+            this._setTabCount('new', 'New', newOnes.length);
+            const newTab = document.getElementById('new-tab-btn');
+            if (newTab) newTab.style.display = this._isSalesperson() ? 'none' : ''; // (salespeople do not set products up)
             this.elements.lowStockSettingsBtn.style.display = this._isSalesperson() ? 'none' : ''; // only the admin sets it
             if (filterType === 'restock') {
                 filteredProducts = allProducts.filter(isLow);
             } else if (filterType === 'outofstock') {
                 filteredProducts = allProducts.filter(p => p.stock <= 0);
+            } else if (filterType === 'new') {
+                filteredProducts = newOnes;
             }
 
             // Then apply search text filter
@@ -3129,6 +3131,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     this.elements.productGrid.innerHTML = `<p class="empty-state">No products below ${lowLevel} units yet</p>`;
                 } else if (filterType === 'outofstock') {
                     this.elements.productGrid.innerHTML = '<p class="empty-state">No products currently out of stock</p>';
+                } else if (filterType === 'new') {
+                    this.elements.productGrid.innerHTML = '<p class="empty-state">No new stock. Items you accept from a transfer show here until you save them.</p>';
                 } else if (filterType !== 'all') {
                     this.elements.productGrid.innerHTML = '<p class="empty-state">No products in this filter.</p>';
                 } else {
@@ -3144,19 +3148,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 card.dataset.productId = product.id;
                 const imageUrl = product.image ? URL.createObjectURL(product.image) : (this._safeImageUrl(product.thumb) || 'icons/icon-192.png');
 
-                // Labels in the top corner, one under the other: "New stock today!" (an item accepted today, until midnight, opened or not),
-                // then the stock label (Out of stock, or Low stock!) right under it
+                // Labels in the top corner, one under the other, as many as apply: "New stock!" (a received item not saved since),
+                // "Add price!" (still at the sender's price), then the stock label (Out of stock! or Low stock!)
                 const badges = [];
-                if (!this._isSalesperson() && this._arrivedToday(product)) badges.push('<div class="setup-badge">New stock today!</div>');
+                if (this._isNewStock(product)) badges.push('<div class="setup-badge">New stock!</div>');
                 if (this._needsSellingPrice(product)) badges.push('<div class="setup-badge">Add price!</div>');
                 if (product.stock <= 0) {
-                    badges.push('<div class="out-of-stock-badge">Out of stock</div>');
+                    badges.push('<div class="out-of-stock-badge">Out of stock!</div>');
                 } else if (this._isSalesperson()) {
                     if (isLow(product)) badges.push('<div class="restock-badge">Low stock!</div>');
                 } else if (product.isSalesperson) {
                     // a salesperson's only setup step is the picture, which usually arrives with the transfer now
                     if (!product.image && (product.needsSetup === 'price' || product.needsSetup === 'barcode-and-price')) {
-                        badges.push('<div class="setup-badge">Add image</div>');
+                        badges.push('<div class="setup-badge">Add image!</div>');
                     }
                 } else if (isLow(product)) {
                     badges.push('<div class="restock-badge">Low stock!</div>');
@@ -3200,36 +3204,20 @@ document.addEventListener('DOMContentLoaded', () => {
             this._flashCard('focusProduct', `[data-product-id="${CSS.escape(String((this.state.focusProduct || {}).id))}"]`);
         },
 
-        // When a received item arrived, for as long as its owner has not opened it (0 once they have, and for every other product).
-        // Opening is all it takes: whether they then save, change something or just close the box, it is no longer new.
-        _freshSince(product) {
+        // A received item is new ("New stock!", and in the New tab) from the moment it is accepted until its Edit box is saved, changed or not
+        // (`newSince`, the accept time; saving sets it to null). Items received before this existed count as new while they were never
+        // opened (`freshAt`, which opening used to clear), until saved.
+        _newSince(product) {
             if (!product || product.isSalesperson) return 0;
-            if (product.freshAt) return Number(product.freshAt) || 0;
-            if (product.freshAt === undefined && (product.needsSetup === 'price' || product.needsSetup === 'barcode-and-price')) return new Date(product.createdAt).getTime() || 1; // (received before arrivals were tracked: new until opened)
-            return 0;
+            if (product.newSince !== undefined) return Number(product.newSince) || 0;
+            return Number(product.freshAt) || 0;
         },
-        // Accepted today (on the online clock): the "New stock today!" label stays until midnight, whether the product was opened or not.
-        // (`arrivedAt` is the accept time and is never cleared; older arrivals only have `freshAt`, which opening clears.)
+        _isNewStock(product) { return !this._isSalesperson() && this._newSince(product) > 0; },
         // A received item still selling at the sender's price: the owner has not set their own selling price yet
         _needsSellingPrice(product) {
             return !!product && !this._isSalesperson() && !product.isSalesperson && (product.needsSetup === 'price' || product.needsSetup === 'barcode-and-price');
         },
 
-        _arrivedToday(product) {
-            if (!product || product.isSalesperson) return false;
-            const at = Number(product.arrivedAt) || Number(product.freshAt) || 0;
-            return at > 0 && this._dayKey(at) === this._dayKey(this._serverNow());
-        },
-        async _markSeen(product) {
-            if (!this._freshSince(product)) return;
-            product.freshAt = null; // the copy the open box holds
-            try {
-                await DB.patchProduct(product.id, { freshAt: null });
-                if (this.state.currentView === 'products-view') await this.renderProducts(this.elements.productSearchInput.value); // (behind the box: the label is gone and the product is back in its place)
-            } catch (e) {
-                console.error('Could not note that a received item was opened:', e);
-            }
-        },
 
         // Scrolls to a card a message pointed at and lets it flash. `what` names where the target is kept in state: it is waited for
         // up to 15 seconds, and once it has flashed it is kept for 4 more, so a list drawn again a moment later (a second update) flashes it again.
@@ -3992,6 +3980,23 @@ document.addEventListener('DOMContentLoaded', () => {
             this._productBoxToTop();
         },
 
+        // Cancel (or Back) in the product box. A received item stays "New stock!" until it is saved, so closing one without saving
+        // first suggests saving it: Save does just that (as the box's own Save would), Close leaves it as it was.
+        async _cancelProductForm() {
+            const product = this.state.editingProduct;
+            if (!product || this._isSalesperson() || !this._isNewStock(product) || this._cancelAsking) { this.hideModal(); return; }
+            this._cancelAsking = true;
+            let save;
+            try {
+                save = await ask({ title: 'Save this product?', text: 'If everything here is right, tap Save. It stays under New until it is saved.', ok: 'Save', cancel: 'Close' });
+            } finally {
+                this._cancelAsking = false;
+            }
+            if (this.state.editingProduct !== product) return; // (the box was closed some other way meanwhile)
+            if (save) return this._once('saveProduct', () => this._saveProduct(), this.elements.saveProductBtn);
+            this.hideModal();
+        },
+
         async handleSaveProduct(e) {
             e.preventDefault();
             return this._once('saveProduct', () => this._saveProduct(), this.elements.saveProductBtn);
@@ -4029,6 +4034,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 needsSetup: null,
                 unitToConfirm: null, // saving answers the unit question (whichever unit is showing is the one kept)
                 costToConfirm: null, // and the cost question the same way (whichever cost is showing is the one kept)
+                newSince: null, // saving is what makes a received item no longer new
             };
 
             if (isEditing) productData.editedAt = this._serverNow(); // every edit starts the product's "recently edited" line afresh (online time, so every phone agrees)
@@ -4056,7 +4062,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const before = this.state.editingProduct;
                 const changed = ['name', 'price', 'cost', 'stock', 'unit', 'barcode', 'stockVisible'].filter(k => JSON.stringify(productData[k] === undefined ? null : productData[k]) !== JSON.stringify(before[k] === undefined ? null : before[k]));
                 const pictureChanged = !!this.state.capturedBlob && this.state.capturedBlob !== before.image; // a new picture, not the old one loaded into the form
-                if (!changed.length && !pictureChanged && !before.unitToConfirm && !before.costToConfirm && !before.needsSetup) { // (a question to answer, or a price to confirm, is saved even unchanged)
+                const wasNew = this._newSince(before) > 0;
+                if (!changed.length && !pictureChanged && !before.unitToConfirm && !before.costToConfirm && !before.needsSetup && !wasNew) { // (a question to answer, or a price to confirm, is saved even unchanged)
                     this.hideModal();
                     this.state.editingProduct = null;
                     this.showToast('Nothing was changed.');
@@ -4064,7 +4071,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 if (before.unitToConfirm) changed.push('unitToConfirm'); // answering the unit question is a change to save, but it is not a hand edit
                 if (before.costToConfirm) changed.push('costToConfirm'); // (the cost question too)
-                const counts = !before.needsSetup && !before.unitToConfirm && !before.costToConfirm && Number(before.cost) > 0; // (adding the first cost price to an older product is not a hand edit either)
+                if (wasNew) changed.push('newSince'); // (and saving a new item that needed nothing: "New stock!" goes)
+                const counts = !before.needsSetup && !before.unitToConfirm && !before.costToConfirm && !wasNew && Number(before.cost) > 0; // (adding the first cost price to an older product is not a hand edit either)
                 if (counts && !(await this._checkEditQuota())) return;
                 let delta;
                 if (changed.includes('stock')) {
@@ -4140,7 +4148,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (this._isSalesperson()) { this.showToast('Only your admin can edit products.'); return; }
             this.state.editingProduct = product;
             this.state.capturedBarcode = product.barcode;
-            this._markSeen(product);
             this.elements.productForm.reset();
             this._hideUnitAsk();
             this._closeUnitMenu();
@@ -4248,7 +4255,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const attempt = this._photoAttempt = (this._photoAttempt || 0) + 1;
             this.navigateTo('camera-view');
             try {
-                const { blob, cancelled, reported } = await Camera.capturePhoto(this.elements.scanTimerDisplay, this.elements.scanFeedback);
+                const { blob, cancelled, reported } = await Camera.capturePhoto(this.elements.scanTimerDisplay, this.elements.scanFeedback, document.getElementById('snap-photo-btn'));
                 if (cancelled || attempt !== this._photoAttempt) return; // backed out (Cancel, the arrow or the phone's Back), or a newer picture was started meanwhile
                 if (this.state.currentView === 'camera-view') this._back(); // Cancel has already gone back once
                 if (blob) {
@@ -6188,11 +6195,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     allProducts.push(finalProduct); // so a repeated barcode/name inside the same transfer is merged too
                 }
                 if (!isSalesperson) finalProduct.arrivedAt = arrivedAt; // (kept: the "New stock today!" label lasts until midnight)
-                if (!isSalesperson) finalProduct.freshAt = arrivedAt - itemNo++; // new until the owner opens it: on top of "My products" meanwhile (the transfer's first item highest)
+                if (!isSalesperson) finalProduct.newSince = arrivedAt - itemNo++; // "New stock!" until the owner saves it (the New tab lists the latest first: the transfer's first item highest)
                 if (existingProduct) {
                     // the stock is added to whatever it is now; the fields that changed are sent, nothing else
                     productUpdates.push(DB.saveProduct(finalProduct, { delta: stockToAdd, thumb: thumbSentHere,
-                        only: ['supplierId', 'barcode', 'needsSetup', 'lockedUntilOOS', 'isSalesperson', 'originalName', 'wholesalerPrice', 'unitToConfirm', 'cost', 'costToConfirm', 'freshAt', 'arrivedAt', 'thumb'] }));
+                        only: ['supplierId', 'barcode', 'needsSetup', 'lockedUntilOOS', 'isSalesperson', 'originalName', 'wholesalerPrice', 'unitToConfirm', 'cost', 'costToConfirm', 'newSince', 'arrivedAt', 'thumb'] }));
                 } else {
                     productUpdates.push(DB.saveProduct(finalProduct, { thumb: true }));
                 }
@@ -7030,9 +7037,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.state.focusProduct = { id: arg.id, until: Date.now() + 15000 };
                 this.state.openProductsOn = arg.tab;
                 this.navigateTo('products-view');
-            } else if (go === 'products') { // (several items waiting for a price: they are at the top of My products, with "Add price!")
+            } else if (go === 'products') { // (several items waiting for a price: the New tab, with "Add price!")
                 this.hideModal();
-                this.state.openProductsOn = 'all';
+                this.state.openProductsOn = 'new';
                 this.navigateTo('products-view');
             }
         },

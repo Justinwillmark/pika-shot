@@ -399,6 +399,7 @@
                         <button class="filter-tab-btn active" data-filter="all">All</button>
                         <button class="filter-tab-btn" data-filter="restock">Low stock</button>
                         <button class="filter-tab-btn" data-filter="outofstock">Out of stock</button>
+                        <button class="filter-tab-btn" data-filter="new" id="new-tab-btn">New</button>
                     </div>
                 </div>
                 <div id="product-grid" class="product-grid">
@@ -492,6 +493,8 @@
                 <p id="scan-feedback" style="margin-top: 15vh;">Scanning...</p>
                 <div id="scan-timer-display" class="scan-timer-display">3</div>
             </div>
+            <!-- Taking a product photo: the picture is taken when this is tapped (never by itself) -->
+            <button type="button" id="snap-photo-btn" class="snap-photo-btn" aria-label="Take photo" hidden><span class="snap-photo-dot"></span></button>
             <div class="camera-actions" style="position: absolute; bottom: 30px; left: 0; right: 0; display: flex; justify-content: center; padding: 0 20px; z-index: 10;">
                 <button id="cancel-scan-btn" class="btn btn-secondary btn-cancel" style="flex: 0 0 30%;">Cancel</button>
                 <button id="scan-select-from-products-btn" class="btn btn-primary" style="flex: 0 0 70%; margin-left: 10px;">Select from products</button>
