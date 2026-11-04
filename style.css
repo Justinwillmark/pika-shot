@@ -1548,7 +1548,7 @@ button:focus { outline: none; }
 #torch-btn.torch-on { background: rgba(255, 214, 10, 0.9) !important; color: #222 !important; }
 
 /* Stock visibility switch (products received by transfer) */
-.stock-visibility-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0 2px; font-size: 0.72rem; line-height: 1.35; color: var(--text-light); }
+.stock-visibility-row { display: flex; align-items: center; justify-content: flex-start; gap: 7px; margin: 6px 0 2px; font-size: 0.72rem; line-height: 1.35; color: var(--text-light); }
 #product-name-group { margin-top: 22px; } /* the gap above Product name that the (removed) hidden Scan Barcode block used to give: same as before, with or without the lines above it */
 .stock-visibility-row > span { flex: 1; min-width: 0; text-wrap: balance; } /* (on a narrow phone the line breaks evenly, not with "on/off" left alone) */
 .mini-switch { position: relative; display: inline-block; width: 34px; height: 20px; flex-shrink: 0; }
