@@ -1866,11 +1866,16 @@ a.privacy-link-trigger { display: inline-block; padding: 8px 2px; margin: -8px 0
 .filter-tab-btn[data-filter="outofstock"].active { background-color: var(--danger-color); border-color: var(--danger-color); color: #fff; }
 .filter-tab-btn.active .tab-count { background: rgba(255, 255, 255, 0.3); color: #fff; }
 #product-filter-tabs { gap: 8px; }
+/* Centred when the tabs fit, and scrolled from the very first tab when they do not (plain centring pushed "All" off the left edge, out of reach) */
+#product-filter-tabs { justify-content: flex-start; }
+#product-filter-tabs > :first-child { margin-left: auto; }
+#product-filter-tabs > :last-child { margin-right: auto; }
 #product-filter-tabs .filter-tab-btn { flex: 0 0 auto; min-height: 34px; padding: 5px 12px; border-radius: 999px; font-size: 0.82rem; }
 #product-filter-tabs .filter-tab-btn[data-filter="all"] { min-width: 52px; } /* wide enough to be a capsule, not a ball */
+@media (max-width: 420px) { #product-filter-tabs { gap: 6px; padding-left: 12px; padding-right: 12px; } #product-filter-tabs .filter-tab-btn { padding-left: 9px; padding-right: 9px; } #product-filter-tabs .filter-tab-btn[data-filter="all"] { min-width: 48px; } } /* (four tabs, with their counts, fit on most phones) */
 @media (max-width: 360px) {
-    #product-filter-tabs { gap: 6px; padding: 0 12px 12px; }
-    #product-filter-tabs .filter-tab-btn { padding: 5px 9px; font-size: 0.8rem; }
+    #product-filter-tabs { gap: 6px; padding: 0 10px 12px; }
+    #product-filter-tabs .filter-tab-btn { padding: 5px 8px; font-size: 0.8rem; }
     #product-filter-tabs .filter-tab-btn[data-filter="all"] { min-width: 48px; }
     .tab-count { padding: 0 5px; font-size: 0.7rem; }
 }
@@ -2020,7 +2025,7 @@ a.privacy-link-trigger { display: inline-block; padding: 8px 2px; margin: -8px 0
 .snap-photo-btn:focus-visible { outline: none; box-shadow: 0 0 0 4px rgba(0, 140, 149, 0.6); }
 
 /* A sale just recorded slides into Today's sales from the right: quick, and smooth enough to notice (_appendSaleEl in app.js) */
-#recent-sales-list { overflow-x: clip; overflow-clip-margin: 16px; } /* (no sideways scroll while it slides; shadows still show) */
+#home-view { overflow-x: hidden; } /* (no sideways scroll while it slides. Not on the list itself: that would cut off the side labels, Edited, Credit..., which sit just outside each sale) */
 .sale-row.slide-in { animation: sale-slide-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) both; }
 @keyframes sale-slide-in { from { transform: translateX(100%); opacity: 0.3; } to { transform: none; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .sale-row.slide-in { animation: sale-fade-in 0.3s ease-out both; } }

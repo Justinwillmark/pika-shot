@@ -4082,7 +4082,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (before.unitToConfirm) changed.push('unitToConfirm'); // answering the unit question is a change to save, but it is not a hand edit
                 if (before.costToConfirm) changed.push('costToConfirm'); // (the cost question too)
                 if (wasNew) changed.push('newSince'); // (and saving a new item that needed nothing: "New stock!" goes)
-                const counts = !before.needsSetup && !before.unitToConfirm && !before.costToConfirm && !wasNew && Number(before.cost) > 0; // (adding the first cost price to an older product is not a hand edit either)
+                const firstCostOnly = !(Number(before.cost) > 0) && !pictureChanged && changed.every(k => ['cost', 'unitToConfirm', 'costToConfirm', 'newSince'].includes(k));
+                const counts = !before.needsSetup && !before.unitToConfirm && !before.costToConfirm && !wasNew && !firstCostOnly; // (adding the first cost price to an older product, and nothing else, is not a hand edit either)
                 if (counts && !(await this._checkEditQuota())) return;
                 let delta;
                 if (changed.includes('stock')) {
@@ -6206,7 +6207,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         id: this._newId(),
                         name: item.name,
                         originalName: originalName,
-                        price: costPrice, // (the sender's price for now: "Add price!" shows until the owner sets their own selling price)
+                        price: Math.max(Number(item.price) || 0, costPrice), // (the sender's selling price for now, before any discount they gave: "Add price!" shows until the owner sets their own)
                         cost: costPrice,
                         stock: stockToAdd,
                         unit: unitType,
@@ -7208,7 +7209,9 @@ document.addEventListener('DOMContentLoaded', () => {
             u.rate = 0.95; // (a touch slower than the phone's usual: clear, not slow)
             u.pitch = 1;
             u.volume = 1;
-            setTimeout(() => synth.speak(u), 250); // (once the profile has opened)
+            setTimeout(() => { // (once the profile has opened; not at all if it was closed meanwhile)
+                if (this.elements.profileModal.style.display !== 'none' && this.elements.modalContainer.style.display !== 'none') synth.speak(u);
+            }, 250);
         },
     };
 

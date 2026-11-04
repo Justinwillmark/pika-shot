@@ -584,6 +584,7 @@ const Camera = {
     async capturePhoto(countdownElement, feedbackElement, snapButton) {
         const shot = { tapped: false };
         if (snapButton) {
+            snapButton._shot = shot; // (the button is this photo's now: see finally)
             snapButton.hidden = false;
             snapButton.disabled = false;
             snapButton.onclick = () => {
@@ -596,7 +597,7 @@ const Camera = {
         try {
             return await this._capturePhoto(countdownElement, feedbackElement, shot);
         } finally {
-            if (snapButton) { snapButton.hidden = true; snapButton.onclick = null; }
+            if (snapButton && snapButton._shot === shot) { snapButton.hidden = true; snapButton.onclick = null; snapButton._shot = null; } // (a photo cancelled while the camera was still opening can end after a newer one has started: it leaves that one's button alone)
         }
     },
 
