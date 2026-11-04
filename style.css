@@ -2040,3 +2040,10 @@ a.privacy-link-trigger { display: inline-block; padding: 8px 2px; margin: -8px 0
 .nudge-voice-btn.is-off { background: #eef1f3; color: #8a959e; }
 .nudge-voice-btn.is-off .voice-on { display: none; }
 .nudge-voice-btn.is-off .voice-off { display: block; }
+
+/* Wide screens: tapping something that opens the page already open on the right redraws it with a short fade-up, so the tap is seen to work
+   (_reopenPage in app.js). Its parts move, never the page box itself (the floating + buttons stay put). */
+.view.page-reopen > :not(.fab) { animation: page-reopen 0.38s cubic-bezier(0.22, 1, 0.36, 1) both; }
+@keyframes page-reopen { from { opacity: 0.25; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .view.page-reopen > :not(.fab) { animation: page-reopen-fade 0.25s ease-out both; } }
+@keyframes page-reopen-fade { from { opacity: 0.4; } to { opacity: 1; } }

@@ -2501,7 +2501,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.scanFeedback.textContent = 'Scanning for barcode...';
             }
 
-            if (this.state.currentView === viewId && !isBackNavigation) return;
+            if (this.state.currentView === viewId && !isBackNavigation) {
+                // On a wide screen the shop stays open on the left while this page is on the right: a tap that opens it again (a card, "See all",
+                // Customers, a message) redraws it with what that tap asked for (its tab, its filter), from the top, with a short fade so the tap is seen
+                if (this._isSplit() && ['products-view', 'all-sales-view', 'stock-levels-view'].includes(viewId)) this._reopenPage(viewId);
+                return;
+            }
 
             if (!isBackNavigation) {
                 if (this._modalStale) { history.replaceState({ view: viewId }, '', `#${viewId}`); this._modalStale = false; } // (the closed modal's step becomes this view's)
@@ -2561,6 +2566,33 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.addNewProductBtn.style.display = (this.state.productSelectionMode || viewId !== 'products-view' || (this.state.user && this.state.user.type === 'Salesperson')) ? 'none' : 'flex';
 
             this.exitSelectionMode();
+        },
+
+        // The page on the right is opened again while it is already open (wide screens): drawn again as a fresh opening would draw it
+        // (no new step in the history), back at its top, and it fades up a little so the tap clearly did something
+        _reopenPage(viewId) {
+            if (viewId === 'all-sales-view') {
+                this.elements.allSalesTimeFilter.value = 'all';
+                this.renderAllSales();
+                this.updateHeader(viewId);
+            } else if (viewId === 'stock-levels-view') {
+                this.renderRetailerStocks();
+            } else if (viewId === 'products-view' && !this.state.productSelectionMode) {
+                this.elements.productSearchInput.value = '';
+                const tab = this.state.openProductsOn || 'all';
+                this.state.openProductsOn = null;
+                this.state.productFilter = tab;
+                this.elements.productFilterTabs.forEach(btn => btn.classList.toggle('active', btn.dataset.filter === tab));
+                this.renderProducts();
+            }
+            const page = document.getElementById(viewId);
+            if (!page) return;
+            page.scrollTo({ top: 0, behavior: 'smooth' });
+            page.classList.remove('page-reopen');
+            void page.offsetWidth; // (plays again on a second quick tap)
+            page.classList.add('page-reopen');
+            clearTimeout(this._reopenTimer);
+            this._reopenTimer = setTimeout(() => page.classList.remove('page-reopen'), 450);
         },
 
         handlePopState(event) {
