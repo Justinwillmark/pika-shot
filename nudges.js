@@ -1,5 +1,6 @@
 // The one message shown in the Profile card.
 // Three kinds, taking turns and never the same kind twice in a row: free airtime, business insights, motivation.
+// A fourth, prices, joins in only while a received item needs the owner's own price (a selling price to set, or a new cost to check).
 // The message changes only after every 5 actions (sales, scans, transfers, receipts shared or printed, in any mix).
 // Each person gets their own shuffled order, so two people do not see the same run of messages.
 // Exceptions that change it straight away: a nudge when the app opens after days away, a reminder when a credit has gone
@@ -22,7 +23,7 @@
     const DAY = 86400000;
     const HOUR = 3600000;
     const EVERY = 5; // actions between one message and the next
-    const CATS = ['airtime', 'insight', 'motivation'];
+    const CATS = ['airtime', 'insight', 'motivation', 'prices'];
     const REMIND_AFTER = 3; // days a credit can go unpaid before the first reminder (then again every 3 days)
 
     // ---------------------------------------------------------------- small helpers
@@ -172,6 +173,18 @@
             .map(p => ({ id: p.id, name: p.name, sold: soldBy30.get(String(p.id)) }))
             .sort((a, b) => b.sold - a.sold);
 
+        // Received items waiting for the owner's own price, the latest arrivals first: a selling price to set (still at the sender's price),
+        // or a new cost to check (the item came at a different cost from the one kept)
+        const arrived = (p) => Number(p.arrivedAt) || Number(p.freshAt) || 0;
+        const priceToSet = products
+            .filter(p => !p.isSalesperson && (p.needsSetup === 'price' || p.needsSetup === 'barcode-and-price'))
+            .sort((a, b) => arrived(b) - arrived(a))
+            .map(p => ({ id: p.id, name: p.name }));
+        const costToCheck = products
+            .filter(p => !p.isSalesperson && Number(p.costToConfirm) > 0 && Number(p.costToConfirm) !== Number(p.cost))
+            .sort((a, b) => arrived(b) - arrived(a))
+            .map(p => ({ id: p.id, name: p.name, cost: Number(p.cost) || 0, next: Number(p.costToConfirm) }));
+
         // Customers (of a wholesaler) running short: the ones with nothing left first
         const custLow = (input.customers || [])
             .filter(c => c && c.name && c.items && c.items.length)
@@ -230,7 +243,7 @@
             busy: lastHalfHour >= 4, // serving customers right now: no tasks
             streak, streakBefore, streakRisk: todaySales === 0 && streakBefore >= 3,
             topItem: top && top.count >= 3 ? short(top.name, 2) : null,
-            lowProducts, outProducts, custLow,
+            lowProducts, outProducts, custLow, priceToSet, costToCheck,
             lowLong, lowCount, needFunding,
             toMilestone: next ? { n: next - sales.length, to: next } : null,
             debtsDue: list.filter(x => x.age >= REMIND_AFTER),
@@ -327,6 +340,16 @@
         { id: 'in-streak-goal', cat: 'insight', when: c => [2, 6, 13, 29].indexOf(c.streak) >= 0, weight: () => 2.5, text: (c, r) => twin(r, [`Tomorrow makes ${c.streak + 1} days in a row! 🔥`, `One more day and na ${c.streak + 1} days! 🔥`]) },
         { id: 'in-streak-risk', chime: true, cat: 'insight', when: c => c.streakRisk, weight: () => 2.5, text: (c, r) => twin(r, [`Sell once today to keep your ${c.streakBefore}-day streak. 🔥`, `Abeg sell one today. Keep your ${c.streakBefore}-day streak. 🔥`]) },
         { id: 'in-month', cat: 'insight', when: c => c.monthTime && c.month > 0, text: (c, r) => twin(r, [`${naira(c.month)} recorded this month. 📅`, `You don record ${naira(c.month)} this month. 📅`]) },
+
+        // ---- Prices: a received item waits for the owner's own price. Owners only (salespeople do not set prices). A tap opens the item's Edit box.
+        subjective({ id: 'pr-sell', chime: true, cat: 'prices', tier: 1, cooldown: DAY, reminder: true, roles: ['Wholesaler', 'Retailer'], go: 'edit',
+            subjects: c => c.priceToSet.map(p => ({ key: 'sell:' + p.id, arg: { id: p.id }, p })),
+            text: (c, r, s) => twin(r, [`Set your selling price for ${short(s.p.name, 2)}. 🏷️`, `Wetin be your price for ${short(s.p.name, 2)}? 🏷️`]) }),
+        { id: 'pr-sell-many', chime: true, cat: 'prices', tier: 1, cooldown: DAY, roles: ['Wholesaler', 'Retailer'], go: 'products', when: c => c.priceToSet.length >= 3, weight: () => 2,
+            text: (c, r) => twin(r, [`${c.priceToSet.length} new items need your selling price. 🏷️`, `${c.priceToSet.length} items dey wait for your price. 🏷️`]) },
+        subjective({ id: 'pr-cost', chime: true, cat: 'prices', tier: 1, cooldown: DAY, reminder: true, roles: ['Wholesaler', 'Retailer'], go: 'edit',
+            subjects: c => c.costToCheck.map(p => ({ key: 'cost:' + p.id, arg: { id: p.id }, p })),
+            text: (c, r, s) => twin(r, [`${short(s.p.name, 2)} came at ${naira(s.p.next)}. Update your cost? 💰`, `${short(s.p.name, 2)} cost don change? Check am. 💰`]) }),
 
         // ---- Motivation: encouragement, mostly in Pidgin
         { id: 'mo-try', cat: 'motivation', any: true, when: () => true, text: () => 'You try today. Weldone abeg! 👏' },
@@ -490,7 +513,7 @@
             const list = pool.filter(x => x.m.cat === cat);
             chosen = draw(list, list.map(x => scoreOf(state, x, ctx)), rng);
         }
-        if (chosen.m.cat === 'insight' && chosen.m.tier !== 2) state.urgentRun = chosen.m.tier ? (state.urgentRun || 0) + 1 : 0;
+        if ((chosen.m.cat === 'insight' || chosen.m.cat === 'prices') && chosen.m.tier !== 2) state.urgentRun = chosen.m.tier ? (state.urgentRun || 0) + 1 : 0;
         settle(state, chosen.m, chosen.key, chosen.s, null, ctx);
         return chosen;
     }

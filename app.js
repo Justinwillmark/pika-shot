@@ -105,6 +105,9 @@ document.addEventListener('DOMContentLoaded', () => {
             addChangePictureBtn: document.getElementById('add-change-picture-btn'),
             productNameInput: document.getElementById('product-name'),
             productPriceInput: document.getElementById('product-price'),
+            productCostInput: document.getElementById('product-cost'),
+            costGroup: document.getElementById('cost-group'),
+            costAsk: document.getElementById('cost-ask'),
             productStockInput: document.getElementById('product-stock'),
             productUnitInput: document.getElementById('product-unit'),
             unitBtn: document.getElementById('product-unit-btn'),
@@ -710,6 +713,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const fieldsToFormat = [
                 this.elements.productPriceInput,
+                this.elements.productCostInput,
                 this.elements.discountAmountInput // Added discount input
             ];
             fieldsToFormat.forEach(input => {
@@ -2853,6 +2857,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const productMap = {};
             allProducts.forEach(p => { productMap[p.id] = p; });
 
+            // The business sees its profit under each total (never a salesperson: what the business paid is its own)
+            const showProfit = !this._isSalesperson() && ['all', 'weekly', 'monthly', 'best-selling'].includes(filterValue);
+
             let groupedSales;
             if (filterValue === 'weekly') {
                 groupedSales = this.groupSalesByWeek(sortedSales);
@@ -2864,6 +2871,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 groupedSales = this.groupSalesByDate(sortedSales);
             }
             
+            const rawGroups = filterValue === 'best-selling' ? this.groupSalesByMonth(sortedSales) : groupedSales; // (best sellers are added up per product: profit comes from the sales themselves, month by month)
+
             for (const groupTitle in groupedSales) {
                 const groupContainer = document.createElement('div');
                 groupContainer.className = 'sales-group';
@@ -2884,7 +2893,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     acknowledgedHtml = `<span class="acknowledgement-text">Money confirmed by ${this._esc(this.state.user.businessName || 'your admin')}.</span>`;
                 }
 
-                groupHeader.innerHTML = `<h3>${this._esc(groupTitle)}</h3>${totalHtml}`;
+                const profitHtml = showProfit ? this._profitHtml(rawGroups[groupTitle] || [], productMap) : '';
+                groupHeader.innerHTML = `<h3>${this._esc(groupTitle)}</h3>${profitHtml ? `<div class="sales-group-sums">${totalHtml}${profitHtml}</div>` : totalHtml}`;
                 groupContainer.appendChild(groupHeader);
 
                 if (acknowledgedHtml) {
@@ -2922,6 +2932,30 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 this.elements.allSalesList.appendChild(groupContainer);
             }
+        },
+
+        // Profit of a group of sales: what came in, less what the items cost. The cost is the one each sale was made at (older sales,
+        // from before costs were kept, use the product's cost now). A credit sale counts only the part paid so far, with its share of the cost,
+        // so the profit is never more than the money shown above it. Sales of products with no cost price are left out, and the line says how many.
+        _profitHtml(sales, productMap) {
+            let profit = 0, costed = 0, missing = 0;
+            for (const sale of sales) {
+                const product = productMap[sale.productId];
+                const cost = Number(sale.cost) > 0 ? Number(sale.cost) : (product && Number(product.cost) > 0 ? Number(product.cost) : 0);
+                if (!(cost > 0)) { missing++; continue; }
+                const qty = Number(sale.quantity) || 0, total = Number(sale.total) || 0;
+                let share = 1;
+                if (sale.saleType === 'credit') {
+                    const gross = qty * (Number(sale.price) || 0) - (Number(sale.discount) || 0);
+                    share = gross > 0 ? Math.min(1, Math.max(0, total / gross)) : 0;
+                }
+                profit += total - cost * qty * share;
+                costed++;
+            }
+            if (!costed) return '';
+            profit = Math.round(profit);
+            const note = missing ? ` <span class="profit-note">· ${missing} ${missing === 1 ? 'sale has' : 'sales have'} no cost price</span>` : '';
+            return `<span class="sales-group-profit${profit < 0 ? ' loss' : ''}">${profit < 0 ? 'Loss' : 'Profit'} &#8358;${this.formatNumber(Math.abs(profit))}${note}</span>`;
         },
 
         groupSalesByDate(sales) {
@@ -3114,6 +3148,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // then the stock label (Out of stock, or Low stock!) right under it
                 const badges = [];
                 if (!this._isSalesperson() && this._arrivedToday(product)) badges.push('<div class="setup-badge">New stock today!</div>');
+                if (this._needsSellingPrice(product)) badges.push('<div class="setup-badge">Add price!</div>');
                 if (product.stock <= 0) {
                     badges.push('<div class="out-of-stock-badge">Out of stock</div>');
                 } else if (this._isSalesperson()) {
@@ -3175,6 +3210,11 @@ document.addEventListener('DOMContentLoaded', () => {
         },
         // Accepted today (on the online clock): the "New stock today!" label stays until midnight, whether the product was opened or not.
         // (`arrivedAt` is the accept time and is never cleared; older arrivals only have `freshAt`, which opening clears.)
+        // A received item still selling at the sender's price: the owner has not set their own selling price yet
+        _needsSellingPrice(product) {
+            return !!product && !this._isSalesperson() && !product.isSalesperson && (product.needsSetup === 'price' || product.needsSetup === 'barcode-and-price');
+        },
+
         _arrivedToday(product) {
             if (!product || product.isSalesperson) return false;
             const at = Number(product.arrivedAt) || Number(product.freshAt) || 0;
@@ -3730,15 +3770,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
         handleConfirmPicture() {
             this.hideModal();
-            const btn = this.elements.addChangePictureBtn;
-            const originalContent = '<span>Snap image</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>';
-            btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
-            btn.classList.add('success');
-            setTimeout(() => {
-                btn.classList.remove('success');
-                btn.innerHTML = originalContent;
-            }, 2000);
+            this._paintPicBtn(this.state.capturedBlob, true);
             this.showModal('product-form-modal');
+        },
+
+        // The slim picture button beside the product name: the camera when there is no photo yet, the photo itself (with a small tick) once there is one
+        _paintPicBtn(image, fresh) {
+            const btn = this.elements.addChangePictureBtn;
+            if (this._picBtnUrl) { URL.revokeObjectURL(this._picBtnUrl); this._picBtnUrl = null; }
+            const url = image instanceof Blob ? (this._picBtnUrl = URL.createObjectURL(image)) : '';
+            btn.style.backgroundImage = url ? `url("${url}")` : '';
+            btn.classList.toggle('has-pic', !!image);
+            btn.setAttribute('aria-label', image ? 'Change image' : 'Snap image');
+            btn.title = image ? 'Change image' : 'Snap image';
+            btn.classList.remove('just-snapped');
+            if (fresh && image) { void btn.offsetWidth; btn.classList.add('just-snapped'); }
         },
 
         // --- Units: a list with a small picture beside each one. The hidden <select> stays the real field (its value is what is saved). ---
@@ -3788,7 +3834,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const { productUnitInput: select, unitBtn: btn, unitMenu: menu, unitAsk: ask } = this.elements;
             btn.addEventListener('click', () => (this._unitMenuOpen() ? this._closeUnitMenu() : this._openUnitMenu()));
             btn.addEventListener('keydown', (e) => { if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); this._openUnitMenu(); } });
-            menu.addEventListener('click', (e) => { const li = e.target.closest('[data-value]'); if (li) { this._setUnit(li.dataset.value); this._hideUnitAsk(); this._closeUnitMenu(true); } });
+            menu.addEventListener('click', (e) => { const li = e.target.closest('[data-value]'); if (li) { const asked = this._askWasOpen; this._setUnit(li.dataset.value); this._hideUnitAsk(); this._closeUnitMenu(true); if (asked) this._askCostNext(); } });
             menu.addEventListener('keydown', (e) => {
                 const items = Array.from(menu.querySelectorAll('[data-value]'));
                 const at = items.indexOf(document.activeElement);
@@ -3805,7 +3851,11 @@ document.addEventListener('DOMContentLoaded', () => {
             (btn.closest('.pf-scroll') || btn.closest('.modal-content')).addEventListener('scroll', follow, { passive: true });
             this._watchProductScroll();
             select.addEventListener('change', () => this._refreshUnitPicker());
-            ask.addEventListener('click', (e) => { const b = e.target.closest('[data-unit]'); if (b) { this._setUnit(b.dataset.unit); this._hideUnitAsk(); } });
+            ask.addEventListener('click', (e) => { const b = e.target.closest('[data-unit]'); if (b) { this._setUnit(b.dataset.unit); this._hideUnitAsk(); this._askCostNext(); } });
+            // The cost question: a tap on a cost puts it in the box; typing a cost of their own answers it too
+            this.elements.costAsk.addEventListener('click', (e) => { const b = e.target.closest('[data-cost]'); if (b) { this.elements.productCostInput.value = this.formatNumber(Number(b.dataset.cost)); this._hideCostAsk(); } });
+            this.elements.productCostInput.addEventListener('input', () => { if (!this.elements.costAsk.hidden) this._hideCostAsk(); });
+            this.elements.productPriceInput.addEventListener('input', () => this.elements.productPriceInput.classList.remove('needs-answer'));
             this._refreshUnitPicker();
         },
         // A product box that is opened afresh starts at its top (the browser keeps how far a hidden box was scrolled)
@@ -3886,6 +3936,23 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.unitAsk.hidden = true;
             this.elements.unitBtn.classList.remove('needs-answer');
         },
+        // A received item came at a different cost from the one kept here: a small question pointing at the cost box, "₦150 or ₦170 NEW?"
+        // (nothing changes until it is answered; saving keeps whichever cost is in the box)
+        _askCostNext() {
+            const product = this._pendingCostAsk;
+            this._pendingCostAsk = null;
+            if (!product || this.state.editingProduct !== product || !this._modalLive) return;
+            const { costAsk: ask, productCostInput: input } = this.elements;
+            const pill = (n, isNew) => `<button type="button" class="unit-ask-btn" data-cost="${Number(n)}">&#8358;${this.formatNumber(n)}${isNew ? '<span class="cost-new">new</span>' : ''}</button>`;
+            const have = Number(product.cost) > 0;
+            ask.innerHTML = `<span class="unit-ask-arrow"></span><div class="unit-ask-row">${have ? `${pill(product.cost)}<span class="unit-ask-or">or</span>` : '<span class="unit-ask-or">Cost</span>'}${pill(product.costToConfirm, true)}<span class="unit-ask-q">?</span></div>`;
+            ask.hidden = false;
+            input.classList.add('needs-answer');
+        },
+        _hideCostAsk() {
+            this.elements.costAsk.hidden = true;
+            this.elements.productCostInput.classList.remove('needs-answer');
+        },
 
         _openProductForm(options = {}) {
             this.state.newProductKey = this._newId(); // this form makes ONE product
@@ -3894,10 +3961,11 @@ document.addEventListener('DOMContentLoaded', () => {
             this._closeUnitMenu();
             this.elements.productFormTitle.textContent = 'Add new product';
             this.elements.deleteProductBtn.style.display = 'none';
-            const picBtn = this.elements.addChangePictureBtn;
-            picBtn.style.display = 'flex';
-            picBtn.classList.remove('success');
-            picBtn.innerHTML = '<span>Snap image</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>';
+            this._paintPicBtn(null);
+            this._hideCostAsk();
+            this._pendingCostAsk = null;
+            this.elements.costGroup.style.display = '';
+            this.elements.productPriceInput.classList.remove('needs-answer');
             this.elements.productIdInput.value = '';
             this.elements.productBarcodeDisplay.style.display = 'none';
             this.elements.productSourceInfo.style.display = 'none';
@@ -3944,6 +4012,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 id: isEditing ? this.state.editingProduct.id : (this.state.newProductKey || (this.state.newProductKey = this._newId())), // one id for the whole form: saving twice is the same product
                 name: this.elements.productNameInput.value.trim(),
                 price: this.unformatNumber(this.elements.productPriceInput.value),
+                cost: this.unformatNumber(this.elements.productCostInput.value),
                 stock: this.unformatNumber(this.elements.productStockInput.value),
                 unit: this.elements.productUnitInput.value,
                 image: this.state.capturedBlob || (isEditing ? this.state.editingProduct.image : null),
@@ -3959,16 +4028,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 wholesalerPrice: isEditing ? this.state.editingProduct.wholesalerPrice : 0,
                 needsSetup: null,
                 unitToConfirm: null, // saving answers the unit question (whichever unit is showing is the one kept)
+                costToConfirm: null, // and the cost question the same way (whichever cost is showing is the one kept)
             };
 
             if (isEditing) productData.editedAt = this._serverNow(); // every edit starts the product's "recently edited" line afresh (online time, so every phone agrees)
 
             const form = this.elements;
             if (!productData.name) { await this._needs(form.productNameInput, 'Add the product name.', 'Check your entry'); return; }
-            if (!(productData.price > 0)) { await this._needs(form.productPriceInput, 'Add the price. It must be more than 0.', 'Check your entry'); return; } // (an empty box, a 0 or letters all count as no price)
+            // (checked in the order the boxes are on the screen; an empty box, a 0 or letters all count as no price)
             if (form.productStockInput.value.trim() === '' || isNaN(productData.stock)) { await this._needs(form.productStockInput, 'Add how many are in stock.', 'Check your entry'); return; }
-            if (productData.price > 100000000) { await this._needs(form.productPriceInput, 'That price is too big. Check it.', 'Check your entry'); return; }
             if (productData.stock > 1000000) { await this._needs(form.productStockInput, 'That stock is too big. Check it.', 'Check your entry'); return; }
+            if (!(productData.cost > 0)) { await this._needs(form.productCostInput, 'Add the cost price: what you paid for one. It must be more than 0.', 'Check your entry'); return; }
+            if (!(productData.price > 0)) { await this._needs(form.productPriceInput, 'Add the selling price. It must be more than 0.', 'Check your entry'); return; }
+            if (productData.price > 100000000) { await this._needs(form.productPriceInput, 'That selling price is too big. Check it.', 'Check your entry'); return; }
+            if (productData.cost > productData.price) { await this._needs(form.productCostInput, `The cost price (₦${this.formatNumber(productData.cost)}) cannot be more than the selling price (₦${this.formatNumber(productData.price)}).`, 'Check your prices'); return; }
 
             if (!productData.image) {
                 await this._needs(form.addChangePictureBtn, 'Add a photo of the product first.', 'Photo needed');
@@ -3981,16 +4054,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!(await DB.getProduct(productData.id)) && !(await this._roomForProducts(1))) return; // (a product already saved by an earlier try needs no new room)
             } else {
                 const before = this.state.editingProduct;
-                const changed = ['name', 'price', 'stock', 'unit', 'barcode', 'stockVisible'].filter(k => JSON.stringify(productData[k] === undefined ? null : productData[k]) !== JSON.stringify(before[k] === undefined ? null : before[k]));
+                const changed = ['name', 'price', 'cost', 'stock', 'unit', 'barcode', 'stockVisible'].filter(k => JSON.stringify(productData[k] === undefined ? null : productData[k]) !== JSON.stringify(before[k] === undefined ? null : before[k]));
                 const pictureChanged = !!this.state.capturedBlob && this.state.capturedBlob !== before.image; // a new picture, not the old one loaded into the form
-                if (!changed.length && !pictureChanged && !before.unitToConfirm) {
+                if (!changed.length && !pictureChanged && !before.unitToConfirm && !before.costToConfirm && !before.needsSetup) { // (a question to answer, or a price to confirm, is saved even unchanged)
                     this.hideModal();
                     this.state.editingProduct = null;
                     this.showToast('Nothing was changed.');
                     return;
                 }
                 if (before.unitToConfirm) changed.push('unitToConfirm'); // answering the unit question is a change to save, but it is not a hand edit
-                const counts = !before.needsSetup && !before.unitToConfirm;
+                if (before.costToConfirm) changed.push('costToConfirm'); // (the cost question too)
+                const counts = !before.needsSetup && !before.unitToConfirm && !before.costToConfirm && Number(before.cost) > 0; // (adding the first cost price to an older product is not a hand edit either)
                 if (counts && !(await this._checkEditQuota())) return;
                 let delta;
                 if (changed.includes('stock')) {
@@ -4072,19 +4146,14 @@ document.addEventListener('DOMContentLoaded', () => {
             this._closeUnitMenu();
             this.elements.productFormTitle.textContent = 'Edit product';
             this.elements.deleteProductBtn.style.display = 'flex';
-            const picBtn = this.elements.addChangePictureBtn;
-            picBtn.style.display = 'flex';
-            picBtn.innerHTML = '<span>Snap image</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>';
-
-            if (product.image) {
-                picBtn.classList.add('success');
-            } else {
-                picBtn.classList.remove('success');
-            }
+            this._paintPicBtn(product.image || null);
+            this._hideCostAsk();
+            this._pendingCostAsk = null;
 
             this.elements.productIdInput.value = product.id;
             this.elements.productNameInput.value = product.name;
             this.elements.productPriceInput.value = this.formatNumber(product.price);
+            this.elements.productCostInput.value = Number(product.cost) > 0 ? this.formatNumber(product.cost) : ''; // (older products have none yet: it is asked for on saving)
             this.elements.productStockInput.value = this.formatNumber(product.stock);
             // Units that came with a transfer may not be in the list; keep them selectable so saving never blanks the unit
             this._ensureUnitOption(this._unitName(product.unit));
@@ -4095,6 +4164,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const isSalesperson = this.state.user && this.state.user.type === 'Salesperson';
             this.elements.productNameInput.disabled = isSalesperson;
             this.elements.productPriceInput.disabled = isSalesperson;
+            this.elements.productCostInput.disabled = isSalesperson;
+            this.elements.costGroup.style.display = isSalesperson ? 'none' : ''; // (what the business paid is the business's own)
             this.elements.productStockInput.disabled = isSalesperson;
             this.elements.productUnitInput.disabled = isSalesperson;
 
@@ -4127,9 +4198,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
             this.showModal('product-form-modal');
             this._productBoxToTop();
-            // A received item was counted in another unit (bottles against sachets): once the box is open, ask which it is
-            if (!isSalesperson && product.unitToConfirm && this._unitKey(product.unitToConfirm) !== this._unitKey(product.unit)) {
-                setTimeout(() => { if (this.state.editingProduct === product && this._modalLive) this._askUnit(product); }, 450);
+            // A received item that is new here: its selling price is the sender's until the owner sets their own (the box shows it, glowing)
+            this.elements.productPriceInput.classList.toggle('needs-answer', !isSalesperson && (product.needsSetup === 'price' || product.needsSetup === 'barcode-and-price'));
+            // A received item was counted in another unit (bottles against sachets), or came at another cost: once the box is open, ask which it is
+            // (the unit first; the cost once the unit is answered, so the two questions never sit on top of each other)
+            const askUnit = !isSalesperson && product.unitToConfirm && this._unitKey(product.unitToConfirm) !== this._unitKey(product.unit);
+            const askCost = !isSalesperson && Number(product.costToConfirm) > 0 && Number(product.costToConfirm) !== Number(product.cost);
+            if (askCost) this._pendingCostAsk = product;
+            if (askUnit || askCost) {
+                setTimeout(() => { if (this.state.editingProduct === product && this._modalLive) { if (askUnit) this._askUnit(product); else this._askCostNext(); } }, 450);
             }
         },
 
@@ -4333,6 +4410,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 sharedAsLog: false,
                 unit: product.unit
             };
+            if (!editing && Number(product.cost) > 0) sale.cost = Number(product.cost); // (an edited sale keeps the cost it was sold at)
             if (editing) {
                 sale.edited = true;
                 sale.editedAt = this._serverNow();
@@ -5971,6 +6049,13 @@ document.addEventListener('DOMContentLoaded', () => {
             return this._once('accept', () => this._acceptLog());
         },
 
+        // What one of a received item cost: the sender's price, less its share of any discount on that line, to the nearest naira
+        _receivedCost(item) {
+            const qty = Number(item.quantity) || 0, price = Number(item.price) || 0, discount = Math.max(0, Number(item.discount) || 0);
+            if (!(qty > 0) || !(price > 0)) return price > 0 ? price : 0;
+            return Math.max(0, Math.round((qty * price - discount) / qty)) || price;
+        },
+
         async _acceptLog() {
             if (!this.state.scannedLogData) return;
 
@@ -6025,7 +6110,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
             for (const item of log.items) {
                 // Whatever the unit (bottles, sachets, cartons...), it comes in as the sender counted it
-                const stockToAdd = item.quantity, unitType = item.unit, costPrice = item.price, needsSetup = 'price';
+                // What the sender charged for one (after any discount they gave) is what one cost this business
+                const costPrice = this._receivedCost(item);
+                const stockToAdd = item.quantity, unitType = item.unit, needsSetup = 'price';
                 const wholesalerPrice = item.price, barcode = item.barcode, originalName = item.name;
 
                 // Same barcode = same product: add to what the user already has (even if it is named differently)
@@ -6070,13 +6157,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (!isSalesperson && item.unit && existingProduct.unit && this._unitKey(item.unit) !== this._unitKey(existingProduct.unit)) {
                         existingProduct.unitToConfirm = item.unit;
                     }
+                    // Came at a different cost from the one kept here: the owner is asked the same way, "₦150 or ₦170?" (the cost is not changed until they answer).
+                    // A product with no cost yet simply takes this one.
+                    if (costPrice > 0) {
+                        if (!(Number(existingProduct.cost) > 0)) existingProduct.cost = costPrice;
+                        else if (!isSalesperson && Number(existingProduct.cost) !== costPrice) existingProduct.costToConfirm = costPrice;
+                        else existingProduct.costToConfirm = null;
+                    }
                     finalProduct = existingProduct;
                 } else {
                     finalProduct = {
                         id: this._newId(),
                         name: item.name,
                         originalName: originalName,
-                        price: costPrice,
+                        price: costPrice, // (the sender's price for now: "Add price!" shows until the owner sets their own selling price)
+                        cost: costPrice,
                         stock: stockToAdd,
                         unit: unitType,
                         image: this._imageUrlToBlob(item.image),
@@ -6097,7 +6192,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (existingProduct) {
                     // the stock is added to whatever it is now; the fields that changed are sent, nothing else
                     productUpdates.push(DB.saveProduct(finalProduct, { delta: stockToAdd, thumb: thumbSentHere,
-                        only: ['supplierId', 'barcode', 'needsSetup', 'lockedUntilOOS', 'isSalesperson', 'originalName', 'wholesalerPrice', 'unitToConfirm', 'freshAt', 'arrivedAt', 'thumb'] }));
+                        only: ['supplierId', 'barcode', 'needsSetup', 'lockedUntilOOS', 'isSalesperson', 'originalName', 'wholesalerPrice', 'unitToConfirm', 'cost', 'costToConfirm', 'freshAt', 'arrivedAt', 'thumb'] }));
                 } else {
                     productUpdates.push(DB.saveProduct(finalProduct, { thumb: true }));
                 }
@@ -6917,7 +7012,11 @@ document.addEventListener('DOMContentLoaded', () => {
         // A tap on the message goes where it points: money for stock opens WhatsApp, a customer opens their card, a product opens its tab
         _nudgeTap() {
             const go = this._nudgeGo, arg = this._nudgeArg;
-            if (go === 'receipt') {
+            if (go === 'edit' && arg) {
+                this.hideModal();
+                this.navigateTo('products-view');
+                DB.getProduct(arg.id).then(product => { if (product && !product.deleted) this.handleEditProduct(product); else this.showToast('That product is no longer in your list.'); });
+            } else if (go === 'receipt') {
                 this._receiptTap();
             } else if (go === 'funding') {
                 window.open(`https://wa.me/${this.WA_NUMBER}?text=${encodeURIComponent("I'm a PikaShot top seller and need money for stock.")}`, '_blank', 'noopener');
@@ -6930,6 +7029,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.hideModal();
                 this.state.focusProduct = { id: arg.id, until: Date.now() + 15000 };
                 this.state.openProductsOn = arg.tab;
+                this.navigateTo('products-view');
+            } else if (go === 'products') { // (several items waiting for a price: they are at the top of My products, with "Add price!")
+                this.hideModal();
+                this.state.openProductsOn = 'all';
                 this.navigateTo('products-view');
             }
         },

@@ -1959,3 +1959,43 @@ a.privacy-link-trigger { display: inline-block; padding: 8px 2px; margin: -8px 0
 #invite-customer-modal .modal-actions-inline .btn { padding-left: 12px; padding-right: 12px; white-space: nowrap; }
 #invite-customer-modal .modal-actions-inline .btn-secondary { flex-basis: 40%; }
 #invite-customer-modal .modal-actions-inline .btn-primary { flex-basis: 60%; }
+
+/* === Product box: name + picture button on one line; Unit + Stock; Cost price + Selling price === */
+#product-form .pf-name-row { align-items: flex-end; gap: 8px; }
+#product-form .pf-name-row #product-name-group { flex: 1 1 auto; min-width: 0; }
+/* The picture button: a slim tab beside the name (8% of the line), as tall as the box. The camera until there is a photo, then the photo itself with a small tick. */
+.pf-pic-btn {
+    position: relative; flex: 0 0 8%; min-width: 30px; height: 50px; margin: 0 0 22px; padding: 0; overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+    border: 1.5px dashed var(--primary-color); border-radius: 12px; background: rgba(0, 140, 149, 0.07); color: var(--primary-color);
+    background-size: cover; background-position: center; cursor: pointer; -webkit-tap-highlight-color: transparent;
+    transition: transform 0.1s, background-color 0.15s;
+}
+.pf-pic-btn svg { width: 18px; height: 18px; flex: none; }
+.pf-pic-btn:active { transform: scale(0.94); background-color: rgba(0, 140, 149, 0.16); }
+.pf-pic-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(0, 140, 149, 0.35); }
+.pf-pic-btn.has-pic { border-style: solid; border-color: var(--success-color); background-color: #eaf6ec; color: #fff; }
+.pf-pic-btn.has-pic::after { content: ''; position: absolute; right: 3px; bottom: 3px; width: 12px; height: 12px; border-radius: 50%; background: var(--success-color) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><polyline points='20 6 9 17 4 12'/></svg>") center / 8px no-repeat; box-shadow: 0 0 0 1.5px #fff; }
+.pf-pic-btn.has-pic svg { display: none; }
+.pf-pic-btn.just-snapped { animation: pf-pic-pop 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.3); }
+.pf-pic-btn:disabled { opacity: 0.5; cursor: default; }
+#product-form .pf-pic-btn.input-error-shake { border: 1.5px solid var(--danger-color) !important; }
+@keyframes pf-pic-pop { from { transform: scale(0.8); } to { transform: none; } }
+#product-form .unit-group { flex: 1.3; }
+#product-form .stock-group { flex: 1.7; }
+#product-form .cost-group, #product-form .price-group { flex: 1 1 0; min-width: 0; position: relative; }
+#product-form .cost-group label, #product-form .price-group label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* "₦150 or ₦170?": the cost question floats ABOVE the cost box (the last line of the box has no room below), pointing down at it */
+.cost-ask { top: auto; bottom: calc(100% + 8px); transform-origin: 26px calc(100% + 8px); }
+.cost-ask .unit-ask-arrow { top: auto; bottom: -7px; transform: rotate(225deg); }
+.cost-ask .unit-ask-btn { padding: 0 12px; }
+.cost-ask .cost-new { margin-left: 4px; padding: 1px 5px; border-radius: 6px; background: rgba(0, 140, 149, 0.12); font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; }
+.cost-ask .unit-ask-btn:active .cost-new { background: rgba(255, 255, 255, 0.25); }
+#product-form .form-group input.needs-answer { border-color: var(--primary-color); animation: unit-glow 1.6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .pf-pic-btn.just-snapped { animation: none; } #product-form .form-group input.needs-answer { animation: none; box-shadow: 0 0 0 3px rgba(0, 140, 149, 0.25); } }
+
+/* Profit under a group's total on the sales pages: small and quiet (only the business sees it) */
+.sales-group-sums { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; text-align: right; }
+.sales-group-profit { font-size: 0.75rem; font-weight: 600; color: var(--text-light); line-height: 1.3; }
+.sales-group-profit.loss { color: #b4505c; }
+.sales-group-profit .profit-note { font-weight: 400; }

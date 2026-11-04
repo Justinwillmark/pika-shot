@@ -556,9 +556,13 @@
                         <span class="mini-switch-slider"></span>
                     </label>
                 </div>
-                <div class="form-group" id="product-name-group">
-                    <label for="product-name">Product name</label>
-                    <input type="text" id="product-name" maxlength="60" placeholder="e.g., Indomie Chicken 70g" autocomplete="off" enterkeyhint="next" required>
+                <!-- Product name, with the picture button beside it (a slim button: the camera, or the photo once there is one) -->
+                <div class="form-row pf-name-row">
+                    <div class="form-group" id="product-name-group">
+                        <label for="product-name">Product name</label>
+                        <input type="text" id="product-name" maxlength="60" placeholder="e.g., Indomie Chicken 70g" autocomplete="off" enterkeyhint="next" required>
+                    </div>
+                    <button type="button" id="add-change-picture-btn" class="pf-pic-btn" aria-label="Snap image" title="Snap image"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg></button>
                 </div>
                 <div class="form-row">
                     <div class="form-group unit-group" id="unit-group">
@@ -568,11 +572,14 @@
                         <button type="button" id="product-unit-btn" class="unit-btn" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="unit-label"><span class="unit-ico" aria-hidden="true"></span><span class="unit-name"></span><svg class="unit-chev" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg></button>
                         <div id="unit-ask" class="unit-ask" role="dialog" aria-label="Which unit is this?" hidden></div>
                     </div>
-                    <div class="form-group price-group"><label for="product-price">Price (₦)</label><input type="text" id="product-price" inputmode="decimal" placeholder="e.g., 200" autocomplete="off" enterkeyhint="next" required></div>
+                    <div class="form-group stock-group"><label for="product-stock">Stock</label><input type="text" id="product-stock" inputmode="decimal" placeholder="e.g., 24 or 2.5" autocomplete="off" enterkeyhint="next" required></div>
                 </div>
                 <div class="form-row">
-                    <button type="button" id="add-change-picture-btn" class="btn-icon"><span>Snap image</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg></button>
-                    <div class="form-group stock-group"><label for="product-stock">Stock</label><input type="text" id="product-stock" inputmode="decimal" placeholder="e.g., 24 or 2.5" autocomplete="off" enterkeyhint="done" required></div>
+                    <div class="form-group cost-group" id="cost-group">
+                        <label for="product-cost">Cost price (₦)</label><input type="text" id="product-cost" inputmode="decimal" placeholder="e.g., 150" autocomplete="off" enterkeyhint="next" required>
+                        <div id="cost-ask" class="unit-ask cost-ask" role="dialog" aria-label="Which cost price?" hidden></div>
+                    </div>
+                    <div class="form-group price-group"><label for="product-price">Selling price (₦)</label><input type="text" id="product-price" inputmode="decimal" placeholder="e.g., 200" autocomplete="off" enterkeyhint="done" required></div>
                 </div>
                 </div>
               </div>

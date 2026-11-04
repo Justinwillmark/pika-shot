@@ -3,7 +3,7 @@
 ## Publishing
 - Quick way (as before): publish the project folder as it is.
 - Faster, harder-to-copy way: `npm install` once, then `npm run deploy`. It shrinks and scrambles the scripts into `dist/` and publishes that.
-- Every release: change `CACHE_NAME` in `serviceworker.js` (v69 -> v70 ...) so phones fetch the new files. (`npm run build` / `npm run deploy` stamp a version of their own on the published copy, a short code that changes whenever any file changes, so with those the number can never be forgotten.)
+- Every release: change `CACHE_NAME` in `serviceworker.js` (v70 -> v71 ...) so phones fetch the new files. (`npm run build` / `npm run deploy` stamp a version of their own on the published copy, a short code that changes whenever any file changes, so with those the number can never be forgotten.)
 - How a new version reaches phones by itself: see "New versions reach phones by themselves" below.
 
 ## New versions reach phones by themselves
@@ -92,7 +92,7 @@ clearing browsing data or switching phones the picture comes back from the thumb
 
 ## Profile messages (`nudges.js`)
 - The one message in the Profile card comes from `nudges.js`. All the words, and when each one applies, are in the `CATALOG` list at the top of that file.
-- Three kinds take turns, never the same kind twice in a row: free airtime, business insights, motivation. Motivation is mostly in Pidgin; most airtime, insight and welcome-back messages have a Pidgin twin next to the English one (`pick1` in `CATALOG`): one of the two is picked each time, and the words stay the same until the message changes.
+- Three kinds take turns, never the same kind twice in a row: free airtime, business insights, motivation. A fourth, **prices**, joins in only while a received item waits for the owner's price (see Cost price and profit). Motivation is mostly in Pidgin; most airtime, insight and welcome-back messages have a Pidgin twin next to the English one (`pick1` in `CATALOG`): one of the two is picked each time, and the words stay the same until the message changes.
 - It changes after every 5 actions (sales, scans, transfers, receipts shared or printed, in any mix). Each person gets their own shuffled order.
 - Keep each message to 8 words or fewer with one emoji, in plain words.
 - When a new message arrives by itself (the 5th action, a welcome, or a nudge on app open) the menu (hamburger) button gets a warm dot and its three lines ripple for 30 seconds.
@@ -191,6 +191,16 @@ clearing browsing data or switching phones the picture comes back from the thumb
 - The header is one bar over both halves: "My shop" and the menu button over the left, the open page's title over the right with a close button (X, the same button as the phone's back arrow) at its left edge. Titles come from `updateHeader` as before; "All sales" keeps its filter arrow. **X** (and **Esc**, when nothing else is open and no box is being typed in) closes the page and leaves the shop alone (`_closePage`): on a phone it is Back, but here Back could show another page (one opened from the shop, then another from that page). Choosing a product for a sale ("Select a product") still goes back to the scanner. Esc also cancels a selection of sales first.
 - The sales selection bar (Cancel / Edit / Receipt & transfer) sits under the half the selected sale is in (`on-right` on `#receipt-actions`). The + buttons sit at the bottom right of the page they belong to. The scanner fills the right half and the left half is dimmed and does nothing until the scan is cancelled or done (as a phone's whole screen would be). The offline banner stays over the left half. Boxes (product, sale, receipt, profile), messages, the update pop-up and the toast stay in the middle of the whole window.
 - On a very wide screen the page on the right keeps a readable width (at most 860 px, in the middle of its half). Mouse users get a pointer cursor and a light hover on the bar's buttons.
+
+## Cost price and profit
+- **The product box:** Product name with a slim picture button beside it (8% of the line, at least 30 px: the camera, or the photo itself with a small green tick once there is one: `_paintPicBtn` in `app.js`, `.pf-pic-btn` in `style.css`); then Unit and Stock; then Cost price and Selling price. Every box is required. The cost price must be more than 0 and cannot be more than the selling price. Salespeople do not see the cost price.
+- **Older products have no cost price yet.** The cost box is empty in their Edit box and must be filled to save; adding that first cost does not use up one of the hand edits an hour.
+- **A sale keeps the cost it was sold at** (`cost` on the sale), so profit stays right after the cost changes. Sales from before costs were kept use the product's cost now.
+- **Accepting a transfer:** what the sender charged for one (less their discount on that line, to the nearest naira: `_receivedCost`) is this business's cost.
+  - A **new product** gets it as its cost *and* its selling price, and shows **"Add price!"** (under "New stock today!") until the owner saves its Edit box (`needsSetup: 'price'`, as before). In that box the selling price glows until it is changed.
+  - A **product already here** with no cost takes it. One with a different cost is marked `costToConfirm`: its Edit box asks "₦220 or ₦250 NEW?" over the cost box (after the unit question, when there is one). Nothing changes until it is answered; tapping a cost puts it in the box, typing one answers it too, and saving keeps whichever cost is in the box.
+- **Price reminders** (`nudges.js`, kind `prices`, owners only, with the clear beep): "Set your selling price for {item}" / "Wetin be your price for {item}?", "{n} new items need your selling price" (3 or more), and "{item} came at {cost}. Update your cost?" / "{item} cost don change? Check am.". Each item at most once a day, also once when the app opens; they go first like stock reminders, never more than two of those in a row. A tap opens that item's Edit box (`go: 'edit'`); the many-items one opens My products.
+- **Profit on All sales, Weekly sales, Monthly sales and Best selling products:** a small grey line under each total, "Profit ₦1,400", or "Loss ₦…" in muted red (`_profitHtml` in `app.js`). It is the money shown less what the items cost. A credit sale counts only the part paid so far with its share of the cost, so profit is never more than the total above it. Sales of products with no cost price are left out, and the line says how many ("· 1 sale has no cost price"). Salespeople never see it.
 
 ## Units, cartons and the Edit product box
 - **A carton is just a unit now.** The "what is inside / how many per carton" step is gone (its box, the "= 72 sachets" line on incoming transfers, the sub-unit details sent with a transfer, and a retailer's automatic carton-to-pieces conversion). Older products still hold the old sub-unit fields; nothing reads them.
