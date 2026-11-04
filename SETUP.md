@@ -3,7 +3,7 @@
 ## Publishing
 - Quick way (as before): publish the project folder as it is.
 - Faster, harder-to-copy way: `npm install` once, then `npm run deploy`. It shrinks and scrambles the scripts into `dist/` and publishes that.
-- Every release: change `CACHE_NAME` in `serviceworker.js` (v75 -> v76 ...) so phones fetch the new files. (`npm run build` / `npm run deploy` stamp a version of their own on the published copy, a short code that changes whenever any file changes, so with those the number can never be forgotten.)
+- Every release: change `CACHE_NAME` in `serviceworker.js` (v76 -> v77 ...) so phones fetch the new files. (`npm run build` / `npm run deploy` stamp a version of their own on the published copy, a short code that changes whenever any file changes, so with those the number can never be forgotten.)
 - How a new version reaches phones by itself: see "New versions reach phones by themselves" below.
 
 ## New versions reach phones by themselves
@@ -96,6 +96,7 @@ clearing browsing data or switching phones the picture comes back from the thumb
 - Three kinds take turns, never the same kind twice in a row: free airtime, business insights, motivation. A fourth, **prices**, joins in only while a received item waits for the owner's price (see Cost price and profit). Motivation is mostly in Pidgin; most airtime, insight and welcome-back messages have a Pidgin twin next to the English one (`pick1` in `CATALOG`): one of the two is picked each time, and the words stay the same until the message changes.
 - It changes after every 5 actions (sales, scans, transfers, receipts shared or printed, in any mix). Each person gets their own shuffled order.
 - Keep each message to 8 words or fewer with one emoji, in plain words.
+- A message that goes somewhere when tapped (money owed, stock, a price to set, a receipt...) ends with a round teal arrow that nudges to the right twice, then pauses, over and over, so it is plain that it can be tapped (`.scan-reward.is-link::after` in `style.css`; still for people who ask their phone for less motion). Messages that go nowhere have no arrow.
 - When a new message arrives by itself (the 5th action, a welcome, or a nudge on app open) the menu (hamburger) button gets a warm dot and its three lines ripple for 30 seconds.
   The dot stays until the Profile is opened.
 - A soft double beep goes with it, in two strengths (`_playNudgeChime` in `app.js`; the numbers are in one place if you want them louder or quieter):
