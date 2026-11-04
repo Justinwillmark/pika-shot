@@ -432,7 +432,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.retakePictureBtn.addEventListener('click', this.handleRetakePicture.bind(this));
             this.elements.confirmPictureBtn.addEventListener('click', this.handleConfirmPicture.bind(this));
             this.elements.addChangePictureBtn.addEventListener('click', this.handleAddOrChangePicture.bind(this));
-            this.elements.cancelPictureBtn.addEventListener('click', () => this.hideModal());
+            this.elements.cancelPictureBtn.addEventListener('click', () => this._backToProductForm()); // (the new picture is dropped; the product box comes back as it was)
             this._initUnitPicker();
             // The PIN screens are real forms, so a browser pairs a PIN with the phone number (the hidden username) and with no other box.
             // Nothing is ever sent by the form itself: the buttons do the work.
@@ -3754,7 +3754,18 @@ document.addEventListener('DOMContentLoaded', () => {
             }, isTimeout ? 0 : 1000); // Show modal immediately on timeout
         },
 
-        async handleRetakePicture() { this.hideModal(); await this.handleAddOrChangePicture(); },
+        async handleRetakePicture() { this.hideModal(); await this.handleAddOrChangePicture(true); },
+
+        // Back to the product box from taking a picture (Cancel on the camera or on "Confirm image", the phone's Back, a photo that failed):
+        // the box comes back exactly as it was, with the picture it had before (a picture not confirmed is dropped).
+        // It waits for the camera screen to be gone first, so the box's own Back step is never taken by the step back from the camera.
+        async _backToProductForm() {
+            if (this._blobBeforePhoto !== undefined) this.state.capturedBlob = this._blobBeforePhoto;
+            for (let i = 0; i < 40 && (this.state.currentView === 'camera-view' || this._backPending > 0); i++) await new Promise(r => setTimeout(r, 50));
+            if (!this.state.user || !(this.state.editingProduct || this.state.newProductKey)) return; // (the box was finished or left meanwhile)
+            if (this.state.currentView === 'camera-view') return;
+            this.showModal('product-form-modal');
+        },
 
         handleConfirmPicture() {
             this.hideModal();
@@ -4244,7 +4255,8 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.cancelScanBtn.style.maxWidth = withSelect ? '100px' : '300px';
         },
 
-        async handleAddOrChangePicture() {
+        async handleAddOrChangePicture(retake) {
+            if (retake !== true) this._blobBeforePhoto = this.state.capturedBlob; // (what Cancel goes back to; "Try again" keeps the one from before the first try)
             this.hideModal();
 
             // Hide scan-related UI elements for photo capture
@@ -4256,19 +4268,22 @@ document.addEventListener('DOMContentLoaded', () => {
             this.navigateTo('camera-view');
             try {
                 const { blob, cancelled, reported } = await Camera.capturePhoto(this.elements.scanTimerDisplay, this.elements.scanFeedback, document.getElementById('snap-photo-btn'));
-                if (cancelled || attempt !== this._photoAttempt) return; // backed out (Cancel, the arrow or the phone's Back), or a newer picture was started meanwhile
+                if (attempt !== this._photoAttempt) return; // a newer picture was started meanwhile
+                if (cancelled) { await this._backToProductForm(); return; } // backed out (Cancel, the arrow or the phone's Back): back to the product box
                 if (this.state.currentView === 'camera-view') this._back(); // Cancel has already gone back once
                 if (blob) {
                     this.state.capturedBlob = blob;
                     this.elements.capturedImagePreview.src = URL.createObjectURL(blob);
                     this.showModal('confirm-picture-modal');
-                } else if (!reported) {
-                    say("The picture did not come out. Please try again.", "Photo failed");
+                } else {
+                    if (!reported) say("The picture did not come out. Please try again.", "Photo failed");
+                    await this._backToProductForm();
                 }
             } catch (error) {
                 console.error("Error capturing image:", error);
                 say("The photo did not work. Please try again.", "Photo failed");
                 if (this.state.currentView === 'camera-view') this._back();
+                if (attempt === this._photoAttempt) await this._backToProductForm();
             }
         },
 

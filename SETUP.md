@@ -3,7 +3,7 @@
 ## Publishing
 - Quick way (as before): publish the project folder as it is.
 - Faster, harder-to-copy way: `npm install` once, then `npm run deploy`. It shrinks and scrambles the scripts into `dist/` and publishes that.
-- Every release: change `CACHE_NAME` in `serviceworker.js` (v71 -> v72 ...) so phones fetch the new files. (`npm run build` / `npm run deploy` stamp a version of their own on the published copy, a short code that changes whenever any file changes, so with those the number can never be forgotten.)
+- Every release: change `CACHE_NAME` in `serviceworker.js` (v72 -> v73 ...) so phones fetch the new files. (`npm run build` / `npm run deploy` stamp a version of their own on the published copy, a short code that changes whenever any file changes, so with those the number can never be forgotten.)
 - How a new version reaches phones by itself: see "New versions reach phones by themselves" below.
 
 ## New versions reach phones by themselves
@@ -78,6 +78,7 @@ clearing browsing data or switching phones the picture comes back from the thumb
 
 ### Snap image (`capturePhoto` in `camera.js`)
 - **The picture is taken when the person taps the snap button** (`#snap-photo-btn`, a round white shutter above Cancel), never by itself. The screen says "Opening camera...", then "Point at the product, then tap the button." A tap before the camera has settled (focus and brightness, `PHOTO_SETTLE_MS`, counted from when pictures really come in; the light, below) is kept: "Hold still..." with a short count, and the picture is taken as soon as it has. The button shows only while a photo is being taken (never for barcode scans) and is hidden again however the camera closes.
+- **Leaving the picture goes back to the product box, never closes it.** Cancel on the camera, Cancel on "Confirm image", the phone's Back on either, or a photo that failed: the product box comes back as it was (what was typed stays), with the picture it had before; a picture not confirmed is dropped (`_backToProductForm` in `app.js`). "Try again" then Cancel also goes back to the picture from before the first try.
 - The light comes on for photos (unless the person switched it off). The shot waits a moment after it comes on (`PHOTO_LIGHT_SETTLE_MS`) so the picture is not blown out, but never waits for a light a phone does not have.
 - A camera that freezes right after starting is opened once more instead of being photographed frozen. A picture that comes out empty now says so ("The picture did not come out") instead of silently doing nothing.
 - Leaving the camera screen in any way (Cancel, the arrow, the phone's Back) turns the camera off at once (`showView`). Before, Back and the arrow left it running, which kept it busy for the next scan or photo and could pop up a picture after the person had left.
