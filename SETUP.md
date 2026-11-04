@@ -3,7 +3,7 @@
 ## Publishing
 - Quick way (as before): publish the project folder as it is.
 - Faster, harder-to-copy way: `npm install` once, then `npm run deploy`. It shrinks and scrambles the scripts into `dist/` and publishes that.
-- Every release: change `CACHE_NAME` in `serviceworker.js` (v76 -> v77 ...) so phones fetch the new files. (`npm run build` / `npm run deploy` stamp a version of their own on the published copy, a short code that changes whenever any file changes, so with those the number can never be forgotten.)
+- Every release: change `CACHE_NAME` in `serviceworker.js` (v77 -> v78 ...) so phones fetch the new files. (`npm run build` / `npm run deploy` stamp a version of their own on the published copy, a short code that changes whenever any file changes, so with those the number can never be forgotten.)
 - How a new version reaches phones by itself: see "New versions reach phones by themselves" below.
 
 ## New versions reach phones by themselves
@@ -97,6 +97,7 @@ clearing browsing data or switching phones the picture comes back from the thumb
 - It changes after every 5 actions (sales, scans, transfers, receipts shared or printed, in any mix). Each person gets their own shuffled order.
 - Keep each message to 8 words or fewer with one emoji, in plain words.
 - A message that goes somewhere when tapped (money owed, stock, a price to set, a receipt...) ends with a round teal arrow that nudges to the right twice, then pauses, over and over, so it is plain that it can be tapped (`.scan-reward.is-link::after` in `style.css`; still for people who ask their phone for less motion). Messages that go nowhere have no arrow.
+- **The voice (a test):** a message is read aloud the first time it is seen in the Profile, with the phone's own speech (free; `_speakNudge` in `app.js`). The most Nigerian voice the phone has is used: English (Nigeria) first, then Ghana, Kenya, Tanzania, Uganda, South Africa, then British, then any English (`_pickVoice`). Many phones have no Nigerian voice, so it may sound British: the way to a real Nigerian voice everywhere is recorded clips. The words are tidied for speaking: no emoji, "12,500 naira", "100 thousand naira", "Well done" (`_speechText`). Each message is said once (the last one said is `pika_voice_said_<phone>`); the small speaker beside "Activity" turns it off and on (`pika_voice`, on unless turned off), and turning it on says the current message again. The voice stops when the Profile closes.
 - When a new message arrives by itself (the 5th action, a welcome, or a nudge on app open) the menu (hamburger) button gets a warm dot and its three lines ripple for 30 seconds.
   The dot stays until the Profile is opened.
 - A soft double beep goes with it, in two strengths (`_playNudgeChime` in `app.js`; the numbers are in one place if you want them louder or quieter):

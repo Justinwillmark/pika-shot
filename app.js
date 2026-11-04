@@ -2338,7 +2338,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this._hideModalBox();
             if (this._modalLive) { this._modalLive = false; this._modalStale = true; }
         },
-        _hideModalBox() { this._closeUnitMenu(false, true); this.elements.modalContainer.style.display = 'none'; this.elements.modalContainer.querySelectorAll('.modal-content').forEach(m => m.style.display = 'none'); this._followKeyboard(false); },
+        _hideModalBox() { if (window.speechSynthesis && this.elements.profileModal.style.display !== 'none') window.speechSynthesis.cancel(); /* (the voice stops when the profile closes) */ this._closeUnitMenu(false, true); this.elements.modalContainer.style.display = 'none'; this.elements.modalContainer.querySelectorAll('.modal-content').forEach(m => m.style.display = 'none'); this._followKeyboard(false); },
 
         // Adds a step to the history, but only once a step back that is still on its way has arrived (a step added before then would be lost in it)
         _pushStep(extra) {
@@ -6843,6 +6843,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 await this._renderNudge();
 
                 this.showModal('profile-modal');
+                this._initVoice();
+                this._speakNudge(); // a message not heard yet is read aloud (once)
             }
         },
 
@@ -7130,7 +7132,85 @@ document.addEventListener('DOMContentLoaded', () => {
                 this._nudgeArg = view.arg || null;
                 el.style.animation = 'none'; void el.offsetWidth; el.style.animation = ''; // plays the little entrance
                 this._nudgeShake();
+                this._nudgeSay = { key: `${this._nudgeLoad().n}:${view.id || ''}:${view.text}`, text: view.text }; // (what the voice would say: see _speakNudge)
+                if (this.elements.profileModal.style.display !== 'none' && this.elements.modalContainer.style.display !== 'none') this._speakNudge(); // (a new message while the profile is open)
             });
+        },
+
+        // --- The voice: a new message is read aloud the first time it is seen in the profile ---
+        // It uses the phone's own speech (free, no internet needed once the phone has the voice). The most Nigerian voice the phone has is
+        // chosen: English (Nigeria) first, then other West and East African English, then British, then any English. Each message is said
+        // once (the last one said is kept per person); the speaker button beside "Activity" turns it off and on, and turning it on says
+        // the current message again. Phones only allow sound after a tap: opening the profile is one.
+        _voiceOn() {
+            try { return localStorage.getItem('pika_voice') !== '0'; } catch (e) { return true; }
+        },
+        _initVoice() {
+            if (this._voiceReady) return;
+            this._voiceReady = true;
+            const btn = document.getElementById('nudge-voice-btn');
+            if (!('speechSynthesis' in window) || !btn) return; // (no speech on this phone: no button)
+            btn.hidden = false;
+            const paint = () => {
+                const on = this._voiceOn();
+                btn.setAttribute('aria-pressed', String(on));
+                btn.setAttribute('aria-label', `Read new messages aloud: ${on ? 'on' : 'off'}`);
+                btn.classList.toggle('is-off', !on);
+            };
+            paint();
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const on = !this._voiceOn();
+                try { localStorage.setItem('pika_voice', on ? '1' : '0'); } catch (err) { /* only for now */ }
+                paint();
+                if (on) this._speakNudge(true); else window.speechSynthesis.cancel();
+            });
+            window.speechSynthesis.getVoices(); // (the list fills in a moment later on some phones)
+            window.speechSynthesis.addEventListener && window.speechSynthesis.addEventListener('voiceschanged', () => { this._voice = null; });
+        },
+        _pickVoice() {
+            if (this._voice) return this._voice;
+            const voices = (window.speechSynthesis.getVoices() || []).filter(v => /^en([-_]|$)/i.test(v.lang || ''));
+            const lang = (v) => String(v.lang || '').replace('_', '-').toLowerCase();
+            const order = ['en-ng', 'en-gh', 'en-ke', 'en-tz', 'en-ug', 'en-za', 'en-gb', 'en-ie', 'en-in', 'en-au', 'en-us'];
+            const rank = (v) => {
+                if (/niger/i.test(v.name || '')) return -1; // (a voice named for Nigeria, whatever its tag)
+                const i = order.indexOf(lang(v));
+                return i < 0 ? order.length : i;
+            };
+            this._voice = voices.sort((a, b) => (rank(a) - rank(b)) || ((b.localService ? 1 : 0) - (a.localService ? 1 : 0)))[0] || null;
+            return this._voice;
+        },
+        // The words as they should be heard: no emoji, money said in naira, a few words spelt the way they are said
+        _speechText(text) {
+            return String(text || '')
+                .replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/gu, '')
+                .replace(/₦\s?([\d,]+(?:\.\d+)?)\s?k\b/gi, '$1 thousand naira')
+                .replace(/₦\s?([\d,]+(?:\.\d+)?)/g, '$1 naira')
+                .replace(/\bWeldone\b/gi, 'Well done')
+                .replace(/\bdi madam\b/gi, 'dee madam')
+                .replace(/\s+/g, ' ')
+                .trim();
+        },
+        _speakNudge(again) {
+            const say = this._nudgeSay;
+            if (!say || !('speechSynthesis' in window) || !this.state.user || !this._voiceOn()) return;
+            const key = `pika_voice_said_${this.state.user.phone}`;
+            let said = null;
+            try { said = localStorage.getItem(key); } catch (e) { /* say it */ }
+            if (!again && said === say.key) return; // (heard already)
+            const words = this._speechText(say.text);
+            if (!words) return;
+            try { localStorage.setItem(key, say.key); } catch (e) { /* it may be said again */ }
+            const synth = window.speechSynthesis;
+            synth.cancel(); // (whatever was being said stops: one voice at a time)
+            const u = new SpeechSynthesisUtterance(words);
+            const voice = this._pickVoice();
+            if (voice) { u.voice = voice; u.lang = voice.lang; } else u.lang = 'en-NG';
+            u.rate = 0.95; // (a touch slower than the phone's usual: clear, not slow)
+            u.pitch = 1;
+            u.volume = 1;
+            setTimeout(() => synth.speak(u), 250); // (once the profile has opened)
         },
     };
 

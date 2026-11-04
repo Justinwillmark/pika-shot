@@ -2027,3 +2027,14 @@ a.privacy-link-trigger { display: inline-block; padding: 8px 2px; margin: -8px 0
 @keyframes sale-slide-in { from { transform: translateX(100%); opacity: 0.3; } to { transform: none; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .sale-row.slide-in { animation: sale-fade-in 0.3s ease-out both; } }
 @keyframes sale-fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+/* The voice button beside "Activity" in the profile: a small speaker, teal when new messages are read aloud, grey and crossed out when not */
+.airtime-title { display: inline-flex; align-items: center; gap: 6px; }
+.nudge-voice-btn { display: inline-flex; align-items: center; justify-content: center; position: relative; width: 26px; height: 26px; padding: 0; border: none; border-radius: 50%; background: rgba(0, 140, 149, 0.1); color: var(--primary-color); cursor: pointer; -webkit-tap-highlight-color: transparent; transition: background-color 0.15s, color 0.15s, transform 0.1s; }
+.nudge-voice-btn[hidden] { display: none; }
+.nudge-voice-btn::after { content: ''; position: absolute; inset: -8px; } /* (easy to tap) */
+.nudge-voice-btn:active { transform: scale(0.9); }
+.nudge-voice-btn .voice-off { display: none; }
+.nudge-voice-btn.is-off { background: #eef1f3; color: #8a959e; }
+.nudge-voice-btn.is-off .voice-on { display: none; }
+.nudge-voice-btn.is-off .voice-off { display: block; }
