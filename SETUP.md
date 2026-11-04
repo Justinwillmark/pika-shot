@@ -3,7 +3,7 @@
 ## Publishing
 - Quick way (as before): publish the project folder as it is.
 - Faster, harder-to-copy way: `npm install` once, then `npm run deploy`. It shrinks and scrambles the scripts into `dist/` and publishes that.
-- Every release: change `CACHE_NAME` in `serviceworker.js` (v72 -> v73 ...) so phones fetch the new files. (`npm run build` / `npm run deploy` stamp a version of their own on the published copy, a short code that changes whenever any file changes, so with those the number can never be forgotten.)
+- Every release: change `CACHE_NAME` in `serviceworker.js` (v73 -> v74 ...) so phones fetch the new files. (`npm run build` / `npm run deploy` stamp a version of their own on the published copy, a short code that changes whenever any file changes, so with those the number can never be forgotten.)
 - How a new version reaches phones by itself: see "New versions reach phones by themselves" below.
 
 ## New versions reach phones by themselves
@@ -163,6 +163,7 @@ clearing browsing data or switching phones the picture comes back from the thumb
 - Every label, title and button is written in sentence case: only the first word has a capital ("My shop", "My products", "All sales", "Today's sales", "Items sold", "Record sale", "Add new product", "Save product", "Confirm sale", "Welcome back!", "Create account", "Try again", "Out of stock", "Previously transferred", "Customers & salespeople"...). Names stay as names (PikaShot, WhatsApp, Lagos Island, the example names in the boxes), and a button named inside a sentence keeps its capital ("Tap Try again"). Keep new words this way. The small ALL-CAPS labels on receipts and cards are a style (`text-transform: uppercase`), not wording. The admin dashboard (`admin.html`) was not part of this.
 - A sale made with no customer picked is named "Walk-in customer" (it is kept inside the sale). Sales saved earlier say "Walk-in Customer": the check that leaves walk-ins out of a customer list ignores capitals, so both are recognised.
 - The home page button for earlier days says **See previous sales**. From the third sale of a day the page is given the height of a six-sale day so it scrolls comfortably; that extra room is a spacer *below* the button (`#sales-spacer`, set in `updateDashboard`), so the button always sits right under the sales that are there (16 px below the last one) and the page is as tall as it was.
+- **A sale just recorded slides into Today's sales from the right** (0.6 s, easing out; a fade only for people who ask their phone for less motion). Only a new sale, only once, only on the home page (`_slideIn` in `handleConfirmSale`, played in `_appendSaleEl`; `.sale-row.slide-in` in `style.css`, its length also `SLIDE_IN_MS`). The list is usually drawn a second time a moment later (the sale reaching the cloud): within the first 0.2 s the slide starts afresh, after that the new row carries on from where it had got to. The list clips sideways (`overflow-x: clip`), so the page never scrolls sideways while it slides.
 - **Invite customer** box: its two buttons are split 40/60 (not the usual 33/67) with less padding at the sides, so "Go back" and "WhatsApp invite" each stay on one line on phones down to 320 px wide (end of `style.css`).
 
 ## Launch check (records, transfers, loopholes, first use)

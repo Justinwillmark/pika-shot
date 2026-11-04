@@ -2012,3 +2012,10 @@ a.privacy-link-trigger { display: inline-block; padding: 8px 2px; margin: -8px 0
 .snap-photo-btn:disabled { cursor: default; }
 .snap-photo-btn:disabled .snap-photo-dot { background: var(--primary-color); transform: scale(0.8); }
 .snap-photo-btn:focus-visible { outline: none; box-shadow: 0 0 0 4px rgba(0, 140, 149, 0.6); }
+
+/* A sale just recorded slides into Today's sales from the right: quick, and smooth enough to notice (_appendSaleEl in app.js) */
+#recent-sales-list { overflow-x: clip; overflow-clip-margin: 16px; } /* (no sideways scroll while it slides; shadows still show) */
+.sale-row.slide-in { animation: sale-slide-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) both; }
+@keyframes sale-slide-in { from { transform: translateX(100%); opacity: 0.3; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .sale-row.slide-in { animation: sale-fade-in 0.3s ease-out both; } }
+@keyframes sale-fade-in { from { opacity: 0; } to { opacity: 1; } }

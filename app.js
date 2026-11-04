@@ -4559,6 +4559,7 @@ document.addEventListener('DOMContentLoaded', () => {
             button.textContent = 'Saving…';
             try {
                 const wasEditing = !!this.state.editingSale;
+                const newSaleId = wasEditing ? null : this.state.saleKey; // (the id this box records the sale under)
                 const success = await this._processSale();
 
                 this.elements.saleOfflineNotice.style.display = 'none'; // Hide if online
@@ -4567,6 +4568,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     this.state.saleKey = null; // used: a late tap on this box can not record anything
                     this.hideModal();
                     this.watchPendingTransfers(); // a credit sale may have been sent to the customer automatically
+                    if (newSaleId) this._slideIn = { id: newSaleId, at: 0 }; // the new sale slides into Today's sales (see _appendSaleEl)
                     await this.updateDashboard();
                     await this.renderProducts();
                     if (wasEditing) {
@@ -4614,6 +4616,8 @@ document.addEventListener('DOMContentLoaded', () => {
             return `Recorded by ${sale.recordedByName || 'a salesperson'}`;
         },
 
+        SLIDE_IN_MS: 600, // (the length of .sale-row.slide-in in style.css)
+
         // Every sale sits in a row: small labels beside it (Edited, Credit, Transferred) and, hidden behind it, who recorded it
         _appendSaleEl(container, saleEl, sale) {
             const { right, left } = this._saleSideLabels(sale);
@@ -4633,6 +4637,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 tag.textContent = label.text;
                 row.appendChild(tag);
             });
+            // A sale just recorded slides in from the right, once, in Today's sales on the home page. The list is often drawn again
+            // while it slides (the sale reaching the cloud). Drawn again in the first moment (it was hardly seen: the list is empty while
+            // it is redrawn), the slide starts afresh; later, the new row carries on from where the slide had got to, never starts it over.
+            const slide = this._slideIn;
+            if (slide && sale.id === slide.id && container === this.elements.recentSalesList) {
+                const now = performance.now();
+                if (!slide.at || (now - slide.at < 200 && (slide.restarts = (slide.restarts || 0) + 1) <= 3)) slide.at = now;
+                const gone = now - slide.at;
+                if (gone < this.SLIDE_IN_MS) { row.classList.add('slide-in'); row.style.animationDelay = `-${Math.round(gone)}ms`; }
+                else this._slideIn = null;
+            }
             container.appendChild(row);
         },
 
