@@ -1292,10 +1292,8 @@ button:focus { outline: none; }
 .modal-content h2.profile-title { margin: 0; text-align: center; font-size: 1.1rem; font-weight: 700; color: var(--text-color); }
 
 .scan-tracker-container { padding: 20px 18px 18px; border-radius: 16px; background: #f5f8f8; text-align: left; }
-.airtime-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+.airtime-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
 .airtime-title { font-size: 0.95rem; font-weight: 700; color: var(--text-color); }
-.airtime-count { font-size: 0.78rem; color: var(--text-light); font-variant-numeric: tabular-nums; }
-.airtime-count span { font-weight: 600; color: var(--text-color); }
 .scan-progress-bar { width: 100%; height: 8px; background-color: #e2eaea; border-radius: 4px; overflow: hidden; }
 .scan-progress { width: 0%; height: 100%; background: var(--primary-color); border-radius: 4px; transition: width 0.5s ease-out; }
 .scan-reward.is-link { cursor: pointer; justify-content: space-between; }
@@ -2028,8 +2026,7 @@ a.privacy-link-trigger { display: inline-block; padding: 8px 2px; margin: -8px 0
 @media (prefers-reduced-motion: reduce) { .sale-row.slide-in { animation: sale-fade-in 0.3s ease-out both; } }
 @keyframes sale-fade-in { from { opacity: 0; } to { opacity: 1; } }
 
-/* The voice button beside "Activity" in the profile: a small speaker, teal when new messages are read aloud, grey and crossed out when not */
-.airtime-title { display: inline-flex; align-items: center; gap: 6px; }
+/* The voice button on the right of "Assistant" in the profile: a small speaker, teal when new messages are read aloud, grey and crossed out when not */
 .nudge-voice-btn { display: inline-flex; align-items: center; justify-content: center; position: relative; width: 26px; height: 26px; padding: 0; border: none; border-radius: 50%; background: rgba(0, 140, 149, 0.1); color: var(--primary-color); cursor: pointer; -webkit-tap-highlight-color: transparent; transition: background-color 0.15s, color 0.15s, transform 0.1s; }
 .nudge-voice-btn[hidden] { display: none; }
 .nudge-voice-btn::after { content: ''; position: absolute; inset: -8px; } /* (easy to tap) */

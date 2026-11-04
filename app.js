@@ -228,7 +228,6 @@ document.addEventListener('DOMContentLoaded', () => {
             toast: document.getElementById('toast'),
             scanTrackerContainer: document.getElementById('scan-tracker-container'),
             scanProgress: document.getElementById('scan-progress'),
-            scanCount: document.getElementById('scan-count'),
             scanReward: document.getElementById('scan-reward'),
         },
 
@@ -6858,8 +6857,7 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         async updateScanTracker() {
-            const count = await DB.getScanCountForToday();
-            this.elements.scanCount.textContent = count;
+            const count = await DB.getScanCountForToday(); // (the bar shows today's scans out of 100; the number itself is no longer written out)
 
             const progress = Math.min((count / 100) * 100, 100);
             this.elements.scanProgress.style.width = `${progress}%`;
@@ -7140,7 +7138,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // --- The voice: a new message is read aloud the first time it is seen in the profile ---
         // It uses the phone's own speech (free, no internet needed once the phone has the voice). The most Nigerian voice the phone has is
         // chosen: English (Nigeria) first, then other West and East African English, then British, then any English. Each message is said
-        // once (the last one said is kept per person); the speaker button beside "Activity" turns it off and on, and turning it on says
+        // once (the last one said is kept per person); the speaker button on the right of "Assistant" turns it off and on, and turning it on says
         // the current message again. Phones only allow sound after a tap: opening the profile is one.
         _voiceOn() {
             try { return localStorage.getItem('pika_voice') !== '0'; } catch (e) { return true; }

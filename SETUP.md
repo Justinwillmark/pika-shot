@@ -3,7 +3,7 @@
 ## Publishing
 - Quick way (as before): publish the project folder as it is.
 - Faster, harder-to-copy way: `npm install` once, then `npm run deploy`. It shrinks and scrambles the scripts into `dist/` and publishes that.
-- Every release: change `CACHE_NAME` in `serviceworker.js` (v77 -> v78 ...) so phones fetch the new files. (`npm run build` / `npm run deploy` stamp a version of their own on the published copy, a short code that changes whenever any file changes, so with those the number can never be forgotten.)
+- Every release: change `CACHE_NAME` in `serviceworker.js` (v79 -> v80 ...) so phones fetch the new files. (`npm run build` / `npm run deploy` stamp a version of their own on the published copy, a short code that changes whenever any file changes, so with those the number can never be forgotten.)
 - How a new version reaches phones by itself: see "New versions reach phones by themselves" below.
 
 ## New versions reach phones by themselves
@@ -97,7 +97,7 @@ clearing browsing data or switching phones the picture comes back from the thumb
 - It changes after every 5 actions (sales, scans, transfers, receipts shared or printed, in any mix). Each person gets their own shuffled order.
 - Keep each message to 8 words or fewer with one emoji, in plain words.
 - A message that goes somewhere when tapped (money owed, stock, a price to set, a receipt...) ends with a round teal arrow that nudges to the right twice, then pauses, over and over, so it is plain that it can be tapped (`.scan-reward.is-link::after` in `style.css`; still for people who ask their phone for less motion). Messages that go nowhere have no arrow.
-- **The voice (a test):** a message is read aloud the first time it is seen in the Profile, with the phone's own speech (free; `_speakNudge` in `app.js`). The most Nigerian voice the phone has is used: English (Nigeria) first, then Ghana, Kenya, Tanzania, Uganda, South Africa, then British, then any English (`_pickVoice`). Many phones have no Nigerian voice, so it may sound British: the way to a real Nigerian voice everywhere is recorded clips. The words are tidied for speaking: no emoji, "12,500 naira", "100 thousand naira", "Well done" (`_speechText`). Each message is said once (the last one said is `pika_voice_said_<phone>`); the small speaker beside "Activity" turns it off and on (`pika_voice`, on unless turned off), and turning it on says the current message again. The voice stops when the Profile closes.
+- **The voice (a test):** a message is read aloud the first time it is seen in the Profile, with the phone's own speech (free; `_speakNudge` in `app.js`). The most Nigerian voice the phone has is used: English (Nigeria) first, then Ghana, Kenya, Tanzania, Uganda, South Africa, then British, then any English (`_pickVoice`). Many phones have no Nigerian voice, so it may sound British: the way to a real Nigerian voice everywhere is recorded clips. The words are tidied for speaking: no emoji, "12,500 naira", "100 thousand naira", "Well done" (`_speechText`). Each message is said once (the last one said is `pika_voice_said_<phone>`); the small speaker on the right of "Assistant" turns it off and on (`pika_voice`, on unless turned off), and turning it on says the current message again. The voice stops when the Profile closes.
 - When a new message arrives by itself (the 5th action, a welcome, or a nudge on app open) the menu (hamburger) button gets a warm dot and its three lines ripple for 30 seconds.
   The dot stays until the Profile is opened.
 - A soft double beep goes with it, in two strengths (`_playNudgeChime` in `app.js`; the numbers are in one place if you want them louder or quieter):
@@ -140,7 +140,8 @@ clearing browsing data or switching phones the picture comes back from the thumb
 - "Customers" / "Salespeople" on the home page is a slim half capsule on the right, its flat end against the edge of the screen (`.stock-link-btn` in `style.css`). It names one thing at a time and every 8 seconds (only while the home page is on screen) the word rolls over to the other; both words sit in the same spot, so the capsule never changes size. Tapping it opens the page on the tab the word names. A salesperson only ever sees "Customers". The timing is in `_setStockLink` (`app.js`), the roll in `stock-word-in` / `stock-word-out` (`style.css`).
 
 ## The Profile
-- Activity card (today's scans out of 100+, and the one message), then an "Account" row that is folded away every time the Profile opens. Opening it shows Name, Business, Location, Phone, Type and Logout. Cancel and Get help sit lower while it is folded.
+- The card is called **Assistant** (it was "Activity"). It shows the word "Assistant" with the voice speaker on the far right, the bar (today's scans out of 100) and the message. The "0/100+ scans today" count was taken off.
+- Assistant card (today's scans out of 100+ as a bar, and the one message), then an "Account" row that is folded away every time the Profile opens. Opening it shows Name, Business, Location, Phone, Type and Logout. Cancel and Get help sit lower while it is folded.
 
 ## The phone's Back button
 - A modal has a step of its own in the browser's history, so Back closes it (by pressing its own Close / Cancel button, so anything waiting on it, such as a PIN prompt, is let go) instead of leaving the page. A message or question pop-up closes on Back too, and nothing behind it moves.
