@@ -293,11 +293,28 @@ const DB = {
         return this._unsent;
     },
     isUnsent(id) { return !!this.userPhone && this._loadUnsent().has(String(id)); },
+    // Every sale is "not sent" for the moment it takes the cloud to answer (a split second with good internet, a second or two on slow 3G),
+    // so the mark only shows for a sale still waiting after UNSENT_SHOW_MS: the rare one that really missed the internet.
+    // A sale still waiting from an earlier visit (no time here) shows it at once.
+    UNSENT_SHOW_MS: 3000,
+    isLateUnsent(id) {
+        if (!this.isUnsent(id)) return false;
+        const at = (this._unsentAt || {})[String(id)];
+        return !at || Date.now() - at >= this.UNSENT_SHOW_MS;
+    },
     _setUnsent(id, on) {
         if (!this.userPhone) return;
         const set = this._loadUnsent(), key = String(id);
         if (on === set.has(key)) return;
-        if (on) set.add(key); else set.delete(key);
+        this._unsentAt = this._unsentAt || {};
+        if (on) {
+            set.add(key);
+            this._unsentAt[key] = Date.now();
+            setTimeout(() => { if (this.isLateUnsent(key)) window.dispatchEvent(new CustomEvent('pika-sale-unsent', { detail: { id: key } })); }, this.UNSENT_SHOW_MS + 50); // (still waiting: now it shows)
+        } else {
+            set.delete(key);
+            delete this._unsentAt[key];
+        }
         try { localStorage.setItem(`pika_unsent_${this.userPhone}`, JSON.stringify([...set])); } catch (e) { /* the mark is only for this visit */ }
         if (!on) window.dispatchEvent(new CustomEvent('pika-sale-sent', { detail: { id: key } }));
     },

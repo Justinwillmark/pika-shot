@@ -273,10 +273,15 @@ document.addEventListener('DOMContentLoaded', () => {
             window.addEventListener('offline', () => this._showConnection(false));
             this._showConnection(navigator.onLine, true);
             if (navigator.onLine) setTimeout(() => this._startNetCheck(), 1500); // (Wi-Fi or data being on is not the internet working: see _startNetCheck)
-            // A sale this phone recorded has reached the cloud: its "Not sent yet" mark goes, wherever it shows
+            // A sale this phone recorded has reached the cloud: its "No internet. Not saved yet" mark goes, wherever it shows
             window.addEventListener('pika-sale-sent', (e) => {
                 const id = e.detail && e.detail.id;
                 if (id) document.querySelectorAll(`[data-sale-id="${CSS.escape(String(id))}"] .sale-unsent`).forEach(mark => mark.remove());
+            });
+            // ...and one still waiting 3 seconds after it was saved gets the mark, wherever it shows
+            window.addEventListener('pika-sale-unsent', (e) => {
+                const id = e.detail && e.detail.id;
+                if (id) document.querySelectorAll(`.sale-item[data-sale-id="${CSS.escape(String(id))}"]`).forEach(el => this._markUnsent(el));
             });
             this.setupEventListeners();
             DB.now = () => this._serverNow();
@@ -4721,6 +4726,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         SLIDE_IN_MS: 600, // (the length of .sale-row.slide-in in style.css)
 
+        _markUnsent(saleEl) {
+            const info = saleEl && saleEl.querySelector('.sale-info');
+            if (info && !info.querySelector('.sale-unsent')) info.insertAdjacentHTML('beforeend', '<em class="sale-unsent">No internet. Not saved yet</em>');
+        },
+
         // Every sale sits in a row: small labels beside it (Edited, Credit, Transferred) and, hidden behind it, who recorded it
         _appendSaleEl(container, saleEl, sale) {
             const { right, left } = this._saleSideLabels(sale);
@@ -4740,11 +4750,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 tag.textContent = label.text;
                 row.appendChild(tag);
             });
-            // A sale this phone recorded that has not reached the cloud yet (no working internet): a small "No internet. Not sent yet" under it, gone once it is sent
-            if (DB.isUnsent && DB.isUnsent(sale.id)) {
-                const info = saleEl.querySelector('.sale-info');
-                if (info) info.insertAdjacentHTML('beforeend', '<em class="sale-unsent">No internet. Not sent yet</em>');
-            }
+            // A sale this phone recorded that has not reached the cloud 3 seconds on (it really missed the internet): a small "No internet. Not saved yet"
+            // under it, gone once it is sent. (Every sale waits a split second for the cloud: the mark never shows for that.)
+            if (DB.isLateUnsent && DB.isLateUnsent(sale.id)) this._markUnsent(saleEl);
             // A sale just recorded slides in from the right, once, in Today's sales on the home page. The list is often drawn again
             // while it slides (the sale reaching the cloud). Drawn again in the first moment (it was hardly seen: the list is empty while
             // it is redrawn), the slide starts afresh; later, the new row carries on from where the slide had got to, never starts it over.
