@@ -3,7 +3,7 @@
 ## Publishing
 - Quick way (as before): publish the project folder as it is.
 - Faster, harder-to-copy way: `npm install` once, then `npm run deploy`. It shrinks and scrambles the scripts into `dist/` and publishes that.
-- Every release: change `CACHE_NAME` in `serviceworker.js` (v87 -> v88 ...) so phones fetch the new files. (`npm run build` / `npm run deploy` stamp a version of their own on the published copy, a short code that changes whenever any file changes, so with those the number can never be forgotten.)
+- Every release: change `CACHE_NAME` in `serviceworker.js` (v88 -> v89 ...) so phones fetch the new files. (`npm run build` / `npm run deploy` stamp a version of their own on the published copy, a short code that changes whenever any file changes, so with those the number can never be forgotten.)
 - How a new version reaches phones by itself: see "New versions reach phones by themselves" below.
 
 ## New versions reach phones by themselves
@@ -249,7 +249,7 @@ clearing browsing data or switching phones the picture comes back from the thumb
 - An item just accepted from a transfer (a new product, or stock added to one already here) is new: `newSince` is the accept time (the transfer's first item a millisecond later than the second). Its card says **New stock!** and it is listed in the **New** tab (beside Out of stock, with a count), the latest received first. Only the New tab ranks by arrival: "All" keeps its usual order (newest product first).
 - **The four tabs (All, Low stock, Out of stock, New) fit on most phones** (tighter spacing up to 420 px wide). When they do not, the row scrolls from the very first tab; it is only centred when it fits (auto margins, not `justify-content: center`, which pushed "All" off the left edge, out of reach).
 - **It stays new until its Edit box is saved**, whether anything was changed or not (saving sets `newSince` to null; it does not use up one of the hand edits an hour). Opening it, or midnight, changes nothing.
-- **Closing a new item without saving** (Cancel, or the phone's Back) first asks "Save this product? If everything here is right, tap Save. It stays under New until it is saved." Save saves it, exactly as the box's own Save would (with the same checks); Close leaves it as it was (`_cancelProductForm`).
+- **Closing a new item without saving** (Cancel, or the phone's Back) first asks "Save this product? If everything here is right, tap Save. It stays under New until it is saved." **Go back** returns to the box (it never closed: what was typed is still there) so they can look it over and tap the box's own Save; Close leaves it unsaved and under New (`_cancelProductForm`).
 - Labels stack in the card's corner, as many as apply, every one with "!": **New stock!**, **Add price!**, then **Out of stock!** or **Low stock!** (a salesperson's item may show **Add image!**). Each stays on one line: its text is sized to the card's own width (`cqi`), from 8 px on the narrowest cards up to the usual 11 px.
 - Items received before `newSince` existed count as new only if they were never opened (they still have `freshAt`), until saved. Salespeople see no New tab and no New stock! label (they do not set products up).
 

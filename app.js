@@ -4098,19 +4098,19 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         // Cancel (or Back) in the product box. A received item stays "New stock!" until it is saved, so closing one without saving
-        // first suggests saving it: Save does just that (as the box's own Save would), Close leaves it as it was.
+        // first suggests saving it: Go back returns to the box (still open, as it was) so they can look it over and tap its Save; Close leaves it unsaved.
         async _cancelProductForm() {
             const product = this.state.editingProduct;
             if (!product || this._isSalesperson() || !this._isNewStock(product) || this._cancelAsking) { this.hideModal(); return; }
             this._cancelAsking = true;
-            let save;
+            let goBack;
             try {
-                save = await ask({ title: 'Save this product?', text: 'If everything here is right, tap Save. It stays under New until it is saved.', ok: 'Save', cancel: 'Close' });
+                goBack = await ask({ title: 'Save this product?', text: 'If everything here is right, tap Save. It stays under New until it is saved.', ok: 'Go back', cancel: 'Close' });
             } finally {
                 this._cancelAsking = false;
             }
             if (this.state.editingProduct !== product) return; // (the box was closed some other way meanwhile)
-            if (save) return this._once('saveProduct', () => this._saveProduct(), this.elements.saveProductBtn);
+            if (goBack) return; // (the box never closed: they are back in it, with Save in view)
             this.hideModal();
         },
 
