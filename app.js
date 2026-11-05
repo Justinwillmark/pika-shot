@@ -272,6 +272,12 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             window.addEventListener('offline', () => this._showConnection(false));
             this._showConnection(navigator.onLine, true);
+            if (navigator.onLine) setTimeout(() => this._startNetCheck(), 1500); // (Wi-Fi or data being on is not the internet working: see _startNetCheck)
+            // A sale this phone recorded has reached the cloud: its "Not sent yet" mark goes, wherever it shows
+            window.addEventListener('pika-sale-sent', (e) => {
+                const id = e.detail && e.detail.id;
+                if (id) document.querySelectorAll(`[data-sale-id="${CSS.escape(String(id))}"] .sale-unsent`).forEach(mark => mark.remove());
+            });
             this.setupEventListeners();
             DB.now = () => this._serverNow();
             this._measureClock();
@@ -2655,6 +2661,42 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         // A banner over the top of the page says so when there is no internet (and, for a moment, when it is back)
+        // --- Real internet. The phone saying it is on Wi-Fi or mobile data (navigator.onLine) is not the internet working: Wi-Fi with no
+        // internet behind it, or data with no bundle, still counts as "online". So before a sale or a product is saved, the app asks its own
+        // website for a tiny reply (a few hundred bytes, at most 4 seconds). The question is asked early, the moment Record sale is tapped or a
+        // product box opens, so by the time Confirm or Save is tapped the answer is almost always there and nothing waits.
+        NET_FRESH_MS: 60000, // (a yes this recent is used as it is; an older one, or a no, is asked again)
+        _startNetCheck() {
+            if (this._netPending) return this._netPending;
+            if (!navigator.onLine) { this._netResult(false); return Promise.resolve(false); }
+            const ctrl = window.AbortController ? new AbortController() : null;
+            const timer = setTimeout(() => { if (ctrl) ctrl.abort(); }, 4000);
+            this._netPending = fetch(`/manifest.json?ping=${Date.now()}`, { method: 'HEAD', cache: 'no-store', signal: ctrl ? ctrl.signal : undefined })
+                .then(() => true, () => false) // (any reply at all means the internet works)
+                .then(ok => { clearTimeout(timer); this._netPending = null; this._netResult(ok); return ok; });
+            return this._netPending;
+        },
+        _netResult(ok) {
+            this._net = { ok, at: Date.now() };
+            const saleBox = document.getElementById('confirm-sale-modal');
+            if (saleBox && saleBox.style.display !== 'none' && !this._confirmingSale) this.elements.saleOfflineNotice.style.display = ok ? 'none' : 'block'; // (the sale box says so at once)
+            clearTimeout(this._netRetry);
+            if (!ok) {
+                this._showConnection(false);
+                if (navigator.onLine) this._netRetry = setTimeout(() => this._startNetCheck(), 15000); // (asked again now and then, so the banner goes when it is back)
+            } else {
+                const banner = this.elements.offlineBanner;
+                if (banner && !banner.hidden && !banner.classList.contains('is-back')) this._showConnection(true);
+                if (DB.checkUnsent) DB.checkUnsent(); // (sales sent while the app was closed lose their mark)
+            }
+        },
+        async _hasInternet() {
+            if (!navigator.onLine) { this._netResult(false); return false; }
+            if (this._netPending) return this._netPending;
+            if (this._net && this._net.ok && Date.now() - this._net.at < this.NET_FRESH_MS) return true;
+            return this._startNetCheck();
+        },
+
         _showConnection(online, atStart) {
             const banner = this.elements.offlineBanner;
             if (!banner) return;
@@ -3133,7 +3175,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (filterType === 'restock') {
                 filteredProducts = allProducts.filter(isLow);
             } else if (filterType === 'outofstock') {
-                filteredProducts = allProducts.filter(p => p.stock <= 0);
+                // "Check stock!" (below 0) always first: those need a count; the rest keep their order
+                filteredProducts = allProducts.filter(p => p.stock <= 0).sort((a, b) => (a.stock < 0 ? 0 : 1) - (b.stock < 0 ? 0 : 1));
             } else if (filterType === 'new') {
                 filteredProducts = newOnes;
             }
@@ -3185,7 +3228,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (this._isNewStock(product)) badges.push('<div class="setup-badge">New stock!</div>');
                 if (this._needsSellingPrice(product)) badges.push('<div class="setup-badge">Add price!</div>');
                 if (product.stock <= 0) {
-                    badges.push('<div class="out-of-stock-badge">Out of stock!</div>');
+                    // below 0: more was sold than the app had (usually a sale made with no internet that arrived late). The business is asked to count.
+                    badges.push(product.stock < 0 && !this._isSalesperson() ? '<div class="out-of-stock-badge">Check stock!</div>' : '<div class="out-of-stock-badge">Out of stock!</div>');
                 } else if (this._isSalesperson()) {
                     if (isLow(product)) badges.push('<div class="restock-badge">Low stock!</div>');
                 } else if (product.isSalesperson) {
@@ -3619,6 +3663,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             if (!navigator.onLine) { say("You're offline. Connect to the internet to add a product.", "No internet"); return; } // (saving a product needs it: said before the scan, not after the typing)
+            this._startNetCheck(); // (the real check runs while they scan and type)
             if (!(await this._roomForProducts(1))) return;
             this._setCameraActions(false);
             if (!(await this._scannerReady())) return;
@@ -3709,6 +3754,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (existing.length === 0) { this.redirectToAddProducts(); return; }
             }
             if (!navigator.onLine) { say("You're offline. Connect to the internet to record a sale.", "No internet"); return; } // (confirming a sale needs it: said before the scan, not after)
+            this._startNetCheck(); // (the real check runs while they scan or pick the product)
             if (!(await this._scannerReady())) return;
             this._setCameraActions(true);
             this.elements.scanFeedback.textContent = 'Scanning for barcode...';
@@ -3985,6 +4031,7 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         _openProductForm(options = {}) {
+            this._startNetCheck(); // (saving needs the internet: asked now, answered long before Save)
             this.state.newProductKey = this._newId(); // this form makes ONE product
             this.elements.productForm.reset();
             this._hideUnitAsk();
@@ -3999,6 +4046,8 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.productIdInput.value = '';
             this.elements.productBarcodeDisplay.style.display = 'none';
             this.elements.productSourceInfo.style.display = 'none';
+            this.elements.productSourceInfo.classList.remove('below-zero');
+            this.elements.productStockInput.classList.remove('needs-answer');
             this.elements.stockVisibilityRow.style.display = 'none';
             this.state.capturedBlob = null;
 
@@ -4048,7 +4097,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (this._isSalesperson()) return;
 
             // NEW: Enforce internet connection for product management
-            if (!navigator.onLine) {
+            if (!(await this._hasInternet())) { // (the internet must really work: asked for when the box opened, so this rarely waits)
                 this.showToast("You're offline. Connect to save this product.");
                 return;
             }
@@ -4086,6 +4135,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // (checked in the order the boxes are on the screen; an empty box, a 0 or letters all count as no price)
             if (form.productStockInput.value.trim() === '' || isNaN(productData.stock)) { await this._needs(form.productStockInput, 'Add how many are in stock.', 'Check your entry'); return; }
             if (productData.stock > 1000000) { await this._needs(form.productStockInput, 'That stock is too big. Check it.', 'Check your entry'); return; }
+            if (productData.stock < 0) { await this._needs(form.productStockInput, 'Stock cannot be below 0. Count what is on the shelf and enter that number.', 'Check your entry'); return; }
             if (!(productData.cost > 0)) { await this._needs(form.productCostInput, 'Add the cost price: what you paid for one. It must be more than 0.', 'Check your entry'); return; }
             if (!(productData.price > 0)) { await this._needs(form.productPriceInput, 'Add the selling price. It must be more than 0.', 'Check your entry'); return; }
             if (productData.price > 100000000) { await this._needs(form.productPriceInput, 'That selling price is too big. Check it.', 'Check your entry'); return; }
@@ -4189,6 +4239,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         handleEditProduct(product) {
             if (this._isSalesperson()) { this.showToast('Only your admin can edit products.'); return; }
+            this._startNetCheck(); // (saving needs the internet: asked now, answered long before Save)
             this.state.editingProduct = product;
             this.state.capturedBarcode = product.barcode;
             this.elements.productForm.reset();
@@ -4200,6 +4251,9 @@ document.addEventListener('DOMContentLoaded', () => {
             this._hideCostAsk();
             this._pendingCostAsk = null;
 
+            this.elements.productSourceInfo.style.display = 'none';
+            this.elements.productSourceInfo.classList.remove('below-zero');
+            this.elements.productStockInput.classList.remove('needs-answer');
             this.elements.productIdInput.value = product.id;
             this.elements.productNameInput.value = product.name;
             this.elements.productPriceInput.value = this.formatNumber(product.price);
@@ -4248,6 +4302,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             this.showModal('product-form-modal');
             this._productBoxToTop();
+            if (!isSalesperson && Number(product.stock) < 0) this._explainBelowZero(product);
             // A received item that is new here: its selling price is the sender's until the owner sets their own (the box shows it, glowing)
             this.elements.productPriceInput.classList.toggle('needs-answer', !isSalesperson && (product.needsSetup === 'price' || product.needsSetup === 'barcode-and-price'));
             // A received item was counted in another unit (bottles against sachets), or came at another cost: once the box is open, ask which it is
@@ -4258,6 +4313,23 @@ document.addEventListener('DOMContentLoaded', () => {
             if (askUnit || askCost) {
                 setTimeout(() => { if (this.state.editingProduct === product && this._modalLive) { if (askUnit) this._askUnit(product); else this._askCostNext(); } }, 450);
             }
+        },
+
+        // A product below 0: more was sold than the app had. The Edit box says so, names the latest sales of it (who, when) and the Stock box glows:
+        // the business counts the shelf and enters that number (it cannot be saved below 0)
+        async _explainBelowZero(product) {
+            const sales = (await DB.getAllSales()).filter(s => String(s.productId) === String(product.id))
+                .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 4);
+            if (this.state.editingProduct !== product) return;
+            const me = this.state.user && this.state.user.phone, today = this._dayKey(this._serverNow());
+            const when = (t) => { const d = new Date(t); const hm = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }); return this._dayKey(d.getTime()) === today ? hm : `${d.toLocaleDateString('en-GB', { weekday: 'short' })} ${hm}`; };
+            const who = (s) => (!s.recordedBy || s.recordedBy === me) ? 'you' : String(s.recordedByName || 'a salesperson').split(' ')[0];
+            const list = sales.map(s => `${this.formatNumber(s.quantity)} by ${who(s)} (${when(s.timestamp)})`).join(', ');
+            const info = this.elements.productSourceInfo;
+            info.textContent = `Stock went below 0: more was sold than the app had, often a sale made with no internet that arrived late. Count what is on the shelf and enter it in Stock.${list ? ` Latest sales: ${list}.` : ''}`;
+            info.classList.add('below-zero');
+            info.style.display = 'block';
+            this.elements.productStockInput.classList.add('needs-answer');
         },
 
         async handleDeleteProduct() {
@@ -4338,8 +4410,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             this.updateSaleTotal();
-            this.elements.saleOfflineNotice.style.display = 'none';
+            this.elements.saleOfflineNotice.style.display = (this._net && !this._net.ok && Date.now() - this._net.at < this.NET_FRESH_MS) ? 'block' : 'none';
             this.showModal('confirm-sale-modal');
+            this._startNetCheck();
         },
         updateSaleTotal() {
             const quantity = this.unformatNumber(this.elements.saleQuantityInput.value);
@@ -4579,10 +4652,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         async handleConfirmSale() {
             if (this._confirmingSale) return; // a second tap while the first is still being saved does nothing
-            if (!navigator.onLine) {
-                this.elements.saleOfflineNotice.style.display = 'block';
-                return; // Stop execution
-            }
 
             this._confirmingSale = true;
             const button = this.elements.confirmSaleBtn;
@@ -4590,6 +4659,8 @@ document.addEventListener('DOMContentLoaded', () => {
             button.disabled = true;
             button.textContent = 'Saving…';
             try {
+                // The internet must really work (not just Wi-Fi or data being on). The answer was asked for when the sale started, so this rarely waits.
+                if (!(await this._hasInternet())) { this.elements.saleOfflineNotice.style.display = 'block'; return; }
                 const wasEditing = !!this.state.editingSale;
                 const newSaleId = wasEditing ? null : this.state.saleKey; // (the id this box records the sale under)
                 const success = await this._processSale();
@@ -4669,6 +4740,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 tag.textContent = label.text;
                 row.appendChild(tag);
             });
+            // A sale this phone recorded that has not reached the cloud yet (no working internet): a small "No internet. Not sent yet" under it, gone once it is sent
+            if (DB.isUnsent && DB.isUnsent(sale.id)) {
+                const info = saleEl.querySelector('.sale-info');
+                if (info) info.insertAdjacentHTML('beforeend', '<em class="sale-unsent">No internet. Not sent yet</em>');
+            }
             // A sale just recorded slides in from the right, once, in Today's sales on the home page. The list is often drawn again
             // while it slides (the sale reaching the cloud). Drawn again in the first moment (it was hardly seen: the list is empty while
             // it is redrawn), the slide starts afresh; later, the new row carries on from where the slide had got to, never starts it over.
@@ -4855,6 +4931,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         async handleEditSale() {
             if (this.state.selectedSales.size !== 1) return;
+            this._startNetCheck(); // (saving the change needs the internet: asked now, answered by the time Confirm is tapped)
             await this._measureClock();
             const saleId = [...this.state.selectedSales][0];
             const allSales = await DB.getAllSales();

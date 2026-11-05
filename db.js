@@ -275,11 +275,47 @@ const DB = {
 
             // strict: the caller needs to hear a refusal (a new account must really reach the server)
             const sent = window.fb.setDoc(ref, cleanData, { merge: true });
+            // A sale is "not sent yet" until the cloud has it (the write is answered only once the server has it; with no internet it waits)
+            if (collectionName === 'sales' && docId) { this._setUnsent(docId, true); sent.then(() => this._setUnsent(docId, false), () => { /* refused: it stays marked */ }); }
             return (options && options.strict) ? sent : sent.catch(err => console.error("Cloud sync failed:", err));
         } catch (e) {
             console.error("Error initiating cloud sync:", e);
             return Promise.resolve();
         }
+    },
+
+    // --- Sales this phone recorded (or changed) that have not reached the cloud yet, kept on the phone so the mark survives closing the app.
+    // The cloud's own queue sends them by itself when the internet is back; checkUnsent clears marks of sales sent while the app was closed.
+    _loadUnsent() {
+        if (this._unsent && this._unsentFor === this.userPhone) return this._unsent;
+        this._unsentFor = this.userPhone;
+        try { this._unsent = new Set(JSON.parse(localStorage.getItem(`pika_unsent_${this.userPhone}`) || '[]')); } catch (e) { this._unsent = new Set(); }
+        return this._unsent;
+    },
+    isUnsent(id) { return !!this.userPhone && this._loadUnsent().has(String(id)); },
+    _setUnsent(id, on) {
+        if (!this.userPhone) return;
+        const set = this._loadUnsent(), key = String(id);
+        if (on === set.has(key)) return;
+        if (on) set.add(key); else set.delete(key);
+        try { localStorage.setItem(`pika_unsent_${this.userPhone}`, JSON.stringify([...set])); } catch (e) { /* the mark is only for this visit */ }
+        if (!on) window.dispatchEvent(new CustomEvent('pika-sale-sent', { detail: { id: key } }));
+    },
+    async checkUnsent() {
+        const set = this._loadUnsent();
+        if (!set.size || !window.fb || !window.fb.getDocFromServer || this._checkingUnsent) return;
+        this._checkingUnsent = true;
+        try {
+            const root = this._dataRoot();
+            for (const id of [...set]) {
+                let local = await this.getSale(id);
+                if (!local && /^\d+$/.test(id)) local = await this.getSale(Number(id)); // (ids are kept as text in the list; most sales are stored under a number)
+                if (!local) { this._setUnsent(id, false); continue; } // (gone from this phone)
+                const snap = await window.fb.getDocFromServer(window.fb.doc(window.fb.db, `users/${root}/sales`, id));
+                const d = snap.exists() ? snap.data() : null;
+                if (d && Number(d.quantity) === Number(local.quantity) && Number(d.total) === Number(local.total)) this._setUnsent(id, false); // (there, as it is here)
+            }
+        } catch (e) { /* no internet after all: asked again next time */ } finally { this._checkingUnsent = false; }
     },
 
     // Everything for a phone that has just logged in
@@ -473,6 +509,11 @@ const DB = {
         const store = this._getStore('products', 'readwrite');
         this._pushProduct(product, options);
         return this._requestToPromise(store.put(product));
+    },
+
+    getSale(id) {
+        const store = this._getStore('sales', 'readonly');
+        return this._requestToPromise(store.get(id));
     },
 
     getProduct(id) {

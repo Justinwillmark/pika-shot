@@ -3,7 +3,7 @@
 ## Publishing
 - Quick way (as before): publish the project folder as it is.
 - Faster, harder-to-copy way: `npm install` once, then `npm run deploy`. It shrinks and scrambles the scripts into `dist/` and publishes that.
-- Every release: change `CACHE_NAME` in `serviceworker.js` (v81 -> v82 ...) so phones fetch the new files. (`npm run build` / `npm run deploy` stamp a version of their own on the published copy, a short code that changes whenever any file changes, so with those the number can never be forgotten.)
+- Every release: change `CACHE_NAME` in `serviceworker.js` (v83 -> v84 ...) so phones fetch the new files. (`npm run build` / `npm run deploy` stamp a version of their own on the published copy, a short code that changes whenever any file changes, so with those the number can never be forgotten.)
 - How a new version reaches phones by itself: see "New versions reach phones by themselves" below.
 
 ## New versions reach phones by themselves
@@ -132,6 +132,18 @@ clearing browsing data or switching phones the picture comes back from the thumb
 - Transfer accepted: a rising four-note chime (`_playTransferChime`).
 - New profile message: the double beep described above (`_playNudgeChime`).
 - To change how a sound feels, edit the notes in its function: `freq` (pitch), `vol` (loudness), `attack` (how gently it starts) and `release` (how long it fades).
+
+## Real internet, unsent sales and stock below 0
+- **Wi-Fi or data being on is not the internet working.** The browser's "online" (`navigator.onLine`) only means the phone is on a network: Wi-Fi with no internet behind it, or data with no bundle, still counts. So before a sale is confirmed (or changed) and before a product is saved, the app asks its own website for a tiny reply (`HEAD /manifest.json?ping=`, a few hundred bytes, at most 4 seconds: `_startNetCheck` in `app.js`).
+  - It is asked early, so nothing waits: the moment Record sale is tapped (while they scan or pick the product), when the Confirm sale box opens, when Edit sale is tapped, and when a product box opens (or its scan starts). Confirm and Save use that answer (`_hasInternet`); a yes from the last minute is used as it is, an older one or a no is asked again. Measured: Confirm took 0.1 s with internet, the same as before.
+  - No answer: the Confirm sale box says "Please connect to the internet to confirm this sale." on its own (before Confirm is tapped), Confirm records nothing, Save says "You're offline. Connect to save this product.", and the offline banner shows. It asks again every 15 s, so the banner turns to "You're back online" by itself.
+  - A sale can still go through if the internet drops in the seconds between the check and Confirm: it is kept on the phone and the cloud's own queue sends it later (the two points below cover that).
+- **"No internet. Not sent yet":** a sale this phone recorded or changed that the cloud has not got yet shows this under it, small and quiet (muted amber), always on one line (cut short with "..." on a very narrow card rather than wrapping) (Today's sales and All sales). It goes the moment the cloud has it. The list is kept on the phone (`pika_unsent_<phone>`, `DB.isUnsent` / `_setUnsent` in `db.js`), so it survives closing the app; a sale sent while the app was closed loses its mark at the next internet check (`DB.checkUnsent`, which reads the cloud copy). Only the phone that made the sale shows it (no one else has it yet).
+- **Stock below 0** (a late sale arrived after the last of the item had already been sold elsewhere; both sales are kept, stock changes are added up):
+  - the product card says **Check stock!** (salespeople still see Out of stock!). It is in the **Out of stock** tab (and in All), and always first in Out of stock;
+  - a message comes first, with the clear beep, at most once a day per product and once when the app opens: "Golden Penny went below 0. Check your stock." / "Golden Penny stock don pass zero. Check am." (`in-below-zero` in `nudges.js`, owners only). A tap opens the product;
+  - its Edit box says what happened and lists the latest sales of it, who and when ("1 by you (15:28), 1 by Ada (15:27)"), and the Stock box glows red: count the shelf and enter that number. Stock cannot be saved below 0;
+  - the Out of stock message no longer speaks for products below 0 (they have their own).
 
 ## Offline banner
 - When the phone has no internet, a banner over the top of the page shows (on Home, My products, Customers & salespeople and All sales; not in the scanner) "You're offline. Reconnect to use PikaShot and see new records". When it comes back it says "You're back online" for 2 seconds, then goes. It follows the phone's own online/offline signal, so a Wi-Fi connection with no data behind it still counts as online.

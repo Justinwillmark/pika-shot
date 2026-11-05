@@ -168,8 +168,8 @@
             .filter(p => Number(p.stock) > 0 && Number(p.stock) < lowLevel)
             .map(p => ({ id: p.id, name: p.name, stock: Number(p.stock), sold: sold14(p) }))
             .sort((a, b) => (b.sold - a.sold) || (a.stock - b.stock));
-        const outProducts = products // (one that never sold is not news)
-            .filter(p => Number(p.stock) <= 0 && soldBy30.get(String(p.id)))
+        const outProducts = products // (one that never sold is not news; below 0 has its own message)
+            .filter(p => Number(p.stock) === 0 && soldBy30.get(String(p.id)))
             .map(p => ({ id: p.id, name: p.name, sold: soldBy30.get(String(p.id)) }))
             .sort((a, b) => b.sold - a.sold);
 
@@ -244,6 +244,7 @@
             streak, streakBefore, streakRisk: todaySales === 0 && streakBefore >= 3,
             topItem: top && top.count >= 3 ? short(top.name, 2) : null,
             lowProducts, outProducts, custLow, priceToSet, costToCheck,
+            belowZero: products.filter(p => Number(p.stock) < 0).map(p => ({ id: p.id, name: p.name, stock: Number(p.stock) })),
             lowLong, lowCount, needFunding,
             toMilestone: next ? { n: next - sales.length, to: next } : null,
             debtsDue: list.filter(x => x.age >= REMIND_AFTER),
@@ -304,6 +305,10 @@
                     ? twin(r, [`${n} owes ${amt} since ${weekdayOf(s.d)}. 📒`, `Remind ${n} politely about ${amt}. 🤝`, `${n} still dey owe ${amt}. Remind am. 📒`])
                     : twin(r, [`${n} still owes ${amt}. Call kindly. 📞`, `Remind ${n} politely about ${amt}. 🤝`, `${n} never pay ${amt}. Call am gently. 📞`]);
             } }),
+        // A product below 0: more was sold than the app had (usually a sale made with no internet that arrived late). The business counts and corrects it.
+        subjective({ id: 'in-below-zero', chime: true, cat: 'insight', tier: 2, cooldown: DAY, reminder: true, roles: ['Wholesaler', 'Retailer'], go: 'edit',
+            subjects: c => c.belowZero.map(p => ({ key: 'neg:' + p.id, arg: { id: p.id }, p })),
+            text: (c, r, s) => twin(r, [`${short(s.p.name, 2)} went below 0. Check your stock. ⚠️`, `${short(s.p.name, 2)} stock don pass zero. Check am. ⚠️`]) }),
         { id: 'in-owe-all', cat: 'insight', cooldown: REMIND_AFTER * DAY, go: 'customers', when: c => c.debtorCount >= 2 && c.tod !== 'night', weight: () => 1.5, text: (c, r) => twin(r, [`Customers owe you ${naira(c.debtTotal)}. Tap to see. 👀`, `Customers dey owe you ${naira(c.debtTotal)}. Tap to see. 👀`]) },
         // Stock: yours, and (for wholesalers and their salespeople) your customers'. Mornings are the time to act on it.
         subjective({ id: 'in-lowstock', chime: true, cat: 'insight', tier: 1, cooldown: 2 * DAY, go: 'product', weight: c => c.tod === 'morning' ? 1.5 : 1,
