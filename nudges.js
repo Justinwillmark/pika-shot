@@ -436,7 +436,7 @@
     function receiptText(r) {
         const who = short(r && r.store, 2);
         const k = Math.min(Math.max((r && r.shown) || 0, 0), 3);
-        if (k === 0) return who ? `${who} transfer accepted. Tap to download. 🧾` : 'Transfer accepted. Tap to download receipt. 🧾';
+        if (k === 0) return who ? `${who} transfer accepted. Tap to download receipt. 🧾` : 'Transfer accepted. Tap to download receipt. 🧾';
         if (k === 1) return who ? `${who} receipt is waiting. Tap to download. 🧾` : 'Your receipt is waiting. Tap to download. 🧾';
         if (k === 2) return who ? `Need the ${who} receipt? Tap to download. 🧾` : 'Need your receipt? Tap to download. 🧾';
         return who ? `Last reminder: ${who} receipt. Tap to download. 🧾` : 'Last reminder: your receipt. Tap to download. 🧾';

@@ -5810,25 +5810,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
             let name = logData.claimedByName;
             let business = logData.claimedByBusiness;
-            if ((!name || !business) && logData.claimedBy) {
+            let location = logData.claimedByLocation;
+            if ((!name || !business || !location) && logData.claimedBy) { // (accepted on an older version: read from their account)
                 try {
                     const snap = await window.fb.getDoc(window.fb.doc(window.fb.db, 'users', logData.claimedBy));
                     if (snap.exists()) {
                         const u = snap.data();
                         name = name || u.name;
                         business = business || u.business;
+                        location = location || u.location;
                     }
                 } catch (e) { /* fall back to the phone number below */ }
             }
-            this.celebrateTransferAccepted(name || logData.claimedBy || 'Your customer', business || '');
+            this.celebrateTransferAccepted(name || logData.claimedBy || 'Your customer', business || '', location || '');
         },
 
-        celebrateTransferAccepted(name, business) {
+        celebrateTransferAccepted(name, business, location) {
             this.showCelebration({
                 icon: '🎉',
                 title: 'Transfer accepted',
                 headline: name,
-                sub: business,
+                // the store, with its LGA beside it ("Chidi Stores · Lagos Island"); the LGA never breaks in the middle (it moves down whole)
+                sub: [business, location && String(location).replace(/ /g, ' ').replace(/-/g, '‑')].filter(Boolean).join(' · '),
                 messages: ['You can now see when they are low on stock inside Customers. T&C apply.']
             });
         },
@@ -5975,7 +5978,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         claimedBy: me,
                         claimedDevice: this._deviceId(),
                         claimedByName: this.state.user.name || null,
-                        claimedByBusiness: this.state.user.business || null
+                        claimedByBusiness: this.state.user.business || null,
+                        claimedByLocation: this.state.user.location || null
                     });
                 });
                 return outcome;
@@ -6435,7 +6439,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         claimedAt: window.fb.serverTimestamp(),
                         claimedBy: this.state.user.phone || this.state.user.phone,
                         claimedByName: this.state.user.name || null,
-                        claimedByBusiness: this.state.user.business || null
+                        claimedByBusiness: this.state.user.business || null,
+                        claimedByLocation: this.state.user.location || null
                     });
                 } catch (error) {
                     console.error("Error marking log as claimed:", error);
