@@ -2053,3 +2053,9 @@ a.privacy-link-trigger { display: inline-block; padding: 8px 2px; margin: -8px 0
 /* The Edit box of a product below 0: the note says why and which sales did it */
 .source-info.below-zero { color: var(--danger-color); background: rgba(208, 2, 27, 0.06); border-radius: 10px; padding: 8px 10px; text-align: left; line-height: 1.4; }
 #product-form .form-group input.needs-answer:not(#product-cost):not(#product-price) { border-color: var(--danger-color); }
+
+/* One eye on the sales pages, top right above the totals: it hides every total and profit there (same choice as the other eyes) */
+.sales-figures-bar { display: flex; justify-content: flex-end; padding: 12px 20px 0; }
+.sales-figures-bar[hidden] { display: none; }
+.sales-figures-bar:not([hidden]) + #all-sales-list { padding-top: 6px; }
+.sales-group-profit.loss.masked { color: var(--text-light); } /* (hidden, a loss looks like any other line) */

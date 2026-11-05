@@ -3,7 +3,7 @@
 ## Publishing
 - Quick way (as before): publish the project folder as it is.
 - Faster, harder-to-copy way: `npm install` once, then `npm run deploy`. It shrinks and scrambles the scripts into `dist/` and publishes that.
-- Every release: change `CACHE_NAME` in `serviceworker.js` (v85 -> v86 ...) so phones fetch the new files. (`npm run build` / `npm run deploy` stamp a version of their own on the published copy, a short code that changes whenever any file changes, so with those the number can never be forgotten.)
+- Every release: change `CACHE_NAME` in `serviceworker.js` (v86 -> v87 ...) so phones fetch the new files. (`npm run build` / `npm run deploy` stamp a version of their own on the published copy, a short code that changes whenever any file changes, so with those the number can never be forgotten.)
 - How a new version reaches phones by itself: see "New versions reach phones by themselves" below.
 
 ## New versions reach phones by themselves
@@ -220,6 +220,7 @@ clearing browsing data or switching phones the picture comes back from the thumb
   - A **product already here** with no cost takes it. One with a different cost is marked `costToConfirm`: its Edit box asks "₦220 or ₦250 NEW?" over the cost box (after the unit question, when there is one). Nothing changes until it is answered; tapping a cost puts it in the box, typing one answers it too, and saving keeps whichever cost is in the box.
 - **Price reminders** (`nudges.js`, kind `prices`, owners only, with the clear beep): "Set your selling price for {item}" / "Wetin be your price for {item}?", "{n} new items need your selling price" (3 or more), and "{item} came at {cost}. Update your cost?" / "{item} cost don change? Check am.". Each item at most once a day, also once when the app opens; they go first like stock reminders, never more than two of those in a row. A tap opens that item's Edit box (`go: 'edit'`); the many-items one opens My products.
 - **Profit on All sales, Weekly sales, Monthly sales and Best selling products:** a small grey line under each total, "Profit ₦1,400", or "Loss ₦…" in muted red (`_profitHtml` in `app.js`). It is the money shown less what the items cost. A credit sale counts only the part paid so far with its share of the cost, so profit is never more than the total above it. Sales of products with no cost price are left out, and the line says how many ("· 1 sale has no cost price"). Salespeople never see it.
+- **One eye on the sales pages** (top right, above the totals) hides every total and profit there: "***" and "Profit ***" (a loss reads the same, in grey, so nothing gives it away). Each sale's own amount still shows. It is the same choice as the eyes on Today's sales and My products (`figuresHidden`, kept on the phone): hiding anywhere hides everywhere. The eye only shows when there are sales.
 
 ## Units, cartons and the Edit product box
 - **A carton is just a unit now.** The "what is inside / how many per carton" step is gone (its box, the "= 72 sachets" line on incoming transfers, the sub-unit details sent with a transfer, and a retailer's automatic carton-to-pieces conversion). Older products still hold the old sub-unit fields; nothing reads them.

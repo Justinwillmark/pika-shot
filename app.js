@@ -63,6 +63,8 @@ document.addEventListener('DOMContentLoaded', () => {
             itemsSoldEl: document.getElementById('items-sold'),
             toggleFiguresBtn: document.getElementById('toggle-figures-btn'),
             toggleInventoryFiguresBtn: document.getElementById('toggle-inventory-figures-btn'),
+            toggleSalesFiguresBtn: document.getElementById('toggle-sales-figures-btn'),
+            salesFiguresBar: document.getElementById('sales-figures-bar'),
             productTotalValue: document.getElementById('product-total-value'),
             recentSalesList: document.getElementById('recent-sales-list'),
             seeAllContainer: document.getElementById('see-all-container'),
@@ -540,7 +542,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.editSaleBtn.addEventListener('click', this.handleEditSale.bind(this));
             setInterval(() => this.tickEditWindows(), 1000);
             try { this.state.figuresHidden = localStorage.getItem('pikashot_hide_figures') === '1'; } catch (e) { /* storage unavailable */ }
-            [this.elements.toggleFiguresBtn, this.elements.toggleInventoryFiguresBtn].forEach(btn => {
+            [this.elements.toggleFiguresBtn, this.elements.toggleInventoryFiguresBtn, this.elements.toggleSalesFiguresBtn].forEach(btn => {
                 if (btn) btn.addEventListener('click', this.toggleFigures.bind(this));
             });
             Camera.onTorchChange = (on) => { if (this.elements.torchBtn) this.elements.torchBtn.classList.toggle('torch-on', on); };
@@ -2840,7 +2842,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.toggleInventoryFiguresBtn.style.display = inventory == null ? 'none' : '';
             }
 
-            [[this.elements.toggleFiguresBtn, hidden], [this.elements.toggleInventoryFiguresBtn, inventoryHidden]].forEach(([btn, isHidden]) => {
+            // The sales pages: every total and profit (All sales, Weekly, Monthly, Best selling)
+            document.querySelectorAll('#all-sales-list .sales-fig').forEach(el => {
+                el.textContent = hidden ? el.dataset.hidden : el.dataset.shown;
+                const profit = el.closest('.sales-group-profit');
+                if (profit) profit.classList.toggle('masked', hidden);
+            });
+
+            [[this.elements.toggleFiguresBtn, hidden], [this.elements.toggleInventoryFiguresBtn, inventoryHidden], [this.elements.toggleSalesFiguresBtn, hidden]].forEach(([btn, isHidden]) => {
                 if (!btn) return;
                 btn.setAttribute('aria-pressed', String(isHidden));
                 btn.setAttribute('aria-label', isHidden ? 'Show figures' : 'Hide figures');
@@ -2929,6 +2938,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.salesLegend.style.display = 'none';
             }
 
+            this.elements.salesFiguresBar.hidden = sortedSales.length === 0; // (no totals, no eye)
             if (sortedSales.length === 0) {
                 this.elements.allSalesList.innerHTML = `<p class="empty-state">Record some sales to see them here.</p>`;
                 return;
@@ -2965,13 +2975,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 groupHeader.className = 'sales-group-header';
 
                 const groupSales = groupedSales[groupTitle];
-                let totalHtml = `<p class="sales-group-total">&#8358;${this.formatNumber(dailyTotal)}</p>`;
+                const totalFig = this._salesFig(`₦${this.formatNumber(dailyTotal)}`, '***');
+                let totalHtml = `<p class="sales-group-total">${totalFig}</p>`;
                 let acknowledgedHtml = '';
 
                 // A salesperson sees which days their admin has confirmed the money for
                 if (this._isSalesperson() && Array.isArray(groupSales) && groupSales.length && groupSales.every(sale => sale.moneyConfirmed)) {
                     const checkmarkIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="checkmark-icon"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
-                    totalHtml = `<p class="sales-group-total acknowledged">${checkmarkIcon} &#8358;${this.formatNumber(dailyTotal)}</p>`;
+                    totalHtml = `<p class="sales-group-total acknowledged">${checkmarkIcon} ${totalFig}</p>`;
                     acknowledgedHtml = `<span class="acknowledgement-text">Money confirmed by ${this._esc(this.state.user.businessName || 'your admin')}.</span>`;
                 }
 
@@ -3037,7 +3048,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!costed) return '';
             profit = Math.round(profit);
             const note = missing ? ` <span class="profit-note">· ${missing} ${missing === 1 ? 'sale has' : 'sales have'} no cost price</span>` : '';
-            return `<span class="sales-group-profit${profit < 0 ? ' loss' : ''}">${profit < 0 ? 'Loss' : 'Profit'} &#8358;${this.formatNumber(Math.abs(profit))}${note}</span>`;
+            return `<span class="sales-group-profit${profit < 0 ? ' loss' : ''}">${this._salesFig(`${profit < 0 ? 'Loss' : 'Profit'} ₦${this.formatNumber(Math.abs(profit))}`, 'Profit ***')}${note}</span>`;
+        },
+
+        // A figure on the sales pages that the eye hides: both wordings are kept, and applyFigureVisibility shows the right one
+        // (hidden, a loss reads "Profit ***" like a profit, so nothing gives it away)
+        _salesFig(shown, hidden) {
+            return `<span class="sales-fig" data-shown="${this._esc(shown)}" data-hidden="${this._esc(hidden)}">${this._esc(this.state.figuresHidden ? hidden : shown)}</span>`;
         },
 
         groupSalesByDate(sales) {
