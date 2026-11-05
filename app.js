@@ -19,7 +19,6 @@ document.addEventListener('DOMContentLoaded', () => {
             welcomeDate: document.getElementById('welcome-date'),
             loader: document.getElementById('loader'),
             loaderSpinner: document.querySelector('.spinner'),
-            loaderCheck: document.getElementById('loader-check'),
             appContainer: document.getElementById('app-container'),
             views: document.querySelectorAll('.view'),
             mainContent: document.getElementById('main-content'),
@@ -2245,7 +2244,7 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         showLoader() { this.elements.loader.style.display = 'flex'; this.elements.appContainer.style.display = 'none'; },
-        hideLoader() { this.elements.loaderSpinner.style.display = 'none'; this.elements.loaderCheck.style.display = 'block'; setTimeout(() => { this.elements.loader.style.opacity = '0'; this.elements.appContainer.style.display = 'flex'; setTimeout(() => { this.elements.loader.style.display = 'none'; }, 500); }, 500); },
+        hideLoader() { this.elements.loader.style.opacity = '0'; this.elements.appContainer.style.display = 'flex'; setTimeout(() => { this.elements.loader.style.display = 'none'; }, 500); }, // (no tick: the launch screen just fades into the app)
         showView(viewId) {
             if (this.state.currentView === viewId) return;
             if (viewId === 'onboarding-step-login' || viewId === 'onboarding-step-newpin' || viewId === 'onboarding-step-register') {

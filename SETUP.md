@@ -3,7 +3,7 @@
 ## Publishing
 - Quick way (as before): publish the project folder as it is.
 - Faster, harder-to-copy way: `npm install` once, then `npm run deploy`. It shrinks and scrambles the scripts into `dist/` and publishes that.
-- Every release: change `CACHE_NAME` in `serviceworker.js` (v88 -> v89 ...) so phones fetch the new files. (`npm run build` / `npm run deploy` stamp a version of their own on the published copy, a short code that changes whenever any file changes, so with those the number can never be forgotten.)
+- Every release: change `CACHE_NAME` in `serviceworker.js` (v89 -> v90 ...) so phones fetch the new files. (`npm run build` / `npm run deploy` stamp a version of their own on the published copy, a short code that changes whenever any file changes, so with those the number can never be forgotten.)
 - How a new version reaches phones by itself: see "New versions reach phones by themselves" below.
 
 ## New versions reach phones by themselves
@@ -71,6 +71,7 @@
 - A white scanner frame around a barcode on PikaShot teal (`#008C95`, the same teal as `background_color` in `manifest.json`). Because the colours match, the start-up screen Android draws on installed phones shows only the white mark on teal. That screen is made by Android from the manifest (name, `background_color`, icon): it cannot be switched off, only changed here.
 - `icons/icon-192.png` and `icon-512.png` are the normal icon (rounded corners); `icon-maskable-512.png` is the full-square version that phones which cut icons into circles or squircles use. The same `icon-192.png` is the picture shown for a product that has no photo.
 - An already installed app updates its icon on its own after Chrome next checks the manifest (it can take a day or more). Uninstalling and installing again shows it at once.
+- **The app's own loading screen** (the spinner and "PikaShot", `#loader` in `index.html`) has no tick: when the app is ready it simply fades into the app (`hideLoader` in `app.js`), with the spinner turning until it has faded.
 
 ## Product pictures
 The full photo lives on the phone. A small thumbnail (a few KB) is saved with the product in Firestore, so after logging out,
