@@ -613,7 +613,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.transferPhoneInput.addEventListener('input', (e) => {
                 const digits = this._localPhone(e.target.value);
                 if (e.target.value !== digits) e.target.value = digits;
-                this._setTransferState('idle');
+                if (this._transferOffline) this._showTransferOffline(); else this._setTransferState('idle'); // ("You're offline" stays while they type; it goes when the internet is back)
 
                 if (digits.length === 11) {
                     e.target.blur(); // a full number needs no more typing: put the keyboard away so Send is in plain view
@@ -2685,6 +2685,10 @@ document.addEventListener('DOMContentLoaded', () => {
             this._net = { ok, at: Date.now() };
             const saleBox = document.getElementById('confirm-sale-modal');
             if (saleBox && saleBox.style.display !== 'none' && !this._confirmingSale) this.elements.saleOfflineNotice.style.display = ok ? 'none' : 'block'; // (the sale box says so at once)
+            if (this._transferBoxOpen()) { // (the transfer box too: offline said at once; back online, the line goes and the number is looked up)
+                if (!ok) this._showTransferOffline();
+                else if (this._transferOffline) { this._setTransferState('idle'); if (this.elements.transferPhoneInput.value.trim().length === 11) this.findUserForTransfer(); }
+            }
             clearTimeout(this._netRetry);
             if (!ok) {
                 this._showConnection(false);
@@ -5266,6 +5270,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.showToast("Cannot transfer items: not connected to online services.");
                 return;
             }
+            this._startNetCheck(); // (the real check runs while they type the number: its answer is there before the lookup needs it)
 
             const allSales = await DB.getAllSales();
             const selectedSaleObjects = allSales.filter(s => this.state.selectedSales.has(s.id));
@@ -5335,6 +5340,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // 'idle' | 'checking' | 'found' | 'error': what the transfer modal shows under the phone number
         _setTransferState(state, text) {
+            this._transferOffline = false; // (any other state replaces the "offline" line: see _showTransferOffline)
             const el = this.elements;
             const digits = el.transferPhoneInput.value.length;
             el.transferDigitCount.textContent = `${digits}/11`;
@@ -5346,6 +5352,17 @@ document.addEventListener('DOMContentLoaded', () => {
             el.confirmPhoneTransferBtn.disabled = state !== 'found';
         },
 
+        // No working internet while the transfer box is open: its red line says so (and Send stays off). It only shows once the real check
+        // has said no; it goes by itself when the internet is back, and the number typed is then looked up
+        _showTransferOffline() {
+            this._setTransferState('error', "You're offline. Check your internet.");
+            this._transferOffline = true;
+        },
+        _transferBoxOpen() {
+            const box = document.getElementById('phone-transfer-modal');
+            return !!box && box.style.display !== 'none' && this.elements.modalContainer.style.display !== 'none';
+        },
+
         async findUserForTransfer() {
             const targetPhone = this.elements.transferPhoneInput.value.trim();
             if (targetPhone.length !== 11) return;
@@ -5355,8 +5372,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            this._setTransferState('checking', 'Checking number...');
             const stillCurrent = () => this.elements.transferPhoneInput.value.trim() === targetPhone;
+            this._setTransferState('checking', 'Checking number...');
+            if (!(await this._hasInternet())) { if (stillCurrent()) this._showTransferOffline(); return; } // (usually answered while they typed)
             try {
                 const userRef = window.fb.doc(window.fb.db, 'users', targetPhone);
                 const userSnap = await window.fb.getDoc(userRef);
@@ -5393,6 +5411,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         async _sendTransfer() {
             const targetPhone = this.elements.transferPhoneInput.value.trim();
+            if (!(await this._hasInternet())) { this._showTransferOffline(); return; } // (nothing is sent or marked: the box stays as it was)
             this.showLoader();
             let logId = null, marked = false, sentOnTheWay = false;
             try {
