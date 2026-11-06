@@ -2045,6 +2045,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const snap = await window.fb.getDoc(window.fb.doc(window.fb.db, 'shared_logs', log.id));
                 const data = snap.exists() ? snap.data() : null;
                 if (!data || !data.claimed || data.claimedBy !== this.state.user.phone || data.appliedAt || (data.claimedDevice && data.claimedDevice !== this._deviceId())) { await DB.setMeta('claiming', ''); return; }
+                log.cartonPlan = log.cartonPlan || {}; // (finishing by itself: no questions now; cartons answered before go in as answered)
                 this.state.scannedLogData = log;
                 await this._acceptLog();
             } catch (e) { console.error('Could not finish an accepted transfer:', e); }
@@ -3406,11 +3407,101 @@ document.addEventListener('DOMContentLoaded', () => {
             const known = [...products];
             let added = 0;
             for (const item of items || []) {
-                const name = String(item.name || '').toLowerCase();
-                const hit = known.find(p => (item.barcode && this._barcodesMatch(p.barcode, item.barcode)) || (String(p.originalName || p.name || '').toLowerCase() === name && (!item.barcode || !p.barcode)));
-                if (!hit) { added++; known.push({ barcode: item.barcode, name: item.name }); }
+                if (!this._findReceived(known, item)) { added++; known.push({ barcode: item.barcode, name: item.name }); }
             }
             return added;
+        },
+
+        // The product a received item goes into: the same barcode (or the carton barcode remembered on it when cartons were last
+        // turned into its smaller unit), or else the same name when one of them has no barcode
+        _findReceived(products, item) {
+            const barcode = item.barcode, name = String(item.name || '').toLowerCase();
+            let hit = null;
+            if (barcode) hit = products.find(p => this._barcodesMatch(p.barcode, barcode)) || products.find(p => p.cartonBarcode && this._barcodesMatch(p.cartonBarcode, barcode));
+            if (!hit) hit = products.find(p => String(p.originalName || p.name || '').toLowerCase() === name && (!barcode || !p.barcode));
+            return hit || null;
+        },
+
+        _isCartonUnit(v) { return /carton/.test(this._unitKey(v)); },
+
+        // Cartons coming in for a product this shop keeps in a smaller unit (packets, bottles...): before the transfer is accepted,
+        // one small card for each such product: "Packets in 1 carton?". The answer is remembered on the product, so the next time
+        // the number is already there and the card is only a confirmation. Skip (or Back, or a tap outside) adds the cartons as before.
+        // Returns { itemIndex: how many in 1 carton } (0 = skipped).
+        async _askCartons(log, products) {
+            const plan = {};
+            const byProduct = new Map(); // product id -> the items of this transfer that go into it as cartons
+            (log.items || []).forEach((item, i) => {
+                if (!this._isCartonUnit(item.unit)) return;
+                const p = this._findReceived(products, item);
+                if (!p || !p.unit || this._isCartonUnit(p.unit)) return;
+                if (!byProduct.has(p.id)) byProduct.set(p.id, { p, items: [] });
+                byProduct.get(p.id).items.push([i, item]);
+            });
+            const due = [...byProduct.values()];
+            for (let k = 0; k < due.length; k++) {
+                const { p, items } = due[k];
+                const qty = items.reduce((a, [, item]) => a + (Number(item.quantity) || 0), 0);
+                const n = await this._cartonCard(p, qty, due.length > 1 ? `${k + 1} of ${due.length}` : '');
+                items.forEach(([i]) => { plan[i] = n; });
+            }
+            return plan;
+        },
+
+        // The card: [carton] 3 → [packet] 150, "Packets in 1 carton?" with − / +, and one big button "Add 150 packets". Resolves the number, or 0.
+        async _cartonCard(product, cartons, step) {
+            const unit = this._unitKey(product.unit);
+            const many = this._unitLabel(unit).toLowerCase(), one = this._unitOne(unit).toLowerCase();
+            const known = Number(product.perCarton) > 0 ? Math.round(Number(product.perCarton)) : 0;
+            const box = document.getElementById('dialog-fields');
+            const okBtn = document.getElementById('dialog-ok');
+            box.innerHTML = `<div class="ctn">
+                    ${step ? `<span class="ctn-count">${this._esc(step)}</span>` : ''}
+                    <div class="ctn-row">
+                        <span class="ctn-unit">${this._unitIcon('cartons')}<b>${this.formatNumber(cartons)}</b><small>${cartons === 1 ? 'carton' : 'cartons'}</small></span>
+                        <span class="ctn-sign">${known ? '=' : '→'}</span>
+                        <span class="ctn-unit">${this._unitIcon(unit)}<b id="ctn-total">?</b><small>${this._esc(many)}</small></span>
+                    </div>
+                    <div class="ctn-ask" ${known ? 'hidden' : ''}>
+                        <label class="ctn-q" for="ctn-n">${this._esc(this._unitLabel(unit))} in 1 carton?</label>
+                        <div class="ctn-step">
+                            <button type="button" class="ctn-btn" data-ctn="-1" aria-label="Less">−</button>
+                            <input id="ctn-n" type="text" inputmode="numeric" maxlength="4" autocomplete="off" value="${known || ''}">
+                            <button type="button" class="ctn-btn" data-ctn="1" aria-label="More">+</button>
+                        </div>
+                    </div>
+                    ${known ? '<button type="button" class="ctn-change">Change</button>' : ''}
+                </div>`;
+            box.hidden = false;
+            const input = box.querySelector('#ctn-n'), total = box.querySelector('#ctn-total');
+            const read = () => { const n = parseInt(String(input.value).replace(/\D/g, ''), 10); return n > 0 && n <= 10000 ? n : 0; };
+            const paint = () => {
+                const n = read(), all = n * cartons;
+                total.textContent = n ? this.formatNumber(all) : '?';
+                okBtn.textContent = n ? `Add ${this.formatNumber(all)} ${all === 1 ? one : many}` : `Add ${many}`;
+                okBtn.disabled = !n;
+            };
+            const answer = this._dialog({ title: product.name, text: '', ok: 'Add', cancel: 'Skip', keepFields: true });
+            paint();
+            input.addEventListener('input', () => { const digits = input.value.replace(/\D/g, ''); if (digits !== input.value) input.value = digits; paint(); });
+            input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && read()) { e.preventDefault(); okBtn.click(); } });
+            box.querySelectorAll('[data-ctn]').forEach(b => b.addEventListener('click', () => {
+                input.value = String(Math.min(10000, Math.max(1, read() + Number(b.dataset.ctn))));
+                paint();
+            }));
+            const change = box.querySelector('.ctn-change');
+            if (change) change.addEventListener('click', () => {
+                box.querySelector('.ctn-ask').hidden = false;
+                change.hidden = true;
+                box.querySelector('.ctn-sign').textContent = '→';
+                input.focus(); input.select();
+            });
+            if (!known) setTimeout(() => input.focus(), 60); // (first time: the number keypad comes up)
+            const yes = await answer;
+            const n = read();
+            okBtn.disabled = false;
+            box.innerHTML = ''; box.hidden = true;
+            return yes && n ? n : 0;
         },
 
         _recentEdits() {
@@ -6364,6 +6455,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const addedBefore = async () => { this.hideModal(); this.state.scannedLogData = null; say('These items are already in your products.', 'Already added'); };
             if (log.id && await DB.getMeta('applied:' + log.id)) { await addedBefore(); return; }
 
+            // Cartons for a product kept here in a smaller unit: "Packets in 1 carton?" first (nothing is accepted yet, so backing out changes nothing)
+            if (!isSalesperson && !log.cartonPlan) {
+                log.cartonPlan = await this._askCartons(log, await DB.getAllProducts());
+                if (this.state.scannedLogData !== log) return; // (the transfer box was closed meanwhile)
+            }
+
             // Only the first person to accept gets the products
             this.showLoader();
             let claim;
@@ -6389,22 +6486,22 @@ document.addEventListener('DOMContentLoaded', () => {
             const arrivedAt = this._serverNow(); // (the online clock: "today" is the same day on every phone)
             let itemNo = 0;
 
-            for (const item of log.items) {
+            const cartonPlan = log.cartonPlan || {};
+            for (const [itemIndex, item] of log.items.entries()) {
                 // Whatever the unit (bottles, sachets, cartons...), it comes in as the sender counted it
                 // What the sender charged for one (after any discount they gave) is what one cost this business
-                const costPrice = this._receivedCost(item);
-                const stockToAdd = item.quantity, unitType = item.unit, needsSetup = 'price';
-                const wholesalerPrice = item.price, barcode = item.barcode, originalName = item.name;
+                const unitType = item.unit, needsSetup = 'price';
+                const barcode = item.barcode, originalName = item.name;
 
-                // Same barcode = same product: add to what the user already has (even if it is named differently)
-                let existingProduct = null;
-                if (barcode) {
-                    existingProduct = allProducts.find(p => this._barcodesMatch(p.barcode, barcode));
-                }
-                // Fall back to name matching if no barcode match
-                if (!existingProduct) {
-                    existingProduct = allProducts.find(p => (p.originalName || p.name).toLowerCase() === originalName.toLowerCase() && (!barcode || !p.barcode));
-                }
+                // Same barcode = same product: add to what the user already has (even if it is named differently); or the same name
+                let existingProduct = this._findReceived(allProducts, item);
+
+                // Cartons turned into this product's own unit (the receiver said how many are in 1 carton): 3 cartons x 50 = 150 packets,
+                // and one carton's cost shared out over what is inside it
+                const perCarton = existingProduct && Number(cartonPlan[itemIndex]) > 0 ? Number(cartonPlan[itemIndex]) : 0;
+                const costPrice = perCarton ? Math.round(this._receivedCost(item) / perCarton) : this._receivedCost(item);
+                const stockToAdd = perCarton ? item.quantity * perCarton : item.quantity;
+                const wholesalerPrice = perCarton ? Math.round((Number(item.price) || 0) / perCarton) : item.price;
 
                 let finalProduct;
                 let thumbSentHere = false; // the sender's small picture became this product's online picture
@@ -6417,7 +6514,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     existingProduct.stock += stockToAdd;
                     existingProduct.supplierId = supplierId;
-                    if (!existingProduct.barcode && barcode) {
+                    if (perCarton) {
+                        existingProduct.perCarton = perCarton; // (remembered: next time the card only confirms it)
+                        if (this._isCartonUnit(existingProduct.unitToConfirm)) existingProduct.unitToConfirm = null; // (an earlier "Packet or Carton?" is answered by this)
+                        if (barcode && !this._barcodesMatch(existingProduct.barcode, barcode)) existingProduct.cartonBarcode = barcode; // (the carton's own barcode finds this product next time)
+                    } else if (!existingProduct.barcode && barcode) {
                         existingProduct.barcode = barcode;
                     }
                     // A product the user has already priced keeps its price; only ask for one when it has none
@@ -6435,7 +6536,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     existingProduct.wholesalerPrice = wholesalerPrice;
                     // Counted in a different unit from the one kept here (bottles against sachets): the owner is asked which it is,
                     // in this product's Edit box (the unit is not changed, and nothing is converted, until they answer)
-                    if (!isSalesperson && item.unit && existingProduct.unit && this._unitKey(item.unit) !== this._unitKey(existingProduct.unit)) {
+                    if (!perCarton && !isSalesperson && item.unit && existingProduct.unit && this._unitKey(item.unit) !== this._unitKey(existingProduct.unit)) {
                         existingProduct.unitToConfirm = item.unit;
                     }
                     // Came at a different cost from the one kept here: the owner is asked the same way, "₦150 or ₦170?" (the cost is not changed until they answer).
@@ -6473,7 +6574,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (existingProduct) {
                     // the stock is added to whatever it is now; the fields that changed are sent, nothing else
                     productUpdates.push(DB.saveProduct(finalProduct, { delta: stockToAdd, thumb: thumbSentHere,
-                        only: ['supplierId', 'barcode', 'needsSetup', 'lockedUntilOOS', 'isSalesperson', 'originalName', 'wholesalerPrice', 'unitToConfirm', 'cost', 'costToConfirm', 'newSince', 'arrivedAt', 'thumb'] }));
+                        only: ['supplierId', 'barcode', 'needsSetup', 'lockedUntilOOS', 'isSalesperson', 'originalName', 'wholesalerPrice', 'unitToConfirm', 'cost', 'costToConfirm', 'newSince', 'arrivedAt', 'thumb', 'perCarton', 'cartonBarcode'] }));
                 } else {
                     productUpdates.push(DB.saveProduct(finalProduct, { thumb: true }));
                 }
