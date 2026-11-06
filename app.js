@@ -2358,7 +2358,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this._hideModalBox();
             if (this._modalLive) { this._modalLive = false; this._modalStale = true; }
         },
-        _hideModalBox() { if (window.speechSynthesis && this.elements.profileModal.style.display !== 'none') window.speechSynthesis.cancel(); /* (the voice stops when the profile closes) */ this._closeUnitMenu(false, true); this.elements.modalContainer.style.display = 'none'; this.elements.modalContainer.querySelectorAll('.modal-content').forEach(m => m.style.display = 'none'); this._followKeyboard(false); },
+        _hideModalBox() { if (window.speechSynthesis && (this.elements.profileModal.style.display !== 'none' || this._modalTalk)) { window.speechSynthesis.cancel(); this._modalTalk = false; } /* (the voice stops when the profile, or a talking product box, closes) */ this._closeUnitMenu(false, true); this.elements.modalContainer.style.display = 'none'; this.elements.modalContainer.querySelectorAll('.modal-content').forEach(m => m.style.display = 'none'); this._followKeyboard(false); },
 
         // Adds a step to the history, but only once a step back that is still on its way has arrived (a step added before then would be lost in it)
         _pushStep(extra) {
@@ -3471,13 +3471,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 each.textContent = n ? this.formatNumber(n) : '?';
                 total.hidden = !n;
                 total.textContent = n ? `${cartonsText} = ${this.formatNumber(all)} ${all === 1 ? one : many}` : '';
-                okBtn.textContent = n ? `Add ${this.formatNumber(all)} ${all === 1 ? one : many}` : `Add ${many}`;
+                okBtn.textContent = n ? `Accept ${this.formatNumber(all)} ${all === 1 ? one : many}` : `Accept ${many}`;
                 okBtn.disabled = !n;
             };
             const later = document.getElementById('dialog-cancel');
-            const answer = this._dialog({ title: product.name, text: '', ok: 'Add', cancel: 'Later', keepFields: true, outside: false, cancelValue: 'later' });
+            const answer = this._dialog({ title: product.name, text: '', ok: 'Accept', cancel: 'Later', keepFields: true, outside: false, cancelValue: 'later' });
             later.classList.add('btn-later'); // (grey: Later is safe, not a danger)
             paint();
+            this._talk(known ? `${cartonsText} na ${this.formatNumber(known * cartons)} ${many}. Tap Accept.` : `How many ${many} dey inside 1 carton?`);
             input.addEventListener('input', () => { const digits = input.value.replace(/\D/g, ''); if (digits !== input.value) input.value = digits; paint(); });
             input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && read()) { e.preventDefault(); okBtn.click(); } });
             box.querySelectorAll('[data-ctn]').forEach(b => b.addEventListener('click', () => {
@@ -3492,6 +3493,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             if (!known) setTimeout(() => input.focus(), 60); // (first time: the number keypad comes up)
             const choice = await answer;
+            if (choice !== true) this._hush();
             const n = read();
             okBtn.disabled = false;
             box.innerHTML = ''; box.hidden = true; this._freePics();
@@ -4533,6 +4535,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const askUnit = !isSalesperson && product.unitToConfirm && this._unitKey(product.unitToConfirm) !== this._unitKey(product.unit);
             const askCost = !isSalesperson && Number(product.costToConfirm) > 0 && Number(product.costToConfirm) !== Number(product.cost);
             if (askCost) this._pendingCostAsk = product;
+            this._talkNewProduct(product, askUnit, askCost); // (a New product says what to confirm)
             if (askUnit || askCost) {
                 setTimeout(() => { if (this.state.editingProduct === product && this._modalLive) { if (askUnit) this._askUnit(product); else this._askCostNext(); } }, 450);
             }
@@ -6715,6 +6718,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     messages: ['The items have been added to your products.', 'Earn airtime points each time you record a sale for these items. T&C apply.'] });
                 return;
             }
+            try { if ('speechSynthesis' in window) window.speechSynthesis.getVoices(); } catch (e) { /* fine */ } // (the voice is ready before the first card)
             // The owner lands on New. "Check items" walks through the new items that need something (Later leaves them in New);
             // when none does, the box just says where they are
             this._showProductsTab('new');
@@ -6724,7 +6728,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.showCelebration(toCheck.length ? {
                 icon: '📦', title: 'Items added', headline: log.senderStore ? `From ${log.senderStore}` : 'Transfer accepted',
                 messages: [toCheck.length === 1 ? '1 item needs you. It takes a minute.' : `${toCheck.length} items need you. It takes a minute.`, airtime],
-                action: { label: 'Check items', run: () => this._checkItems(toCheck) },
+                action: { label: 'Check the items', run: () => this._checkItems(toCheck) },
                 later: 'Later'
             } : {
                 icon: '📦', title: 'Items added', headline: log.senderStore ? `From ${log.senderStore}` : 'Transfer accepted',
@@ -6758,7 +6762,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const show = filterType === 'new' && due.length > 0;
             bar.hidden = !show;
-            if (show) bar.textContent = due.length === 1 ? 'Check 1 item' : `Check ${due.length} items`;
+            if (show) bar.textContent = due.length === 1 ? 'Check the item' : `Check the ${due.length} items`;
         },
 
         // My products on one of its tabs (New after a transfer), whether or not it is already open
@@ -6785,13 +6789,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 for (const id of ids || []) { const p = await DB.getProduct(id); if (this._needsCheck(p)) list.push(p); }
                 let left = 0;
                 for (let i = 0; i < list.length; i++) {
-                    const r = await this._checkItem(list[i], list.length > 1 ? `${i + 1} of ${list.length}` : '');
+                    const r = await this._checkItem(list[i], list.length > 1 ? { i: i + 1, n: list.length } : '');
                     if (r === null) { left += list.length - i; break; }
                     if (r === 'later') left++;
                 }
                 const stillNew = (await DB.getAllProducts()).filter(p => this._isNewStock(p)).length;
                 this._showProductsTab(stillNew ? 'new' : 'all');
                 if (list.length) this.showToast(left ? `${left} ${left === 1 ? 'item still needs' : 'items still need'} you in New.` : 'All done ✓');
+                if (list.length && !left) this._talk('All done. Well done o.'); else this._hush();
             } finally { this._checking = false; }
         },
 
@@ -6837,7 +6842,13 @@ document.addEventListener('DOMContentLoaded', () => {
             let src = 'icons/icon-192.png';
             if (product.image instanceof Blob) { src = URL.createObjectURL(product.image); (this._picUrls = this._picUrls || []).push(src); }
             else if (this._safeImageUrl(product.thumb)) src = this._safeImageUrl(product.thumb);
-            return `${step ? `<span class="ctn-count">${this._esc(step)}</span>` : ''}<img class="chk-pic" src="${this._esc(src)}" alt="">`;
+            let where = '';
+            if (step && typeof step === 'object') {
+                where = step.n <= 8
+                    ? `<span class="chk-dots" aria-label="Item ${step.i} of ${step.n}">${Array.from({ length: step.n }, (_, k) => `<i class="${k + 1 < step.i ? 'done' : k + 1 === step.i ? 'on' : ''}"></i>`).join('')}</span>`
+                    : `<span class="ctn-count">${step.i} of ${step.n}</span>`;
+            } else if (step) where = `<span class="ctn-count">${this._esc(step)}</span>`;
+            return `${this._voiceBtnHtml('card-voice')}${where}<img class="chk-pic" src="${this._esc(src)}" alt="">`;
         },
         _freePics() { (this._picUrls || []).forEach(u => URL.revokeObjectURL(u)); this._picUrls = []; },
 
@@ -6847,7 +6858,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const choices = kind === 'unit'
                 ? [{ v: product.unit, html: `${this._unitIcon(product.unit)}<b>${this._esc(this._unitLabel(product.unit))}</b>` },
                    { v: product.unitToConfirm, html: `${this._unitIcon(product.unitToConfirm)}<b>${this._esc(this._unitLabel(product.unitToConfirm))}</b><small>new</small>` }]
-                : [{ v: Number(product.cost), html: `<b>₦${this.formatNumber(product.cost)}</b><small>before</small>` },
+                : [{ v: Number(product.cost), html: `<b>₦${this.formatNumber(product.cost)}</b><small>current</small>` },
                    { v: Number(product.costToConfirm), html: `<b>₦${this.formatNumber(product.costToConfirm)}</b><small>new</small>` }];
             let picked = kind === 'unit' ? 0 : 1; // (your own unit; the new cost)
             const question = kind === 'unit' ? 'How do you count it?' : `What did 1 ${this._esc(one(product.unit))} cost you?`;
@@ -6859,8 +6870,14 @@ document.addEventListener('DOMContentLoaded', () => {
             box.querySelectorAll('.chk-choice').forEach(b => b.addEventListener('click', () => {
                 picked = Number(b.dataset.i);
                 box.querySelectorAll('.chk-choice').forEach(x => x.classList.toggle('on', x === b));
+                setTimeout(() => { if (this._closeDialog) this._closeDialog(true); }, 180); // (one tap answers: the choice lights up, then the next card)
             }));
-            const answer = await this._checkDialog(product.name, 'Next');
+            const answering = this._checkDialog(product.name, 'Next');
+            const nameShort = String(product.name || '').trim().split(/\s+/).slice(0, 2).join(' ');
+            this._talk(kind === 'unit'
+                ? `How you dey count ${nameShort}? ${this._unitLabel(product.unit)} or ${this._unitLabel(product.unitToConfirm).toLowerCase()}?`
+                : `How much be your cost price for one ${one(product.unit)} again?`);
+            const answer = await answering;
             box.innerHTML = ''; box.hidden = true; this._freePics();
             if (answer === 'later') return 'later';
             return answer === true ? choices[picked].v : null;
@@ -6895,6 +6912,7 @@ document.addEventListener('DOMContentLoaded', () => {
             input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !okBtn.disabled) { e.preventDefault(); okBtn.click(); } });
             const answering = this._checkDialog(product.name, 'Next');
             paint();
+            this._talk(`How much you go sell one ${one}?`);
             const answer = await answering;
             const n = read();
             okBtn.disabled = false;
@@ -6909,6 +6927,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const answer = this._dialog({ title, text: '', ok, cancel: 'Later', keepFields: true, outside: false, cancelValue: 'later' });
             later.classList.add('btn-later');
             const result = await answer;
+            if (result !== true) this._hush();
             later.classList.remove('btn-later');
             document.querySelector('#dialog-layer .dialog-card').classList.remove('dialog-wiggle');
             return result === 'later' ? 'later' : result === true ? true : null;
@@ -7749,6 +7768,69 @@ document.addEventListener('DOMContentLoaded', () => {
         // chosen: English (Nigeria) first, then other West and East African English, then British, then any English. Each message is said
         // once (the last one said is kept per person); the speaker button on the right of "Assistant" turns it off and on, and turning it on says
         // the current message again. Phones only allow sound after a tap: opening the profile is one.
+        // Said at once, in the phone's own voice (Check the items, and New products): no waiting. Muted with any speaker button.
+        _talk(text) {
+            this._lastTalk = text;
+            if (!text || !('speechSynthesis' in window) || !this._voiceOn()) return;
+            try {
+                const synth = window.speechSynthesis;
+                synth.cancel(); // (one voice at a time: the card before stops)
+                const u = new SpeechSynthesisUtterance(this._speechText(text));
+                const voice = this._pickVoice();
+                if (voice) { u.voice = voice; u.lang = voice.lang; } else u.lang = 'en-NG';
+                u.rate = 0.95;
+                synth.speak(u);
+            } catch (e) { /* no voice: the card says it */ }
+        },
+        _hush() { try { if ('speechSynthesis' in window) window.speechSynthesis.cancel(); } catch (e) { /* fine */ } },
+
+        // A speaker button (the same one as on the Assistant card): on = the app talks, off = quiet. One setting for all of them.
+        _voiceBtnHtml(cls) {
+            if (!('speechSynthesis' in window)) return '';
+            const on = this._voiceOn();
+            this._wireVoiceBtns();
+            return `<button type="button" class="nudge-voice-btn ${cls}${on ? '' : ' is-off'}" aria-pressed="${on}" aria-label="Voice: ${on ? 'on' : 'off'}">`
+                + '<svg class="voice-on" xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" fill-opacity=".18"></polygon><path d="M15.5 8.5a5 5 0 0 1 0 7"></path><path d="M18.5 5.5a9 9 0 0 1 0 13"></path></svg>'
+                + '<svg class="voice-off" xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" fill-opacity=".18"></polygon><line x1="22" y1="9" x2="16" y2="15"></line><line x1="16" y1="9" x2="22" y2="15"></line></svg></button>';
+        },
+        _wireVoiceBtns() {
+            if (this._voiceWired) return;
+            this._voiceWired = true;
+            document.addEventListener('click', (e) => {
+                const btn = e.target.closest && e.target.closest('.card-voice');
+                if (!btn) return;
+                e.stopPropagation();
+                const on = !this._voiceOn();
+                try { localStorage.setItem('pika_voice', on ? '1' : '0'); } catch (err) { /* only for now */ }
+                document.querySelectorAll('.nudge-voice-btn').forEach(b => { b.classList.toggle('is-off', !on); b.setAttribute('aria-pressed', String(on)); });
+                if (on) this._talk(this._lastTalk); else this._hush();
+            }, true);
+        },
+
+        // A New product opened: it says what to confirm (the unit, the cost, its own price), or to check it and save. The speaker mutes it.
+        _talkNewProduct(product, askUnit, askCost) {
+            let btn = document.getElementById('pf-voice');
+            const box = document.getElementById('product-form-modal');
+            if (!btn && box && 'speechSynthesis' in window) {
+                box.insertAdjacentHTML('afterbegin', this._voiceBtnHtml('card-voice pf-voice').replace('<button ', '<button id="pf-voice" '));
+                btn = document.getElementById('pf-voice');
+            }
+            const isNew = !this._isSalesperson() && this._isNewStock(product);
+            if (btn) {
+                btn.hidden = !isNew;
+                const on = this._voiceOn();
+                btn.classList.toggle('is-off', !on); btn.setAttribute('aria-pressed', String(on));
+            }
+            if (!isNew) return;
+            const one = this._unitOne(product.unit).toLowerCase();
+            const line = askUnit ? `Na ${one} or ${this._unitOne(product.unitToConfirm).toLowerCase()}? Tap the one wey correct.`
+                : askCost ? `How much be your cost price for one ${one} again? Tap the one wey correct.`
+                : this._needsSellingPrice(product) ? `Put your own selling price for one ${one}, then tap Save.`
+                : 'Check everything well, then tap Save.';
+            this._modalTalk = true;
+            this._talk(line);
+        },
+
         // Once only, for this account on this phone: true the first time it is asked about
         _firstTime(kind) {
             const key = `pika_first_${kind}_${this.state.user && this.state.user.phone}`;

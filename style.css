@@ -2122,3 +2122,15 @@ a.privacy-link-trigger { display: inline-block; padding: 8px 2px; margin: -8px 0
 /* Products button: a red dot while New has items */
 .nav-btn[data-view="products-view"] { position: relative; }
 .nav-btn.has-dot::after { content: ''; position: absolute; top: 6px; left: calc(50% + 7px); width: 9px; height: 9px; border-radius: 50%; background: var(--danger-color); border: 2px solid #fff; }
+
+/* Check the items: the speaker (mute) in the card's corner, and dots for how far along (the current one long) */
+#dialog-layer .dialog-card { position: relative; }
+.dialog-card .card-voice { position: absolute; top: 12px; right: 12px; }
+#product-form-modal { position: relative; }
+#product-form-modal .pf-voice { position: absolute; top: 14px; left: 14px; z-index: 3; }
+#product-form-modal .pf-voice[hidden] { display: none; }
+.chk-dots { display: flex; align-items: center; gap: 6px; }
+.chk-dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--border-color); transition: width 0.2s; }
+.chk-dots i.done { background: var(--primary-color); opacity: 0.45; }
+.chk-dots i.on { width: 22px; border-radius: 4px; background: var(--primary-color); }
+.chk-choice { transition: background-color 0.12s, border-color 0.12s; }
