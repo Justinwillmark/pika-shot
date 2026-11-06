@@ -181,6 +181,9 @@
             .filter(p => !p.isSalesperson && (p.needsSetup === 'price' || p.needsSetup === 'barcode-and-price'))
             .sort((a, b) => arrived(b) - arrived(a))
             .map(p => ({ id: p.id, name: p.name }));
+        const cartonsToCount = products // (cartons received but not counted yet: "Later" on the carton card)
+            .filter(p => !p.isSalesperson && Number(p.cartonsWaiting) > 0)
+            .map(p => ({ id: p.id, name: p.name, n: Number(p.cartonsWaiting) }));
         const costToCheck = products
             .filter(p => !p.isSalesperson && Number(p.costToConfirm) > 0 && Number(p.costToConfirm) !== Number(p.cost))
             .sort((a, b) => arrived(b) - arrived(a))
@@ -244,7 +247,7 @@
             busy: lastHalfHour >= 4, // serving customers right now: no tasks
             streak, streakBefore, streakRisk: todaySales === 0 && streakBefore >= 3,
             topItem: top && top.count >= 3 ? short(top.name, 2) : null,
-            lowProducts, outProducts, custLow, priceToSet, costToCheck,
+            lowProducts, outProducts, custLow, priceToSet, costToCheck, cartonsToCount,
             belowZero: products.filter(p => Number(p.stock) < 0).map(p => ({ id: p.id, name: p.name, stock: Number(p.stock) })),
             lowLong, lowCount, needFunding,
             toMilestone: next ? { n: next - sales.length, to: next } : null,
@@ -354,6 +357,9 @@
             text: (c, r, s) => twin(r, [`Set your selling price for ${short(s.p.name, 2)}. 🏷️`, `Wetin be your price for ${short(s.p.name, 2)}? 🏷️`]) }),
         { id: 'pr-sell-many', chime: true, cat: 'prices', tier: 1, cooldown: DAY, roles: ['Wholesaler', 'Retailer'], go: 'products', when: c => c.priceToSet.length >= 3, weight: () => 2,
             text: (c, r) => twin(r, [`${c.priceToSet.length} new items need your selling price. 🏷️`, `${c.priceToSet.length} items dey wait for your price. 🏷️`]) },
+        subjective({ id: 'pr-cartons', chime: true, cat: 'prices', tier: 1, cooldown: DAY, reminder: true, roles: ['Wholesaler', 'Retailer'], go: 'edit',
+            subjects: c => c.cartonsToCount.map(p => ({ key: 'ctn:' + p.id, arg: { id: p.id }, p })),
+            text: (c, r, s) => twin(r, [`Count your ${s.p.n} ${short(s.p.name, 2)} ${s.p.n === 1 ? 'carton' : 'cartons'}. Tap to add them. 📦`, `Your ${s.p.n} ${short(s.p.name, 2)} ${s.p.n === 1 ? 'carton dey' : 'cartons dey'} wait. Tap to count dem. 📦`]) }),
         subjective({ id: 'pr-cost', chime: true, cat: 'prices', tier: 1, cooldown: DAY, reminder: true, roles: ['Wholesaler', 'Retailer'], go: 'edit',
             subjects: c => c.costToCheck.map(p => ({ key: 'cost:' + p.id, arg: { id: p.id }, p })),
             text: (c, r, s) => twin(r, [`${short(s.p.name, 2)} came at ${naira(s.p.next)}. Update your cost? 💰`, `${short(s.p.name, 2)} cost don change? Check am. 💰`]) }),

@@ -2069,22 +2069,32 @@ a.privacy-link-trigger { display: inline-block; padding: 8px 2px; margin: -8px 0
 @keyframes fab-add-hint { 0% { box-shadow: 0 4px 15px rgba(0,0,0,0.2), 0 0 0 0 rgba(0, 140, 149, 0.45); } 80%, 100% { box-shadow: 0 4px 15px rgba(0,0,0,0.2), 0 0 0 16px rgba(0, 140, 149, 0); } }
 @media (prefers-reduced-motion: reduce) { .add-arrow path, .fab.add-hint { animation: none; } }
 
-/* Cartons received for a product kept in a smaller unit: [carton] 3 -> [packet] 150, "Packets in 1 carton?" (_cartonCard in app.js) */
-.ctn { display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; }
+/* Cartons received for a product kept in a smaller unit (_cartonCard in app.js): "You got 3 cartons", then the question about ONE carton,
+   [carton] 1 = [packet] 50, with the same quantity box as Confirm sale ("Packets in 1 carton" on its border), then the total */
+.ctn { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
 .ctn-count { font-size: 0.8rem; color: var(--text-light); }
+.dialog-card .ctn-got { margin: 0; font-size: 0.95rem; color: var(--text-light); }
+.ctn-got b { color: var(--text-color); }
 .ctn-row { display: flex; align-items: center; justify-content: center; gap: 14px; }
 .ctn-unit { display: flex; flex-direction: column; align-items: center; min-width: 64px; color: var(--primary-color); }
 .ctn-unit .unit-svg { width: 46px; height: 46px; }
 .ctn-unit b { font-size: 1.6rem; line-height: 1.15; color: var(--text-color); }
 .ctn-unit small { font-size: 0.8rem; color: var(--text-light); }
 .ctn-sign { font-size: 1.6rem; font-weight: 600; color: var(--text-light); }
-.ctn-ask { display: flex; flex-direction: column; align-items: center; gap: 8px; }
-.ctn-ask[hidden] { display: none; }
-.dialog-fields .ctn-q { margin: 0; font-size: 1rem; font-weight: 600; }
-.ctn-step { display: flex; align-items: center; gap: 12px; }
-.ctn-btn { width: 44px; height: 44px; border-radius: 50%; border: 1.5px solid var(--border-color); background: #fff; color: var(--text-color); font-size: 1.5rem; line-height: 1; padding: 0; }
-.ctn-btn:active { background: var(--background-color); }
-.dialog-fields .ctn-step input { width: 92px; padding: 8px; text-align: center; font-size: 1.5rem; font-weight: 700; border: 1.5px solid var(--primary-color); border-radius: 12px; }
+.dialog-fields .form-group.ctn-field { width: 100%; margin: 8px 0 0; }
+.ctn-field[hidden] { display: none; }
+.modal-content .form-group.ctn-field > label { left: 50%; transform: translateX(-50%); }
+.dialog-card .ctn-total { margin: 0; font-size: 1rem; font-weight: 700; color: var(--primary-color); }
+.ctn-total[hidden] { display: none; }
 .ctn-change { background: none; border: none; padding: 6px 10px; color: var(--primary-color); font: inherit; font-weight: 600; text-decoration: underline; }
 .ctn-change[hidden] { display: none; }
 #dialog-ok:disabled { opacity: 0.5; }
+
+/* A pop-up that must be answered (the carton card): a tap outside gives it a small shake instead of closing it */
+.dialog-card.dialog-wiggle { animation: dialog-wiggle 0.36s ease-in-out; }
+@keyframes dialog-wiggle { 0%, 100% { transform: translateX(0); } 20% { transform: translateX(-7px); } 40% { transform: translateX(6px); } 60% { transform: translateX(-4px); } 80% { transform: translateX(2px); } }
+@media (prefers-reduced-motion: reduce) { .dialog-card.dialog-wiggle { animation: none; } }
+
+/* The carton card's "Later": grey, not red (it is the safe choice) */
+.dialog-card .btn.btn-cancel.btn-later { color: var(--text-color); border-color: var(--border-color); }
+.dialog-card .btn.btn-cancel.btn-later:active { background: var(--background-color); }
