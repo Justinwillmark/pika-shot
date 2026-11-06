@@ -1547,7 +1547,7 @@ button:focus { outline: none; }
 .celebration-sub { font-size: 0.9rem; color: var(--text-light); margin-top: 2px; word-break: break-word; }
 .celebration-card p.celebration-msg { font-size: 0.88rem; line-height: 1.5; color: var(--text-color); margin: 14px 0 0; }
 .celebration-card .btn { margin-top: 20px; }
-#confetti-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
+#confetti-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 3; } /* (in front of the card; taps go through to its buttons) */
 #torch-btn.torch-on { background: rgba(255, 214, 10, 0.9) !important; color: #222 !important; }
 
 /* Stock visibility switch (products received by transfer) */

@@ -3478,7 +3478,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const answer = this._dialog({ title: product.name, text: '', ok: 'Accept', cancel: 'Later', keepFields: true, outside: false, cancelValue: 'later' });
             later.classList.add('btn-later'); // (grey: Later is safe, not a danger)
             paint();
-            this._talk(known ? `${cartonsText} na ${this.formatNumber(known * cartons)} ${many}. Tap Accept.` : `How many ${many} dey inside 1 carton?`);
+            this._talk(known ? `${cartonsText}, na ${this.formatNumber(known * cartons)} ${many} be dat. Tap Accept.` : `How many ${many} dey inside one carton?`);
             input.addEventListener('input', () => { const digits = input.value.replace(/\D/g, ''); if (digits !== input.value) input.value = digits; paint(); });
             input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && read()) { e.preventDefault(); okBtn.click(); } });
             box.querySelectorAll('[data-ctn]').forEach(b => b.addEventListener('click', () => {
@@ -3788,7 +3788,33 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (e) { /* audio unavailable */ }
         },
 
+        // A bad moment for a message's beep: a box, a card or the confetti is open, Check the items is running, the voice is talking,
+        // or the app made a sound in the last few seconds (the transfer's own beep, the confetti's chime, a scan)
+        _soundBusy() {
+            const talking = 'speechSynthesis' in window && (window.speechSynthesis.speaking || window.speechSynthesis.pending);
+            const open = !!this._closeDialog || this._celebrationOpen || this._checking
+                || (this.elements.modalContainer && this.elements.modalContainer.style.display === 'flex');
+            return open || talking || Date.now() - (this._lastSoundAt || 0) < 6000;
+        },
+        // The beep waits (the most important one waiting is kept) and plays once things are quiet; after 90 seconds it is dropped:
+        // the message is still there (the dot on the menu), it just does not beep late
+        _chimeLater(kind) {
+            const rank = { quiet: 1, pidgin: 2, loud: 3 };
+            const due = this._chimeDue;
+            if (!due || (rank[kind] || 1) > (rank[due.kind] || 1)) this._chimeDue = { kind, since: due ? due.since : Date.now() };
+            if (this._chimeTimer) return;
+            this._chimeTimer = setInterval(() => {
+                const waiting = this._chimeDue;
+                if (!waiting || Date.now() - waiting.since > 90000) { this._chimeDue = null; clearInterval(this._chimeTimer); this._chimeTimer = null; return; }
+                if (this._soundBusy() || this.state.currentView === 'camera-view') return;
+                this._chimeDue = null;
+                clearInterval(this._chimeTimer); this._chimeTimer = null;
+                this._nudgeChime(waiting.kind);
+            }, 2000);
+        },
+
         _playNotes(notes) {
+            this._lastSoundAt = Date.now();
             try {
                 const ctx = this._getAudioCtx();
                 if (!ctx) return;
@@ -4353,6 +4379,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
                 if (before.unitToConfirm) changed.push('unitToConfirm'); // answering the unit question is a change to save, but it is not a hand edit
+                if (before.unitToConfirm && this._unitKey(productData.unit) === this._unitKey(before.unit)) { // (kept its own unit: not asked again)
+                    productData.unitSame = { ...(before.unitSame || {}), [this._unitKey(before.unitToConfirm)]: true };
+                    changed.push('unitSame');
+                }
                 if (before.costToConfirm) changed.push('costToConfirm'); // (the cost question too)
                 if (wasNew) changed.push('newSince'); // (and saving a new item that needed nothing: "New stock!" goes)
                 const firstCostOnly = !(Number(before.cost) > 0) && !pictureChanged && changed.every(k => ['cost', 'unitToConfirm', 'costToConfirm', 'newSince'].includes(k));
@@ -4401,6 +4431,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 productData.thumb = before.thumb;
             }
             if (before && before._seenInCloud) productData._seenInCloud = true;
+            if (before) ['perCarton', 'cartonBarcode', 'cartonsWaiting', 'cartonCost', 'unitSame', 'arrivedAt'].forEach(k => { // (kept: the box does not show them)
+                if (productData[k] === undefined && before[k] !== undefined && before[k] !== null) productData[k] = before[k];
+            });
 
             let options = null;
             if (saveOptions && saveOptions.only) {
@@ -4452,8 +4485,8 @@ document.addEventListener('DOMContentLoaded', () => {
             product.perCarton = per;
             const unitCost = Number(product.cartonCost) > 0 ? Math.round(Number(product.cartonCost) / per) : 0;
             if (unitCost > 0) {
-                if (!(Number(product.cost) > 0)) product.cost = unitCost;
-                else if (Number(product.cost) !== unitCost) product.costToConfirm = unitCost; // (the usual "₦200 or ₦180?" in the Edit box)
+                product.cost = unitCost; // (what one cost in this delivery: the current cost)
+                product.costToConfirm = null;
             }
             if (this._isCartonUnit(product.unitToConfirm)) product.unitToConfirm = null;
             product.cartonsWaiting = null;
@@ -6584,6 +6617,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const arrivedAt = this._serverNow(); // (the online clock: "today" is the same day on every phone)
             let itemNo = 0;
             const touched = [];
+            const converted = []; // ("3 Indomie cartons became 150 packets.": said in the confetti box)
 
             const cartonPlan = log.cartonPlan || {};
             for (const [itemIndex, item] of log.items.entries()) {
@@ -6597,11 +6631,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 // Cartons turned into this product's own unit (the receiver said how many are in 1 carton): 3 cartons x 50 = 150 packets,
                 // and one carton's cost shared out over what is inside it
-                const perCarton = existingProduct && Number(cartonPlan[itemIndex]) > 0 ? Number(cartonPlan[itemIndex]) : 0;
-                // Cartons for a product kept here in a smaller unit: they wait beside the product ("Count cartons!"), never mixed
-                // into its packets (the stock stays true); "Count cartons!" shows until they are counted in its Edit box
-                const cartonsLater = !perCarton && !isSalesperson && !!existingProduct && this._isCartonUnit(item.unit)
-                    && !!existingProduct.unit && !this._isCartonUnit(existingProduct.unit);
+                // Cartons for a product kept here in a smaller unit. Its number per carton already known (answered once before):
+                // converted by themselves, nothing to ask (3 cartons x 50 = 150 packets; the confetti box says so)
+                const intoSmaller = !!existingProduct && this._isCartonUnit(item.unit) && !!existingProduct.unit && !this._isCartonUnit(existingProduct.unit);
+                const knownPer = intoSmaller && Number(existingProduct.perCarton) > 0 ? Math.round(Number(existingProduct.perCarton)) : 0;
+                const perCarton = existingProduct && Number(cartonPlan[itemIndex]) > 0 ? Number(cartonPlan[itemIndex]) : knownPer;
+                if (perCarton && knownPer && !(Number(cartonPlan[itemIndex]) > 0)) converted.push(`${this.formatNumber(item.quantity)} ${existingProduct.name} ${Number(item.quantity) === 1 ? 'carton' : 'cartons'} became ${this.formatNumber(item.quantity * perCarton)} ${this._unitLabel(existingProduct.unit).toLowerCase()}.`);
+                // Not known yet: they wait beside the product ("Count cartons!"), never mixed into its packets (the stock stays true),
+                // until they are counted (Check the items, or its Edit box)
+                const cartonsLater = !perCarton && !isSalesperson && intoSmaller;
                 const costPrice = perCarton ? Math.round(this._receivedCost(item) / perCarton) : this._receivedCost(item);
                 let stockToAdd = cartonsLater ? 0 : perCarton ? item.quantity * perCarton : item.quantity;
                 if (perCarton && Number(existingProduct.cartonsWaiting) > 0) { // (cartons left for later before: counted now too, once)
@@ -6648,15 +6686,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     existingProduct.wholesalerPrice = wholesalerPrice;
                     // Counted in a different unit from the one kept here (bottles against sachets): the owner is asked which it is,
                     // in this product's Edit box (the unit is not changed, and nothing is converted, until they answer)
-                    if (!perCarton && !cartonsLater && !isSalesperson && item.unit && existingProduct.unit && this._unitKey(item.unit) !== this._unitKey(existingProduct.unit)) {
+                    // (asked once only: "Packets" kept when sachets came is remembered, so sachets of it are not asked about again)
+                    const unitKnown = existingProduct.unitSame && existingProduct.unitSame[this._unitKey(item.unit)];
+                    if (!perCarton && !cartonsLater && !isSalesperson && !unitKnown && item.unit && existingProduct.unit && this._unitKey(item.unit) !== this._unitKey(existingProduct.unit)) {
                         existingProduct.unitToConfirm = item.unit;
                     }
-                    // Came at a different cost from the one kept here: the owner is asked the same way, "₦150 or ₦170?" (the cost is not changed until they answer).
-                    // A product with no cost yet simply takes this one.
-                    if (costPrice > 0 && !cartonsLater) { // (cartons not counted yet: their cost is asked about when they are counted)
-                        if (!(Number(existingProduct.cost) > 0)) existingProduct.cost = costPrice;
-                        else if (!isSalesperson && Number(existingProduct.cost) !== costPrice) existingProduct.costToConfirm = costPrice;
-                        else existingProduct.costToConfirm = null;
+                    // The cost is what this delivery cost: the latest supplier price is the current one, so it is simply used (nothing to ask).
+                    // (If it is now above the selling price, Check the items asks for a new selling price.)
+                    if (costPrice > 0 && !cartonsLater) { // (cartons not counted yet: their cost is worked out when they are counted)
+                        existingProduct.cost = costPrice;
+                        existingProduct.costToConfirm = null;
                     }
                     finalProduct = existingProduct;
                 } else {
@@ -6773,12 +6812,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const airtime = 'Earn airtime points each time you record a sale for these items. T&C apply.';
             this.showCelebration(toCheck.length ? {
                 icon: '📦', title: 'Items added', headline: log.senderStore ? `From ${log.senderStore}` : 'Transfer accepted',
-                messages: [toCheck.length === 1 ? '1 item needs you. It takes a minute.' : `${toCheck.length} items need you. It takes a minute.`, airtime],
+                messages: [toCheck.length === 1 ? '1 item needs you. It takes a minute.' : `${toCheck.length} items need you. It takes a minute.`, ...converted.slice(0, 2), airtime],
                 action: { label: 'Check the items', run: () => this._checkItems(toCheck) },
                 later: 'Later'
             } : {
                 icon: '📦', title: 'Items added', headline: log.senderStore ? `From ${log.senderStore}` : 'Transfer accepted',
-                messages: ['Your new items are in New.', airtime]
+                messages: ['Your new items are in New.', ...converted.slice(0, 2), airtime]
             });
         },
 
@@ -6789,7 +6828,8 @@ document.addEventListener('DOMContentLoaded', () => {
             return Number(p.cartonsWaiting) > 0
                 || (!!p.unitToConfirm && this._unitKey(p.unitToConfirm) !== this._unitKey(p.unit))
                 || (Number(p.costToConfirm) > 0 && Number(p.costToConfirm) !== Number(p.cost))
-                || this._needsSellingPrice(p) || !(Number(p.price) > 0);
+                || this._needsSellingPrice(p) || !(Number(p.price) > 0)
+                || (Number(p.cost) > 0 && Number(p.cost) > Number(p.price)); // (the new cost is above the selling price: a new price is needed)
         },
 
         // While New has items that need the owner: a red dot on the Products button, and (on the New tab) one button that walks through them
@@ -6842,7 +6882,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const stillNew = (await DB.getAllProducts()).filter(p => this._isNewStock(p)).length;
                 this._showProductsTab(stillNew ? 'new' : 'all');
                 if (list.length) this.showToast(left ? `${left} ${left === 1 ? 'item still needs' : 'items still need'} you in New.` : 'All done ✓');
-                if (list.length && !left) this._talk('All done. Well done o.'); else this._hush();
+                if (list.length && !left) this._talk('E don finish. Well done o!'); else this._hush();
             } finally { this._checking = false; }
         },
 
@@ -6866,6 +6906,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (product.unitToConfirm && this._unitKey(product.unitToConfirm) !== this._unitKey(product.unit)) {
                 const unit = await this._checkChoice(product, step, 'unit');
                 if (unit === null || unit === 'later') return finish(unit === null ? null : 'later');
+                if (this._unitKey(unit) === this._unitKey(product.unit)) { // (kept its own unit: that other unit is the same thing here, not asked again)
+                    product.unitSame = { ...(product.unitSame || {}), [this._unitKey(product.unitToConfirm)]: true };
+                    only.add('unitSame');
+                }
                 product.unit = unit; product.unitToConfirm = null; only.add('unit'); only.add('unitToConfirm');
             }
             // 3. it came at a different cost: which is right now?
@@ -6874,8 +6918,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (cost === null || cost === 'later') return finish(cost === null ? null : 'later');
                 product.cost = cost; product.costToConfirm = null; only.add('cost'); only.add('costToConfirm');
             }
-            // 4. its selling price (still the sender's, or none)
-            if (this._needsSellingPrice(product) || !(Number(product.price) > 0)) {
+            // 4. its selling price (still the sender's, none, or now below the cost)
+            if (this._needsSellingPrice(product) || !(Number(product.price) > 0) || (Number(product.cost) > 0 && Number(product.cost) > Number(product.price))) {
                 const price = await this._checkPrice(product, step);
                 if (price === null || price === 'later') return finish(price === null ? null : 'later');
                 product.price = price; product.needsSetup = null; only.add('price'); only.add('needsSetup');
@@ -6921,7 +6965,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const answering = this._checkDialog(product.name, 'Next');
             const nameShort = String(product.name || '').trim().split(/\s+/).slice(0, 2).join(' ');
             this._talk(kind === 'unit'
-                ? `How you dey count ${nameShort}? ${this._unitLabel(product.unit)} or ${this._unitLabel(product.unitToConfirm).toLowerCase()}?`
+                ? `How you dey count ${nameShort}? Na ${this._unitLabel(product.unit).toLowerCase()}, abi ${this._unitLabel(product.unitToConfirm).toLowerCase()}?`
                 : `How much be your cost price for one ${one(product.unit)} again?`);
             const answer = await answering;
             box.innerHTML = ''; box.hidden = true; this._freePics();
@@ -6958,7 +7002,7 @@ document.addEventListener('DOMContentLoaded', () => {
             input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !okBtn.disabled) { e.preventDefault(); okBtn.click(); } });
             const answering = this._checkDialog(product.name, 'Next');
             paint();
-            this._talk(`How much you go sell one ${one}?`);
+            this._talk(`How much you wan sell one ${one}?`);
             const answer = await answering;
             const n = read();
             okBtn.disabled = false;
@@ -7617,6 +7661,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!this.state.user) return;
             const rank = { quiet: 1, pidgin: 2, loud: 3 };
             if (this.state.currentView === 'camera-view') { if ((rank[kind] || 1) > (rank[this._chimeWaiting] || 0)) this._chimeWaiting = kind; return; } // not over the scanner's own beeps: it plays once they are back home (the most important one waiting)
+            if (this._soundBusy()) { this._chimeLater(kind); return; } // (someone is in the middle of something: it waits for a quiet moment)
             const rec = this._chimeLoad(), now = Date.now();
             const sinceAny = now - (rec.last || rec.at || 0);
             if (kind === 'loud' ? (rec.n || 0) >= 4 || now - (rec.at || 0) < 15 * 60000
@@ -7723,6 +7768,17 @@ document.addEventListener('DOMContentLoaded', () => {
         // A tap on the message goes where it points: money for stock opens WhatsApp, a customer opens their card, a product opens its tab
         _nudgeTap() {
             const go = this._nudgeGo, arg = this._nudgeArg;
+            if (go === 'check') { // (new items that need the owner: Check the items, on New, for that item or for all of them)
+                this.hideModal();
+                this._showProductsTab('new');
+                DB.getAllProducts().then(all => {
+                    const due = all.filter(p => this._needsCheck(p)).sort((x, y) => this._newSince(y) - this._newSince(x));
+                    const ids = arg && arg.id != null ? due.filter(p => String(p.id) === String(arg.id)).map(p => p.id) : due.map(p => p.id);
+                    if (ids.length) setTimeout(() => this._checkItems(ids), 250);
+                    else this.showToast('Nothing to check now. All done ✓');
+                });
+                return;
+            }
             if (go === 'edit' && arg) {
                 this.hideModal();
                 this.navigateTo('products-view');
@@ -7818,15 +7874,33 @@ document.addEventListener('DOMContentLoaded', () => {
         _talk(text) {
             this._lastTalk = text;
             if (!text || !('speechSynthesis' in window) || !this._voiceOn()) return;
+            this._utter(text);
+        },
+
+        // How the app speaks: one sentence at a time (the phone pauses between them, like people do), a touch slower than the phone's
+        // usual and a little warmer, in the Nigerian English voice when the phone has one. Whatever was being said stops first.
+        _utter(text, opts = {}) {
             try {
                 const synth = window.speechSynthesis;
-                synth.cancel(); // (one voice at a time: the card before stops)
-                const u = new SpeechSynthesisUtterance(this._speechText(text));
+                synth.cancel();
+                const parts = (this._speechText(text).match(/[^.!?]+[.!?]*/g) || []).map(p => p.trim()).filter(Boolean);
+                if (!parts.length) return;
                 const voice = this._pickVoice();
-                if (voice) { u.voice = voice; u.lang = voice.lang; } else u.lang = 'en-NG';
-                u.rate = 0.95;
-                synth.speak(u);
-            } catch (e) { /* no voice: the card says it */ }
+                const go = () => {
+                    if (opts.onlyIf && !opts.onlyIf()) return;
+                    this._lastSoundAt = Date.now();
+                    parts.forEach((part) => {
+                        const u = new SpeechSynthesisUtterance(part);
+                        if (voice) { u.voice = voice; u.lang = voice.lang; } else u.lang = 'en-NG';
+                        u.rate = 0.9;
+                        u.pitch = 1.08;
+                        u.volume = 1;
+                        u.onend = () => { this._lastSoundAt = Date.now(); };
+                        synth.speak(u);
+                    });
+                };
+                if (opts.delay) setTimeout(go, opts.delay); else go();
+            } catch (e) { /* no voice: the words are on the screen */ }
         },
         _hush() { try { if ('speechSynthesis' in window) window.speechSynthesis.cancel(); } catch (e) { /* fine */ } },
 
@@ -7869,10 +7943,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (!isNew) return;
             const one = this._unitOne(product.unit).toLowerCase();
-            const line = askUnit ? `Na ${one} or ${this._unitOne(product.unitToConfirm).toLowerCase()}? Tap the one wey correct.`
+            const line = askUnit ? `Na ${one}, abi ${this._unitOne(product.unitToConfirm).toLowerCase()}? Tap the one wey correct.`
                 : askCost ? `How much be your cost price for one ${one} again? Tap the one wey correct.`
-                : this._needsSellingPrice(product) ? `Put your own selling price for one ${one}, then tap Save.`
-                : 'Check everything well, then tap Save.';
+                : this._needsSellingPrice(product) ? `Put your own selling price for one ${one}, then save am.`
+                : 'Check am well well, then save am.';
             this._modalTalk = true;
             this._talk(line);
         },
@@ -7885,15 +7959,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // A few words said aloud in the phone's own voice (when the voice is on: the speaker on the Assistant card)
         _sayAloud(text) {
             if (!('speechSynthesis' in window) || !this._voiceOn()) return;
-            try {
-                const synth = window.speechSynthesis;
-                synth.cancel();
-                const u = new SpeechSynthesisUtterance(this._speechText(text));
-                const voice = this._pickVoice();
-                if (voice) { u.voice = voice; u.lang = voice.lang; } else u.lang = 'en-NG';
-                u.rate = 0.95;
-                setTimeout(() => synth.speak(u), 300); // (with the confetti, not before it)
-            } catch (e) { /* no voice: the confetti still says it */ }
+            this._utter(text, { delay: 300 }); // (with the confetti, not before it)
         },
 
         _voiceOn() {
@@ -7942,19 +8008,34 @@ document.addEventListener('DOMContentLoaded', () => {
                 .replace(/₦\s?([\d,]+(?:\.\d+)?)\s?k\b/gi, '$1 thousand naira')
                 .replace(/₦\s?([\d,]+(?:\.\d+)?)/g, '$1 naira')
                 .replace(/\bWeldone\b/gi, 'Well done')
-                // Pidgin words the phone's voice would spell out or say the English way: written as they are said
-                .replace(/\be\b(?=\s+(dey|go|don|no|fit|be|get)\b)/gi, 'eh') // ("E dey count", "E go better": before "dey" is changed below)
-                .replace(/\bna\b/gi, 'nah')
-                .replace(/\bdey\b/gi, 'day')
-                .replace(/\bwey\b/gi, 'way')
-                .replace(/\bam\b/gi, 'ahm')
-                .replace(/\bo\b(?=\s*([.,!?]|$))/gi, 'oh') // ("Well done o.", "Morning o!")
-                .replace(/\boya\b/gi, 'oh yah')
-                .replace(/\bwetin\b/gi, 'weh tin')
-                .replace(/\babeg\b/gi, 'ah beg')
-                .replace(/\bdi\b/gi, 'dee')
+                .replace(/^[\s\S]*$/, (all) => this._pidginLine(all))
+                .replace(/\b1 (carton|packet|sachet|bottle|can|tin|piece)\b/gi, 'one $1') // ("one carton": said, not read)
                 .replace(/\s+/g, ' ')
-                .trim();
+                .trim()
+                .replace(/\S+/g, (w) => this._pidginWord(w));
+        },
+        // Pidgin words the phone's voice would spell out, or say the English way, written as they are said. ("am" stays "am".)
+        // A word is changed only where it is Pidgin: "E" before a verb ("E dey"), "make" before who ("make we"), "o" at the end ("well done o").
+        PIDGIN_SAID: {
+            na: 'nah', dey: 'day', wey: 'way', wan: 'wahn', abi: 'ah bee', oya: 'oh yah', wetin: 'weh tin', abeg: 'ah beg', di: 'dee',
+            una: 'oo nah', oga: 'oh gah', pikin: 'pee kin', sabi: 'sah bee', sha: 'shah', jare: 'jah reh', wahala: 'wah hah lah', nko: 'n ko',
+            dis: 'diss', dat: 'dat', kuku: 'koo koo', sef: 'sef', shebi: 'sheh bee', ehn: 'en', haba: 'hah bah', chai: 'chai', walahi: 'wah lah hee'
+        },
+        _pidginWord(w) {
+            const m = w.match(/^([^A-Za-z]*)([A-Za-z]+)([^A-Za-z]*)$/);
+            if (!m) return w;
+            const [, pre, word, post] = m;
+            const low = word.toLowerCase();
+            const said = this.PIDGIN_SAID[low];
+            return said ? pre + said + post : w;
+        },
+        // The whole line: "E dey", "make we", "o!" first (they depend on the words around them), then word by word above
+        _pidginLine(text) {
+            return String(text || '')
+                .replace(/\be\b(?=\s+(dey|go|don|no|fit|be|get|wan|sweet|reach|remain)\b)/gi, 'eh')
+                .replace(/\bmake\b(?=\s+(you|we|i|una|dem|e|am|una)\b)/gi, 'mek')
+                .replace(/\bo\b(?=\s*([.,!?]|$))/gi, 'oh')
+                .replace(/\bwell well\b/gi, 'well, well');
         },
         _speakNudge(again) {
             const say = this._nudgeSay;
@@ -7966,17 +8047,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const words = this._speechText(say.text);
             if (!words) return;
             try { localStorage.setItem(key, say.key); } catch (e) { /* it may be said again */ }
-            const synth = window.speechSynthesis;
-            synth.cancel(); // (whatever was being said stops: one voice at a time)
-            const u = new SpeechSynthesisUtterance(words);
-            const voice = this._pickVoice();
-            if (voice) { u.voice = voice; u.lang = voice.lang; } else u.lang = 'en-NG';
-            u.rate = 0.95; // (a touch slower than the phone's usual: clear, not slow)
-            u.pitch = 1;
-            u.volume = 1;
-            setTimeout(() => { // (once the profile has opened; not at all if it was closed meanwhile)
-                if (this.elements.profileModal.style.display !== 'none' && this.elements.modalContainer.style.display !== 'none') synth.speak(u);
-            }, 250);
+            this._utter(say.text, { delay: 250, onlyIf: () => this.elements.profileModal.style.display !== 'none' && this.elements.modalContainer.style.display !== 'none' }); // (once the profile has opened; not if it was closed meanwhile)
         },
     };
 
