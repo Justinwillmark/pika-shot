@@ -82,7 +82,27 @@ document.addEventListener('DOMContentLoaded', () => {
         return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p;
     };
     const compact = (n) => n >= 1e6 ? `${+(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${+(n / 1e3).toFixed(1)}k` : String(Math.round(n));
-    const emptyStats = () => ({ sales: 0, volume: 0, units: 0, sellDays: new Set(), sent: 0, sentValue: 0, sentUnits: 0, accepted: 0, acceptedValue: 0, acceptedUnits: 0, scans: 0, calls: 0, days: new Set(), last: 0 });
+    const emptyStats = () => ({
+        sales: 0, volume: 0, units: 0, sellDays: new Set(), sent: 0, sentValue: 0, sentUnits: 0, accepted: 0, acceptedValue: 0, acceptedUnits: 0, scans: 0, calls: 0, invites: 0, days: new Set(), last: 0,
+        profit: 0, costedSales: 0, credit: 0, creditOwed: 0, discounts: 0, cartonUnits: 0, lastSale: 0, spSales: 0, spVolume: 0, dayTotals: new Map()
+    });
+    const isCarton = (unit) => /carton|^packs?$/i.test(String(unit || '')); // (the app's "Packs / Cartons" unit)
+    // When a store owner is called a Wholesaler (otherwise a Retailer). Changed on the Users page; saved online for every device.
+    const TYPE_RULES = { mode: 'any', volume: { on: true, v: 100000 }, cartons: { on: true, v: 50 }, stock: { on: false, v: 1000000 }, staff: { on: false, v: 1 } };
+    const RULE_KEYS = ['volume', 'cartons', 'stock', 'staff'];
+    const normRules = (r) => {
+        const o = JSON.parse(JSON.stringify(TYPE_RULES));
+        o.savedAt = 0;
+        if (!r || typeof r !== 'object') return o;
+        if (r.mode === 'any' || r.mode === 'all') o.mode = r.mode;
+        RULE_KEYS.forEach((k) => {
+            if (!r[k] || typeof r[k] !== 'object') return;
+            o[k].on = !!r[k].on;
+            if (Number.isFinite(Number(r[k].v)) && Number(r[k].v) >= 0) o[k].v = Number(r[k].v);
+        });
+        o.savedAt = Number(r.savedAt) || 0;
+        return o;
+    };
     const readLocal = (key) => { try { return JSON.parse(localStorage.getItem(key)); } catch (e) { return null; } };
     const writeLocal = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* private mode */ } };
 
@@ -143,8 +163,9 @@ document.addEventListener('DOMContentLoaded', () => {
             loaded: false,
             problems: [],
             chartBy: 'users',
-            f: { q: '', status: 'all', type: 'all', location: 'all', gps: 'all', sort: 'recent', limit: PAGE },
-            rewards: { filter: 'all', limit: PAGE },
+            f: { q: '', status: 'all', type: 'owners', location: 'all', gps: 'all', sort: 'recent', limit: PAGE }, // (salespeople only when picked: their numbers count for their store owner)
+            typeRules: normRules(null),
+            rewards: { filter: 'all', limit: PAGE, who: 'owners' }, // who: 'owners' (a store with its salespeople) or 'sales' (each salesperson on their own)
             insights: { by: 'revenue', q: '', open: new Set(), limit: 12 },
             activity: { folds: new Set(['calls']), callQ: '', barQ: '', diffOnly: false, trQ: '', limits: { calls: PAGE, barcodes: PAGE, transfers: PAGE } },
             sheets: [],
@@ -354,16 +375,35 @@ document.addEventListener('DOMContentLoaded', () => {
             const fb = window.fb;
             const saved = readLocal('pika_admin_start');
             const local = saved && typeof saved === 'object' ? saved : null;
-            let online = null;
+            let online = null, onlineRules = null;
             try {
                 const snap = await fb.getDoc(fb.doc(fb.db, 'admin_settings', 'dashboard'));
-                if (snap.exists()) online = { startAt: snap.data().startAt, savedAt: snap.data().savedAt || 0 };
+                if (snap.exists()) {
+                    const d = snap.data();
+                    online = { startAt: d.startAt, savedAt: d.savedAt || 0 };
+                    onlineRules = d.typeRules || null;
+                }
             } catch (error) { /* not allowed by the rules, or offline: this device's copy is used */ }
             // Whichever was saved last wins; a copy that never reached Firestore is flagged
             const useLocal = !!local && (!online || local.savedAt > online.savedAt);
             const chosen = useLocal ? local : online;
             this.state.floor = chosen && typeof chosen.startAt === 'number' ? chosen.startAt : null;
             this.state.floorSynced = !useLocal;
+            // The wholesaler/retailer rules: the latest saved copy (this device's, or the online one)
+            const rules = [readLocal('pika_admin_typerules'), onlineRules].map(normRules).sort((a, b) => b.savedAt - a.savedAt)[0];
+            this.state.typeRules = rules;
+        },
+
+        saveTypeRules() {
+            const rules = { ...this.state.typeRules, savedAt: Date.now() };
+            this.state.typeRules = rules;
+            writeLocal('pika_admin_typerules', rules);
+            clearTimeout(this._rulesSave);
+            this._rulesSave = setTimeout(() => {
+                const fb = window.fb;
+                fb.setDoc(fb.doc(fb.db, 'admin_settings', 'dashboard'), { typeRules: rules }, { merge: true })
+                    .catch((error) => console.error('Could not save the rules online (kept on this device):', error));
+            }, 800);
         },
 
         async loadAll() {
@@ -380,7 +420,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 ['sales_logs', 'sales', fb.getDocs(since('sales_logs'))],
                 ['scan_logs', 'scans', fb.getDocs(since('scan_logs'))],
                 ['call_logs', 'calls', fb.getDocs(since('call_logs'))],
-                ['shared_logs', 'transfers', fb.getDocs(since('shared_logs'))]
+                ['shared_logs', 'transfers', fb.getDocs(since('shared_logs'))],
+                ['salesperson_links', 'links', fb.getDocs(fb.query(fb.collection(fb.db, 'salesperson_links')))] // (who each salesperson works for)
             ];
             // A transfer sent before the date but accepted after it still counts as an acceptance
             if (floor) jobs.push(['shared_logs', 'accepted', fb.getDocs(since('shared_logs', 'claimedAt'))]);
@@ -404,10 +445,12 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         // Turns raw documents into plain records. Nothing before the chosen date is kept.
+        // A salesperson's sales, scans, calls, invites and transfers count for the store owner they work for (uid);
+        // who did it is kept beside it (by / sentBy), so a salesperson can still be looked at on their own.
         prepare(raw) {
             const floor = this.state.floor || 0;
             const keep = (t) => t != null && t >= floor;
-            const D = { users: [], byId: new Map(), sales: [], scans: [], names: [], calls: [], transfers: [], barcodeNames: new Map(), minT: null };
+            const D = { users: [], byId: new Map(), sales: [], scans: [], names: [], calls: [], invites: [], transfers: [], barcodeNames: new Map(), minT: null, ownerOf: new Map(), staffOf: new Map(), linkNames: new Map() };
 
             const places = new Map((raw.geo || []).map((g) => [g.id, g.data()]));
             raw.users.forEach((doc) => {
@@ -415,15 +458,30 @@ document.addEventListener('DOMContentLoaded', () => {
                 const g = places.get(doc.id) || u.geo; // older accounts may still hold it on the profile
                 const geo = g && Number.isFinite(g.lat) && Number.isFinite(g.lng) ? { lat: g.lat, lng: g.lng, accuracy: g.accuracy || null, at: toMs(g.at) || null } : null;
                 if (geo) geo.area = whereIs(geo, u.location);
+                const st = u.stockSummary && typeof u.stockSummary === 'object' ? u.stockSummary : null; // (sent by the app: products and what the stock is worth)
                 const user = {
                     id: doc.id, phone: u.phone || doc.id, name: u.name || '', business: u.business || '',
-                    type: u.type || 'Unknown', location: u.location || '', gender: u.gender || '',
-                    createdAt: toMs(u.createdAt), geo,
+                    type: u.type || 'Unknown', isSp: u.type === 'Salesperson', location: u.location || '', gender: u.gender || '',
+                    createdAt: toMs(u.createdAt), geo, worksFor: u.businessPhone || null,
+                    stock: st ? { products: Number(st.products) || 0, worth: Number(st.worth) || 0, sellValue: Number(st.sellValue) || 0, at: toMs(st.at) } : null,
                     joined: !!u.pinHash || (u.pin !== undefined && u.pin !== null && String(u.pin) !== '') // salespeople added by a wholesaler have no PIN until they sign up
                 };
                 D.users.push(user);
                 D.byId.set(user.id, user);
             });
+
+            // Who each salesperson works for
+            (raw.links || []).forEach((doc) => {
+                const d = doc.data();
+                const sp = d.phone || doc.id;
+                if (!sp || !d.businessPhone || sp === d.businessPhone) return;
+                D.ownerOf.set(sp, d.businessPhone);
+                if (d.name) D.linkNames.set(sp, d.name);
+            });
+            D.users.forEach((u) => { if (u.isSp && u.worksFor && !D.ownerOf.has(u.id)) D.ownerOf.set(u.id, u.worksFor); });
+            D.ownerOf.forEach((owner, sp) => { if (!D.staffOf.has(owner)) D.staffOf.set(owner, []); D.staffOf.get(owner).push(sp); });
+            const ownerOf = (uid) => (uid && D.ownerOf.get(uid)) || uid;
+            const actor = (uid, owner) => (uid && uid !== owner ? uid : null);
 
             // A sale edited within its window is logged again under the same id: it counts once, at its first time, with its latest values
             const sales = new Map();
@@ -432,10 +490,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 const t = toMs(d.timestamp);
                 if (!keep(t) || !d.userId) return;
                 const total = Number(d.total) || 0;
+                const owner = ownerOf(d.userId);
                 const s = {
-                    uid: d.userId, total, value: d.value != null ? (Number(d.value) || 0) : total,
+                    uid: owner, by: d.recordedBy && d.recordedBy !== owner ? d.recordedBy : actor(d.userId, owner),
+                    total, value: d.value != null ? (Number(d.value) || 0) : total,
                     qty: d.quantity != null ? (Number(d.quantity) || 0) : null,
                     price: d.price != null ? (Number(d.price) || 0) : null,
+                    cost: Number(d.cost) > 0 ? Number(d.cost) : null, // (sales from before the update have no cost: no profit for them)
                     name: d.productName || null, barcode: d.barcode || null, unit: d.unit || null, kind: d.saleType || null
                 };
                 const key = d.saleId != null ? `${d.userId}|${d.saleId}` : doc.id;
@@ -452,16 +513,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 const d = doc.data();
                 const t = toMs(d.timestamp);
                 if (!keep(t) || !d.userId) return;
-                if (d.type === 'name_product') D.names.push({ t, uid: d.userId, barcode: d.barcode || null, name: d.productName || '' });
-                else D.scans.push({ t, uid: d.userId, type: d.type || 'scan', status: d.status || '', barcode: d.barcode || null });
+                const owner = ownerOf(d.userId);
+                if (d.type === 'name_product') D.names.push({ t, uid: owner, by: actor(d.userId, owner), barcode: d.barcode || null, name: d.productName || '' });
+                else D.scans.push({ t, uid: owner, by: actor(d.userId, owner), type: d.type || 'scan', status: d.status || '', barcode: d.barcode || null });
             });
 
             raw.calls.forEach((doc) => {
                 const d = doc.data();
                 const t = toMs(d.timestamp);
-                const uid = d.callerId || d.wholesalerId;
-                if (!keep(t) || !uid) return;
-                D.calls.push({ t, uid, fromName: d.callerName || d.wholesalerName || '', to: d.calleeId || d.retailerId || '', toName: d.calleeName || d.retailerName || '' });
+                const caller = d.callerId || d.wholesalerId;
+                if (!keep(t) || !caller) return;
+                const owner = d.businessId || ownerOf(caller);
+                // A tap on "WhatsApp invite" during a transfer, with the number that was typed (kept with the call records)
+                if (d.kind === 'wa_invite') { D.invites.push({ t, uid: owner, by: actor(caller, owner), phone: localPhone(d.calleeId || '') }); return; }
+                D.calls.push({ t, uid: owner, by: actor(caller, owner), fromName: d.callerName || d.wholesalerName || '', to: d.calleeId || d.retailerId || '', toName: d.calleeName || d.retailerName || '' });
             });
 
             const logs = new Map();
@@ -470,30 +535,38 @@ document.addEventListener('DOMContentLoaded', () => {
                 const d = doc.data();
                 if (id.startsWith('claim_') || !Array.isArray(d.items) || d.voided) return; // claim markers and duplicates are not transfers
                 const items = d.items.map((it) => ({ name: it.name || '', qty: Number(it.quantity) || 0, price: Number(it.price) || 0, unit: it.unit || '', barcode: it.barcode || null }));
+                const from = ownerOf(d.senderId || '');
                 D.transfers.push({
-                    id, t: toMs(d.timestamp), from: d.senderId || '', fromName: d.senderStore || '', to: d.targetPhone || '',
+                    id, t: toMs(d.timestamp), from, sentBy: d.sentBy && d.sentBy !== from ? d.sentBy : null, fromName: d.senderStore || '', to: d.targetPhone || '',
                     claimed: !!d.claimed, claimedAt: toMs(d.claimedAt), by: d.claimedBy || null, byName: d.claimedByBusiness || d.claimedByName || '',
                     items, units: items.reduce((a, i) => a + i.qty, 0), value: items.reduce((a, i) => a + i.qty * i.price, 0)
                 });
             });
 
-            // First/last time each user did anything, and on which days
-            const act = new Map();
-            const touch = (uid, t) => {
-                if (!uid || !keep(t)) return;
-                let a = act.get(uid);
-                if (!a) { a = { days: new Set(), first: t, last: t }; act.set(uid, a); }
+            // First/last time each store did anything, and on which days (act); and each person, salespeople on their own (actBy)
+            const act = new Map(), actBy = new Map();
+            const touchIn = (map, uid, t) => {
+                let a = map.get(uid);
+                if (!a) { a = { days: new Set(), first: t, last: t }; map.set(uid, a); }
                 a.days.add(dayNum(t));
                 if (t < a.first) a.first = t;
                 if (t > a.last) a.last = t;
+            };
+            const touch = (uid, by, t) => {
+                if (!uid || !keep(t)) return;
+                const u = D.byId.get(uid);
+                if (!(u && u.isSp)) touchIn(act, uid, t); // (a salesperson not linked to a store is not a store)
+                touchIn(actBy, by || uid, t);
                 if (D.minT == null || t < D.minT) D.minT = t;
             };
-            D.sales.forEach((x) => touch(x.uid, x.t));
-            D.scans.forEach((x) => touch(x.uid, x.t));
-            D.names.forEach((x) => touch(x.uid, x.t));
-            D.calls.forEach((x) => touch(x.uid, x.t));
-            D.transfers.forEach((x) => { touch(x.from, x.t); if (x.claimed) touch(x.by, x.claimedAt); });
+            D.sales.forEach((x) => touch(x.uid, x.by, x.t));
+            D.scans.forEach((x) => touch(x.uid, x.by, x.t));
+            D.names.forEach((x) => touch(x.uid, x.by, x.t));
+            D.calls.forEach((x) => touch(x.uid, x.by, x.t));
+            D.invites.forEach((x) => touch(x.uid, x.by, x.t));
+            D.transfers.forEach((x) => { touch(x.from, x.sentBy, x.t); if (x.claimed) touch(x.by, null, x.claimedAt); });
             this.act = act;
+            this.actBy = actBy;
 
             // What different users call the item behind each barcode
             const addName = (barcode, name, uid) => {
@@ -542,26 +615,74 @@ document.addEventListener('DOMContentLoaded', () => {
             };
         },
 
-        statsBetween(from, to) {
+        // Numbers for each store owner between two times (a salesperson's count for their store).
+        // byActor: for each person instead (a salesperson's own numbers, the store owner's own without their salespeople).
+        statsBetween(from, to, byActor) {
             const D = this.D;
             const M = new Map();
-            const get = (uid) => { if (!uid) return null; let s = M.get(uid); if (!s) { s = emptyStats(); M.set(uid, s); } return s; };
+            const get = (uid, by) => {
+                const k = byActor ? (by || uid) : uid;
+                if (!k) return null;
+                if (!byActor) { const u = D.byId.get(k); if (u && u.isSp) return null; } // (a salesperson not linked to a store is not a store)
+                let s = M.get(k);
+                if (!s) { s = emptyStats(); M.set(k, s); }
+                return s;
+            };
             const inR = (t) => t != null && t >= from && t < to;
             const touch = (s, t) => { s.days.add(dayNum(t)); if (t > s.last) s.last = t; };
             D.sales.forEach((x) => {
                 if (!inR(x.t)) return;
-                const s = get(x.uid); if (!s) return;
-                s.sales++; s.volume += x.value; s.units += x.qty || 0; s.sellDays.add(dayNum(x.t)); touch(s, x.t);
+                const s = get(x.uid, x.by); if (!s) return;
+                const day = dayNum(x.t);
+                s.sales++; s.volume += x.value; s.units += x.qty || 0; s.sellDays.add(day); touch(s, x.t);
+                s.dayTotals.set(day, (s.dayTotals.get(day) || 0) + x.value);
+                if (x.t > s.lastSale) s.lastSale = x.t;
+                if (isCarton(x.unit)) s.cartonUnits += x.qty || 0;
+                if (x.cost != null && x.qty != null) { s.profit += x.value - x.qty * x.cost; s.costedSales++; }
+                if (x.kind === 'credit') { s.credit += x.value; s.creditOwed += Math.max(0, x.value - x.total); }
+                else if (x.qty != null && x.price != null) s.discounts += Math.max(0, x.qty * x.price - x.value);
+                if (x.by) { s.spSales++; s.spVolume += x.value; }
             });
-            D.scans.forEach((x) => { if (!inR(x.t)) return; const s = get(x.uid); if (s) { s.scans++; touch(s, x.t); } });
-            D.names.forEach((x) => { if (!inR(x.t)) return; const s = get(x.uid); if (s) touch(s, x.t); });
-            D.calls.forEach((x) => { if (!inR(x.t)) return; const s = get(x.uid); if (s) { s.calls++; touch(s, x.t); } });
+            D.scans.forEach((x) => { if (!inR(x.t)) return; const s = get(x.uid, x.by); if (s) { s.scans++; touch(s, x.t); } });
+            D.names.forEach((x) => { if (!inR(x.t)) return; const s = get(x.uid, x.by); if (s) touch(s, x.t); });
+            D.calls.forEach((x) => { if (!inR(x.t)) return; const s = get(x.uid, x.by); if (s) { s.calls++; touch(s, x.t); } });
+            D.invites.forEach((x) => { if (!inR(x.t)) return; const s = get(x.uid, x.by); if (s) { s.invites++; touch(s, x.t); } });
             D.transfers.forEach((x) => {
-                if (inR(x.t)) { const s = get(x.from); if (s) { s.sent++; s.sentValue += x.value; s.sentUnits += x.units; touch(s, x.t); } }
-                if (x.claimed && inR(x.claimedAt)) { const s = get(x.by); if (s) { s.accepted++; s.acceptedValue += x.value; s.acceptedUnits += x.units; touch(s, x.claimedAt); } }
+                if (inR(x.t)) { const s = get(x.from, x.sentBy); if (s) { s.sent++; s.sentValue += x.value; s.sentUnits += x.units; touch(s, x.t); } }
+                if (x.claimed && inR(x.claimedAt)) { const s = get(x.by, null); if (s) { s.accepted++; s.acceptedValue += x.value; s.acceptedUnits += x.units; touch(s, x.claimedAt); } }
             });
             return M;
         },
+
+        // Wholesaler or Retailer for each store owner, by the rules on the Users page (for the days picked at the top)
+        typeLabels(cur, r) {
+            const R = this.state.typeRules, out = new Map();
+            const on = RULE_KEYS.filter((k) => R[k].on);
+            this.D.users.forEach((u) => {
+                if (u.isSp) return;
+                if (!on.length) { out.set(u.id, 'Store owner'); return; }
+                const s = cur.get(u.id) || emptyStats();
+                const test = {
+                    volume: () => s.volume / r.days >= R.volume.v,
+                    cartons: () => s.units > 0 && (s.cartonUnits / s.units) * 100 >= R.cartons.v,
+                    stock: () => !!u.stock && u.stock.worth >= R.stock.v,
+                    staff: () => (this.D.staffOf.get(u.id) || []).length >= R.staff.v
+                };
+                const met = on.filter((k) => test[k]()).length;
+                out.set(u.id, (R.mode === 'all' ? met === on.length : met > 0) ? 'Wholesaler' : 'Retailer');
+            });
+            return out;
+        },
+
+        // What to call someone: Salesperson, or (a store owner) Wholesaler / Retailer by the rules
+        typeName(who) {
+            const u = typeof who === 'string' ? this.D.byId.get(who) : who;
+            if (!u) return 'Unknown';
+            if (u.isSp) return 'Salesperson';
+            return (this.labels && this.labels.get(u.id)) || 'Store owner';
+        },
+
+        staffOf(uid) { return this.D.staffOf.get(uid) || []; },
 
         productKey(x) { return x.barcode ? `b:${x.barcode}` : (x.name ? `n:${norm(x.name)}` : null); },
 
@@ -582,7 +703,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (x.unit) add(p.unitNames, x.unit, 1);
                 const seller = p.sellers.get(x.uid) || { units: 0, revenue: 0 };
                 seller.units += q; seller.revenue += x.value; p.sellers.set(x.uid, seller);
-                add(p.types, user ? user.type : 'Unknown', x.value);
+                add(p.types, user ? this.typeName(user) : 'Unknown', x.value);
                 add(p.places, (user && user.location) || 'Unknown', x.value);
                 if (x.price != null) { p.pMin = Math.min(p.pMin, x.price); p.pMax = Math.max(p.pMax, x.price); p.pSum += x.price * (q || 1); p.pQty += q || 1; }
             });
@@ -594,7 +715,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const r = this.range();
             const now = Date.now();
             const cur = this.statsBetween(r.from, r.to);
+            const curBy = this.statsBetween(r.from, r.to, true);
             const prev = r.prev ? this.statsBetween(r.prev.from, r.prev.to) : null;
+            this.labels = this.typeLabels(cur, r); // (before the products: their "who sells" uses it)
             const act = this.act;
             const isReturning = (uid, s, from) => s.days.size > 0 && (s.days.size >= 2 || (act.get(uid) && act.get(uid).first < from));
             const idsWhere = (map, test) => [...map].filter(([, s]) => test(s)).map(([uid]) => uid);
@@ -604,28 +727,31 @@ document.addEventListener('DOMContentLoaded', () => {
             const sum = (map, key) => [...map.values()].reduce((a, s) => a + s[key], 0);
             const sentList = D.transfers.filter((x) => x.t != null && x.t >= r.from && x.t < r.to);
             const acceptedList = D.transfers.filter((x) => x.claimed && x.claimedAt != null && x.claimedAt >= r.from && x.claimedAt < r.to);
-            const dropped = D.users.filter((u) => u.joined && act.has(u.id) && now - act.get(u.id).last > DROP_DAYS * DAY).map((u) => u.id);
+            const owners = D.users.filter((u) => !u.isSp);
+            const dropped = owners.filter((u) => u.joined && act.has(u.id) && now - act.get(u.id).last > DROP_DAYS * DAY).map((u) => u.id);
             const today0 = startOfDay(now);
 
             this.m = {
-                r, cur, prev, products, prevProducts, sentList, acceptedList, dropped,
+                r, cur, curBy, prev, products, prevProducts, sentList, acceptedList, dropped,
                 returning: [...cur].filter(([uid, s]) => isReturning(uid, s, r.from)).map(([uid]) => uid),
                 prevReturning: prev ? [...prev].filter(([uid, s]) => isReturning(uid, s, r.prev.from)).map(([uid]) => uid) : null,
-                everActive: D.users.filter((u) => u.joined && act.has(u.id)).length,
+                everActive: owners.filter((u) => u.joined && act.has(u.id)).length,
                 dauAvg: [...cur.values()].reduce((a, s) => a + s.days.size, 0) / r.days,
                 volume: sum(cur, 'volume'), prevVolume: prev ? sum(prev, 'volume') : null,
                 salesCount: sum(cur, 'sales'), units: sum(cur, 'units'),
+                profit: sum(cur, 'profit'), costedSales: sum(cur, 'costedSales'),
                 unnamedSales: D.sales.filter((x) => !x.name && !x.barcode && x.t >= r.from && x.t < r.to).length, // logged before product details were recorded
                 senders: idsWhere(cur, (s) => s.sent > 0), prevSenders: prev ? idsWhere(prev, (s) => s.sent > 0) : null,
                 accepters: idsWhere(cur, (s) => s.accepted > 0), prevAccepters: prev ? idsWhere(prev, (s) => s.accepted > 0) : null,
                 acceptRate: pct(sentList.filter((x) => x.claimed).length, sentList.length),
-                activeToday: D.users.filter((u) => act.has(u.id) && act.get(u.id).last >= today0).length
+                activeToday: owners.filter((u) => act.has(u.id) && act.get(u.id).last >= today0).length,
+                invites: D.invites.filter((x) => x.t >= r.from && x.t < r.to)
             };
         },
 
         statusOf(u) {
             if (!u.joined) return 'invited';
-            const a = this.act.get(u.id);
+            const a = (u.isSp ? this.actBy : this.act).get(u.id); // (a salesperson on their own; a store with its salespeople)
             if (!a) return 'none';
             const age = Date.now() - a.last;
             return age <= ACTIVE_DAYS * DAY ? 'active' : age <= DROP_DAYS * DAY ? 'cooling' : 'dropped';
@@ -705,13 +831,14 @@ document.addEventListener('DOMContentLoaded', () => {
         who(uid, sub, rank) {
             const u = this.D.byId.get(uid);
             const name = u ? (u.name || u.business || u.phone) : uid;
-            const line = sub != null ? sub : (u ? (u.business && u.business !== name ? u.business : [u.type, u.location].filter(Boolean).join(' · ')) : '');
+            const line = sub != null ? sub : (u ? (u.business && u.business !== name ? u.business : [this.typeName(u), u.location].filter(Boolean).join(' · ')) : '');
             const badge = rank ? `<span class="rank ${rank <= 3 ? 'podium' : ''}">${rank}</span>` : '';
             const tone = [...String(name)].reduce((a, c) => a + c.charCodeAt(0), 0) % 6; // the same person always gets the same colour
             return `<div class="who">${badge}<span class="avatar av-${tone}">${esc(initials(name))}</span><div><div class="n">${esc(name)}</div><div class="s">${esc(line)}</div></div></div>`;
         },
 
-        userName(uid) { const u = this.D.byId.get(uid); return u ? (u.name || u.business || u.phone) : uid; },
+        userName(uid) { const u = this.D.byId.get(uid); return u ? (u.name || u.business || u.phone) : (this.D.linkNames.get(uid) || uid); },
+        firstName(uid) { return String(this.userName(uid) || '').split(' ')[0]; },
 
         delta(cur, prev, goodWhenUp = true) {
             if (prev == null) return { pill: '', cls: '' };
@@ -799,13 +926,22 @@ document.addEventListener('DOMContentLoaded', () => {
             const d = (cur, prev, good) => this.delta(cur, prev, good);
             const money = (n) => (n >= 1e7 ? `₦${+(n / 1e6).toFixed(1)}M` : naira(n));
             const vs = r.prev ? `vs previous ${PERIODS[r.key]} days` : '';
+            const sp = ' A salesperson\'s activity counts for the store owner they work for.';
+            const help = {
+                returning: 'Store owners who used the app in these days, and on at least one other day too. Below: how many were active on an average day.' + sp,
+                dropped: `Store owners who used the app before but have done nothing for ${DROP_DAYS} days or more. The bar is their share of everyone who has ever used it. The days picked at the top do not change this.`,
+                volume: 'The value of every sale in these days: quantity × price, less any discount. Credit sales count at their full value. Below: how many sales.' + sp,
+                products: 'How many different products were sold in these days (the same barcode, or else the same name, is one product). Below: all the units sold.',
+                senders: 'Store owners who sent at least one transfer in these days. Below: how many transfers were sent in all.' + sp,
+                accepters: 'Store owners who accepted at least one transfer in these days. Below: how many of the transfers sent in these days have been accepted.'
+            };
             return [
-                { id: 'returning', label: 'Returning users', icon: 'repeat', tone: 'teal', value: num(m.returning.length), delta: d(m.returning.length, m.prevReturning && m.prevReturning.length, true), sub: `${m.dauAvg.toFixed(1)} active per day`, series: 'returning', period: r.short, vs },
-                { id: 'dropped', label: 'Dropped off', icon: 'userMinus', tone: 'rose', value: num(m.dropped.length), delta: { pill: m.everActive ? `${pct(m.dropped.length, m.everActive)}%` : '', cls: m.dropped.length ? 'down' : '' }, sub: `of ${num(m.everActive)} who used the app`, meter: pct(m.dropped.length, m.everActive), period: `Silent ${DROP_DAYS}+ days`, fixed: true },
-                { id: 'volume', label: 'Sales volume', icon: 'bag', tone: 'green', value: money(m.volume), title: naira(m.volume), delta: d(m.volume, m.prevVolume, true), sub: plural(m.salesCount, 'sale'), series: 'sales', period: r.short, vs },
-                { id: 'products', label: 'Products sold', icon: 'box', tone: 'amber', value: num(m.products.size), delta: d(m.products.size, m.prevProducts && m.prevProducts.size, true), sub: `${qty(m.units)} ${m.units === 1 ? 'unit' : 'units'} sold`, series: 'products', period: r.short, vs },
-                { id: 'senders', label: 'Users transferring', icon: 'send', tone: 'blue', value: num(m.senders.length), delta: d(m.senders.length, m.prevSenders && m.prevSenders.length, true), sub: `${plural(m.sentList.length, 'transfer')} sent`, series: 'senders', period: r.short, vs },
-                { id: 'accepters', label: 'Users accepting', icon: 'check', tone: 'violet', value: num(m.accepters.length), delta: d(m.accepters.length, m.prevAccepters && m.prevAccepters.length, true), sub: m.sentList.length ? `${m.acceptRate}% of sent transfers accepted` : 'No transfers sent', series: 'accepters', period: r.short, vs }
+                { id: 'returning', help: help.returning, label: 'Returning users', icon: 'repeat', tone: 'teal', value: num(m.returning.length), delta: d(m.returning.length, m.prevReturning && m.prevReturning.length, true), sub: `${m.dauAvg.toFixed(1)} active per day`, series: 'returning', period: r.short, vs },
+                { id: 'dropped', help: help.dropped, label: 'Dropped off', icon: 'userMinus', tone: 'rose', value: num(m.dropped.length), delta: { pill: m.everActive ? `${pct(m.dropped.length, m.everActive)}%` : '', cls: m.dropped.length ? 'down' : '' }, sub: `of ${num(m.everActive)} who used the app`, meter: pct(m.dropped.length, m.everActive), period: `Silent ${DROP_DAYS}+ days`, fixed: true },
+                { id: 'volume', help: help.volume, label: 'Sales volume', icon: 'bag', tone: 'green', value: money(m.volume), title: naira(m.volume), delta: d(m.volume, m.prevVolume, true), sub: plural(m.salesCount, 'sale'), series: 'sales', period: r.short, vs },
+                { id: 'products', help: help.products, label: 'Products sold', icon: 'box', tone: 'amber', value: num(m.products.size), delta: d(m.products.size, m.prevProducts && m.prevProducts.size, true), sub: `${qty(m.units)} ${m.units === 1 ? 'unit' : 'units'} sold`, series: 'products', period: r.short, vs },
+                { id: 'senders', help: help.senders, label: 'Users transferring', icon: 'send', tone: 'blue', value: num(m.senders.length), delta: d(m.senders.length, m.prevSenders && m.prevSenders.length, true), sub: `${plural(m.sentList.length, 'transfer')} sent`, series: 'senders', period: r.short, vs },
+                { id: 'accepters', help: help.accepters, label: 'Users accepting', icon: 'check', tone: 'violet', value: num(m.accepters.length), delta: d(m.accepters.length, m.prevAccepters && m.prevAccepters.length, true), sub: m.sentList.length ? `${m.acceptRate}% of sent transfers accepted` : 'No transfers sent', series: 'accepters', period: r.short, vs }
             ];
         },
 
@@ -815,7 +951,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const size = c.value.length >= 10 ? 'v-l' : c.value.length >= 8 ? 'v-m' : '';
                 const trend = c.series ? this.spark(this.series(c.series), c.id) : `<span class="meter"><i style="width:${c.meter}%"></i></span>`;
                 return `
-                <button type="button" class="kpi tone-${c.tone}" data-metric="${c.id}" title="See the users behind this">
+                <button type="button" class="kpi tone-${c.tone}" data-metric="${c.id}" aria-describedby="help-${c.id}">
+                    <span class="kpi-help" id="help-${c.id}" role="tooltip">${esc(c.help)}<span class="kpi-help-go">Click to see who.</span></span>
                     <span class="kpi-head"><span class="kpi-icon">${icon(c.icon, 16)}</span><span class="kpi-label">${esc(c.label)}</span><span class="kpi-go">${icon('chevronRight', 16)}</span></span>
                     <span class="kpi-figure"><span class="kpi-value ${size}" title="${esc(c.title || c.value)}">${esc(c.value)}</span>${c.delta.pill ? `<span class="delta ${c.delta.cls}">${esc(c.delta.pill)}</span>` : ''}</span>
                     <span class="kpi-sub">${esc(c.sub)}</span>
@@ -831,7 +968,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="td num"><b>${num(x.pts)}</b> <span class="muted">pts</span></div>
                 </div>`).join('')) : '<p class="empty">No sales or transfers in this period yet.</p>';
 
-            const slipping = this.D.users.filter((u) => ['cooling', 'dropped'].includes(this.statusOf(u)))
+            const slipping = this.D.users.filter((u) => !u.isSp && ['cooling', 'dropped'].includes(this.statusOf(u))) // (stores: a salesperson's activity counts for theirs)
                 .map((u) => ({ u, a: this.act.get(u.id) })).sort((a, b) => b.a.days.size - a.a.days.size || b.a.last - a.a.last).slice(0, 5);
             const slipHtml = slipping.length ? this.table('1fr', '', slipping.map((x) => `
                 <div class="tr compact" data-user="${esc(x.u.id)}" style="--cols:1fr auto">
@@ -839,15 +976,25 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="td num"><span class="pill ${this.statusOf(x.u)}">${esc(ago(x.a.last))}</span></div>
                 </div>`).join('')) : '<p class="empty">Nobody is slipping away. Nice.</p>';
 
-            const newUsers = this.D.users.filter((u) => u.joined && u.createdAt != null && u.createdAt >= r.from && u.createdAt < r.to).length;
+            const newUsers = this.D.users.filter((u) => !u.isSp && u.joined && u.createdAt != null && u.createdAt >= r.from && u.createdAt < r.to).length;
+            const labelCount = countBy([...this.labels.values()]);
             const calls = this.D.calls.filter((x) => x.t >= r.from && x.t < r.to).length;
             const scans = this.D.scans.filter((x) => x.t >= r.from && x.t < r.to && x.status === 'success').length;
             const transferValue = m.sentList.reduce((a, x) => a + x.value, 0);
             const mini = [
-                ['Active today', m.activeToday], ['New sign-ups', newUsers], ['Users (joined)', this.D.users.filter((u) => u.joined).length],
-                ['Invited salespeople', this.D.users.filter((u) => !u.joined).length], ['Scans', scans], ['Phone calls', calls],
-                ['Transfer value', naira(transferValue)], ['Avg sale', naira(m.salesCount ? m.volume / m.salesCount : 0)]
-            ].map(([l, v]) => `<div class="mini"><div class="v">${typeof v === 'number' ? num(v) : esc(v)}</div><div class="l">${esc(l)}</div></div>`).join('');
+                ['Active today', m.activeToday, 'Store owners who used the app today (with their salespeople).'],
+                ['New sign-ups', newUsers, 'Store owners who joined in these days.'],
+                ['Store owners', this.D.users.filter((u) => !u.isSp && u.joined).length, 'Store owners with an account.'],
+                ['Salespeople', this.D.ownerOf.size, 'Salespeople working for a store owner. Their numbers count for that store owner.'],
+                ['Wholesalers', labelCount.get('Wholesaler') || 0, 'Store owners that meet your wholesaler rules (Users page) in these days.'],
+                ['Retailers', labelCount.get('Retailer') || 0, 'Store owners that do not meet your wholesaler rules in these days.'],
+                ['Profit', m.costedSales ? naira(m.profit) : '—', `Sale value less cost price, from ${plural(m.costedSales, 'sale')} that had a cost price. Older sales have none.`],
+                ['WhatsApp invites', m.invites.length, 'Taps on "WhatsApp invite" during a transfer (Rewards page).'],
+                ['Invited salespeople', this.D.users.filter((u) => !u.joined).length, 'Added by a store owner, not signed up yet.'],
+                ['Scans', scans, 'Barcode scans that found something.'], ['Phone calls', calls, 'Taps on a call button.'],
+                ['Transfer value', naira(transferValue), 'The value of the items in transfers sent in these days.'],
+                ['Avg sale', naira(m.salesCount ? m.volume / m.salesCount : 0), 'Sales volume ÷ number of sales.']
+            ].map(([l, v, h]) => `<div class="mini" title="${esc(h)}"><div class="v">${typeof v === 'number' ? num(v) : esc(v)}</div><div class="l">${esc(l)}</div></div>`).join('');
 
             $('tab-overview').innerHTML = `
                 <div class="kpi-grid">${cards}</div>
@@ -932,7 +1079,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (id === 'volume') {
                 const ids = [...cur].filter(([, s]) => s.sales > 0).map(([uid]) => uid);
                 cols = '2.2fr 1fr 1fr 1fr';
-                summary = `<strong>${naira(m.volume)}</strong> from ${plural(m.salesCount, 'sale')} by ${plural(ids.length, 'user')}. Credit sales are counted at their full value.`;
+                summary = `<strong>${naira(m.volume)}</strong> from ${plural(m.salesCount, 'sale')} by ${plural(ids.length, 'store owner')}. Credit sales are counted at their full value. A salesperson's sales count for their store owner.`;
                 head = withHead(['User', 'Sales', 'Volume', 'Share']);
                 rows = userRows(ids, (uid, s) => td('Sales', num(s.sales)) + td('Volume', naira(s.volume)) + td('Share', `${pct(s.volume, m.volume)}%`), (a, b) => S(b).volume - S(a).volume);
                 csv = ['sales_volume.csv', ['Name', 'Business', 'Phone', 'Sales', 'Volume (NGN)'], ids.map((uid) => { const u = this.D.byId.get(uid) || {}; return [u.name, u.business, u.phone || uid, S(uid).sales, S(uid).volume]; })];
@@ -973,43 +1120,76 @@ document.addEventListener('DOMContentLoaded', () => {
 
         openUser(uid) {
             const D = this.D, m = this.m;
-            const u = D.byId.get(uid) || { id: uid, phone: uid, name: '', business: '', type: 'Unknown', location: '', joined: true };
-            const s = m.cur.get(uid) || emptyStats();
-            const a = this.act.get(uid);
+            const u = D.byId.get(uid) || { id: uid, phone: uid, name: D.linkNames.get(uid) || '', business: '', type: 'Unknown', location: '', joined: true };
+            const sp = !!u.isSp;
+            const s = (sp ? m.curBy : m.cur).get(uid) || emptyStats();
+            const a = (sp ? this.actBy : this.act).get(uid);
             const status = this.statusOf(u);
             const isNew = u.createdAt && Date.now() - u.createdAt <= 7 * DAY;
+            const staff = sp ? [] : this.staffOf(uid);
+            const boss = sp ? D.ownerOf.get(uid) : null;
             const kpi = (v, l) => `<div class="mini"><div class="v">${v}</div><div class="l">${esc(l)}</div></div>`;
             const geo = u.geo
                 ? `${esc(u.geo.area.name)}${u.geo.area.fits === false ? ` <span class="muted">(chose ${esc(u.location)})</span>` : ''} · <a class="link-btn" target="_blank" rel="noopener" href="https://www.google.com/maps?q=${u.geo.lat},${u.geo.lng}">Open map</a>`
                   + `<div class="muted" style="font-size:0.78rem;margin-top:2px">${u.geo.lat.toFixed(3)}, ${u.geo.lng.toFixed(3)}${u.geo.accuracy ? ` (±${num(u.geo.accuracy)} m)` : ''} · about ${num(u.geo.area.km)} km from the middle of ${esc(u.geo.area.name === 'Outside Lagos' ? 'the nearest area' : u.geo.area.name)} · ${u.geo.at ? `saved ${fmtDate(u.geo.at)}` : 'saved date unknown'}</div>`
                 : '<span class="muted">Not captured yet</span>';
+            // A store's own activity and its salespeople's ("by Ada"); a salesperson's own only
+            const mine = (x, owner, by) => sp ? by === uid : owner === uid;
+            const byNote = (by) => (!sp && by ? ` · by ${esc(this.firstName(by))}` : '');
             const events = [];
-            D.sales.forEach((x) => { if (x.uid === uid) events.push([x.t, `Sold ${x.name ? esc(x.name) : 'an item'} · ${naira(x.value)}`]); });
-            D.scans.forEach((x) => { if (x.uid === uid) events.push([x.t, `Scanned a barcode${x.status && x.status !== 'success' ? ' (not found)' : ''}`]); });
-            D.calls.forEach((x) => { if (x.uid === uid) events.push([x.t, `Called ${esc(x.toName || x.to || 'a customer')}`]); });
+            D.sales.forEach((x) => { if (mine(x, x.uid, x.by)) events.push([x.t, `Sold ${x.name ? esc(x.name) : 'an item'} · ${naira(x.value)}${byNote(x.by)}`]); });
+            D.scans.forEach((x) => { if (mine(x, x.uid, x.by)) events.push([x.t, `Scanned a barcode${x.status && x.status !== 'success' ? ' (not found)' : ''}${byNote(x.by)}`]); });
+            D.calls.forEach((x) => { if (mine(x, x.uid, x.by)) events.push([x.t, `Called ${esc(x.toName || x.to || 'a customer')}${byNote(x.by)}`]); });
+            D.invites.forEach((x) => { if (mine(x, x.uid, x.by)) events.push([x.t, `Invited ${esc(x.phone || 'a customer')} on WhatsApp${byNote(x.by)}`]); });
             D.transfers.forEach((x) => {
-                if (x.from === uid && x.t != null) events.push([x.t, `Sent a transfer · ${naira(x.value)}`]);
-                if (x.claimed && x.by === uid && x.claimedAt != null) events.push([x.claimedAt, `Accepted a transfer · ${naira(x.value)}`]);
+                if (mine(x, x.from, x.sentBy) && x.t != null) events.push([x.t, `Sent a transfer · ${naira(x.value)}${byNote(x.sentBy)}`]);
+                if (!sp && x.claimed && x.by === uid && x.claimedAt != null) events.push([x.claimedAt, `Accepted a transfer · ${naira(x.value)}`]);
             });
             events.sort((p, q) => q[0] - p[0]);
 
+            const tiles = [kpi(num(s.days.size), 'Days active'), kpi(num(s.sales), 'Sales'), kpi(naira(s.volume), 'Volume'),
+                kpi(s.costedSales ? naira(s.profit) : '—', 'Profit'), kpi(num(s.sent), 'Sent')];
+            if (!sp) tiles.push(kpi(num(s.accepted), 'Accepted'));
+            tiles.push(kpi(num(s.invites), 'WhatsApp invites'), kpi(num(s.scans), 'Scans'), kpi(num(s.calls), 'Calls'));
+            const stock = u.stock
+                ? `${naira(u.stock.worth)} <span class="muted">· ${plural(u.stock.products, 'product')}</span><div class="muted" style="font-size:0.78rem;margin-top:2px">At cost price (${naira(u.stock.sellValue)} at selling price)${u.stock.at ? ` · ${esc(ago(u.stock.at))}` : ''}</div>`
+                : '<span class="muted">Not sent yet (comes from the updated app)</span>';
+            const staffRows = staff.map((id) => {
+                const ss = m.curBy.get(id) || emptyStats(), aa = this.actBy.get(id);
+                return `<div class="tr" data-user="${esc(id)}" style="--cols:2.2fr 1fr 1fr 1fr"><div class="td">${this.who(id, '')}</div>
+                    <div class="td num" data-label="Sales">${num(ss.sales)}</div><div class="td num" data-label="Volume">${naira(ss.volume)}</div><div class="td num" data-label="Last active">${aa ? esc(ago(aa.last)) : '—'}</div></div>`;
+            }).join('');
+
             this.pushSheet({
-                title: u.name || u.business || u.phone, sub: [u.business && u.business !== u.name ? u.business : '', u.type].filter(Boolean).join(' · '),
+                title: u.name || u.business || u.phone, sub: [u.business && u.business !== u.name ? u.business : '', this.typeName(u)].filter(Boolean).join(' · '),
                 html: `
-                    <div class="actions"><span class="pill ${status}">${esc(this.statusLabel[status])}</span>${isNew ? '<span class="pill new">New</span>' : ''}${u.location ? `<span class="pill">${esc(u.location)}</span>` : ''}</div>
-                    <div><p class="lead" style="margin-bottom:8px">${esc(m.r.label)}</p>
-                    <div class="tiles">${kpi(num(s.days.size), 'Days active')}${kpi(num(s.sales), 'Sales')}${kpi(naira(s.volume), 'Volume')}${kpi(num(s.sent), 'Sent')}${kpi(num(s.accepted), 'Accepted')}${kpi(num(s.scans), 'Scans')}${kpi(num(s.calls), 'Calls')}</div></div>
+                    <div class="actions"><span class="pill ${status}">${esc(this.statusLabel[status])}</span>${isNew ? '<span class="pill new">New</span>' : ''}${sp ? '' : `<span class="pill type">${esc(this.typeName(u))}</span>`}${u.location ? `<span class="pill">${esc(u.location)}</span>` : ''}</div>
+                    <div><p class="lead" style="margin-bottom:8px">${esc(m.r.label)}${!sp && s.spSales ? ` · ${plural(s.spSales, 'sale')} (${naira(s.spVolume)}) by salespeople` : ''}</p>
+                    <div class="tiles">${tiles.join('')}</div></div>
                     <div class="profile-grid">
                         <div><div class="l">Phone</div><div class="v">${u.phone ? `<a class="link-btn" href="tel:${esc(u.phone)}">${esc(u.phone)}</a>` : '—'}</div></div>
+                        ${sp ? `<div><div class="l">Works for</div><div class="v">${boss ? `<button type="button" class="link-btn" data-user="${esc(boss)}">${esc(this.userName(boss))}</button>` : '—'}</div></div>`
+                             : `<div><div class="l">Salespeople</div><div class="v">${staff.length ? esc(plural(staff.length, 'salesperson', 'salespeople')) : 'None'}</div></div>`}
                         <div><div class="l">Joined</div><div class="v">${u.createdAt ? esc(fmtDate(u.createdAt)) : (u.joined ? '—' : 'Not yet')}</div></div>
                         <div><div class="l">First activity</div><div class="v">${a ? esc(fmtDate(a.first)) : '—'}</div></div>
                         <div><div class="l">Last activity</div><div class="v">${a ? esc(ago(a.last)) : '—'}</div></div>
+                        <div><div class="l">Last sale</div><div class="v">${this.lastSaleOf(uid, sp) ? esc(fmtDate(this.lastSaleOf(uid, sp))) : '—'}</div></div>
+                        ${sp ? '' : `<div><div class="l">Stock worth</div><div class="v">${stock}</div></div>`}
                         <div><div class="l">Gender</div><div class="v">${esc(u.gender || '—')}</div></div>
                         <div><div class="l">GPS location (approx.)</div><div class="v">${geo}</div></div>
                     </div>
+                    ${staff.length ? `<div><div class="panel-head"><h3>Salespeople</h3><span class="hint">${esc(m.r.short)}</span></div>
+                        ${this.table('2.2fr 1fr 1fr 1fr', ['Salesperson', 'Sales', 'Volume', 'Last active'].map((l, i) => `<div class="${i ? 'num' : ''}">${l}</div>`).join(''), staffRows)}</div>` : ''}
                     <div><div class="panel-head"><h3>Recent activity</h3><span class="hint">Latest 10</span></div>
                     ${events.length ? `<div class="timeline">${events.slice(0, 10).map((e) => `<div class="ev"><span>${e[1]}</span><span>${esc(ago(e[0]))}</span></div>`).join('')}</div>` : '<p class="empty">Nothing counted since the start date.</p>'}</div>`
             });
+        },
+
+        // The latest sale (since the start date), whatever days are picked: a store's includes its salespeople's
+        lastSaleOf(uid, byActor) {
+            let last = 0;
+            this.D.sales.forEach((x) => { if ((byActor ? x.by === uid : x.uid === uid) && x.t > last) last = x.t; });
+            return last;
         },
 
         pushSheet(def) {
@@ -1096,9 +1276,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if ((el = hit('[data-usort]'))) { this.state.f.sort = el.dataset.usort; return this.renderUserList(); }
             if ((el = hit('[data-umore]'))) { this.state.f.limit += PAGE; return this.renderUserList(); }
             if ((el = hit('[data-uexport]'))) return this.exportUsers();
+            if ((el = hit('[data-rwho]'))) { this.state.rewards.who = el.dataset.rwho; this.state.rewards.limit = PAGE; return this.renderRewardList(); }
             if ((el = hit('[data-rw]'))) { this.state.rewards.filter = el.dataset.rw; this.state.rewards.limit = PAGE; return this.renderRewardList(); }
             if ((el = hit('[data-rmore]'))) { this.state.rewards.limit += PAGE; return this.renderRewardList(); }
             if ((el = hit('[data-rexport]'))) return this.exportRewards();
+            if ((el = hit('[data-invexport]'))) return this.exportInvites();
             if ((el = hit('[data-by]'))) { this.state.insights.by = el.dataset.by; return this.renderInsights(); }
             if ((el = hit('[data-product]'))) {
                 const open = this.state.insights.open, k = el.dataset.product;
@@ -1121,6 +1303,9 @@ document.addEventListener('DOMContentLoaded', () => {
             else if (el.id === 'u-loc') { f.location = el.value; f.limit = PAGE; this.renderUserList(); }
             else if (el.id === 'u-gps') { f.gps = el.value; f.limit = PAGE; this.renderUserList(); }
             else if (el.id === 'u-sort') { f.sort = el.value; this.renderUserList(); }
+            else if (el.matches('[data-trule]')) { this.state.typeRules[el.dataset.trule].v = Math.max(0, Number(el.value) || 0); this.rulesChanged(); }
+            else if (el.matches('[data-trule-on]')) { if (e.type !== 'change') return; this.state.typeRules[el.dataset.truleOn].on = el.checked; this.rulesChanged(); }
+            else if (el.matches('[data-trule-mode]')) { if (e.type !== 'change') return; this.state.typeRules.mode = el.value === 'all' ? 'all' : 'any'; this.rulesChanged(); }
             else if (el.id === 'i-q') { this.state.insights.q = el.value; this.state.insights.limit = 12; this.renderProductList(); }
             else if (el.id === 'rw-days' || el.id === 'rw-transfers') {
                 const saved = readLocal('pika_admin_rewards') || {};
@@ -1140,20 +1325,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // ================= Users =================
         decorateUsers() {
-            return this.D.users.map((u) => ({ u, s: this.m.cur.get(u.id) || emptyStats(), a: this.act.get(u.id) || null, status: this.statusOf(u) }));
+            const m = this.m;
+            return this.D.users.map((u) => ({
+                u, s: (u.isSp ? m.curBy : m.cur).get(u.id) || emptyStats(), a: (u.isSp ? this.actBy : this.act).get(u.id) || null,
+                status: this.statusOf(u), type: this.typeName(u), staff: u.isSp ? 0 : this.staffOf(u.id).length
+            }));
         },
 
         renderUsers() {
             const f = this.state.f;
             const D = this.D;
-            const types = [...new Set(D.users.map((u) => u.type))].sort();
             const places = [...countBy(D.users.map((u) => u.location).filter(Boolean))].sort((a, b) => b[1] - a[1]).map(([k]) => k);
             const opt = (v, label, cur) => `<option value="${esc(v)}" ${cur === v ? 'selected' : ''}>${esc(label)}</option>`;
+            const types = [['owners', 'Store owners'], ['Wholesaler', 'Wholesalers'], ['Retailer', 'Retailers'], ['sales', 'Salespeople'], ['all', 'Everyone']];
             $('tab-users').innerHTML = `
+                ${this.rulesHtml()}
                 <div class="panel filters">
                     <div class="filter-row">
                         <input class="search" id="u-q" type="search" placeholder="Search name, business, phone, place…" value="${esc(f.q)}">
-                        <select class="select" id="u-type" aria-label="Type">${opt('all', 'All types', f.type)}${types.map((t) => opt(t, t, f.type)).join('')}</select>
+                        <select class="select" id="u-type" aria-label="Type">${types.map(([v, l]) => opt(v, l, f.type)).join('')}</select>
                         <select class="select" id="u-loc" aria-label="Location">${opt('all', 'All places', f.location)}${places.map((t) => opt(t, t, f.location)).join('')}</select>
                         <select class="select" id="u-gps" aria-label="GPS">${opt('all', 'Any GPS', f.gps)}${opt('yes', 'Has GPS', f.gps)}${opt('no', 'No GPS', f.gps)}</select>
                         <select class="select" id="u-sort" aria-label="Sort">${[['recent', 'Recently active'], ['sales', 'Most sales'], ['days', 'Most active days'], ['new', 'Newest'], ['name', 'Name A–Z']].map(([v, l]) => opt(v, l, f.sort)).join('')}</select>
@@ -1165,12 +1355,49 @@ document.addEventListener('DOMContentLoaded', () => {
             this.renderUserList();
         },
 
+        // The wholesaler/retailer rules: tick the ones that matter, set the numbers. Saved online for every device.
+        rulesHtml() {
+            const R = this.state.typeRules;
+            const open = this.state.activity.folds.has('typerules');
+            const row = (k, before, after, pre) => `<label class="trule"><input type="checkbox" data-trule-on="${k}" ${R[k].on ? 'checked' : ''}><span>${before}</span><span class="trule-num">${pre ? `<span class="pre">${pre}</span>` : ''}<input class="num-input" type="number" min="0" step="any" inputmode="numeric" data-trule="${k}" value="${esc(R[k].v)}" aria-label="${esc(before)}"></span><span>${after}</span></label>`;
+            return `<details class="fold trules-fold" data-fold="typerules" ${open ? 'open' : ''}>
+                <summary><span>Wholesaler or retailer <small id="trule-count">${esc(this.rulesCountText())}</small></span></summary>
+                <div class="fold-body">
+                    <p class="lead">A store owner is a <b>Wholesaler</b> when they meet <select class="select sm" data-trule-mode aria-label="How many rules">
+                        <option value="any" ${R.mode === 'any' ? 'selected' : ''}>any one</option><option value="all" ${R.mode === 'all' ? 'selected' : ''}>all</option></select>
+                        of the ticked rules. Everyone else is a <b>Retailer</b>. Sales are for the days picked at the top.</p>
+                    <div class="rule-box trules">
+                        ${row('volume', 'Sells at least', 'a day on average', '₦')}
+                        ${row('cartons', 'At least', '% of units sold are packs or cartons')}
+                        ${row('stock', 'Stock worth at least', '', '₦')}
+                        ${row('staff', 'Has at least', 'salespeople')}
+                    </div>
+                    <p class="points-note">Stock worth is at cost price. Each store sends it from the updated app. A salesperson's sales count for their store owner.</p>
+                </div>
+            </details>`;
+        },
+
+        rulesCountText() {
+            const c = countBy([...this.labels.values()]);
+            if (!RULE_KEYS.some((k) => this.state.typeRules[k].on)) return 'No rules ticked';
+            return `${plural(c.get('Wholesaler') || 0, 'wholesaler')} · ${plural(c.get('Retailer') || 0, 'retailer')}`;
+        },
+
+        rulesChanged() {
+            this.saveTypeRules();
+            this.recompute();
+            const count = $('trule-count');
+            if (count) count.textContent = this.rulesCountText();
+            if ($('u-list')) this.renderUserList();
+        },
+
         renderUserList() {
             const f = this.state.f;
             const all = this.decorateUsers();
             const terms = norm(f.q).split(' ').filter(Boolean);
-            const hay = (x) => norm([x.u.name, x.u.business, x.u.phone, x.u.location, x.u.type, this.statusLabel[x.status], x.u.geo ? 'gps' : ''].join(' '));
-            const base = all.filter((x) => (f.type === 'all' || x.u.type === f.type)
+            const hay = (x) => norm([x.u.name, x.u.business, x.u.phone, x.u.location, x.type, this.statusLabel[x.status], x.u.geo ? 'gps' : ''].join(' '));
+            const typeOk = (x) => f.type === 'all' || (f.type === 'owners' ? !x.u.isSp : f.type === 'sales' ? x.u.isSp : x.type === f.type);
+            const base = all.filter((x) => typeOk(x)
                 && (f.location === 'all' || x.u.location === f.location)
                 && (f.gps === 'all' || (f.gps === 'yes') === !!x.u.geo)
                 && terms.every((t) => hay(x).includes(t)));
@@ -1196,7 +1423,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 insight += ` · ${act} active`;
                 if (gone.length) {
                     const place = top(countBy(gone.map((x) => x.u.location).filter(Boolean)));
-                    const type = top(countBy(gone.map((x) => x.u.type)));
+                    const type = top(countBy(gone.map((x) => x.type)));
                     insight += ` · ${gone.length} dropped off${place && gone.length > 2 ? ` (mostly ${type[0]}s${place[1] > 1 ? ` in ${place[0]}` : ''})` : ''}`;
                 }
                 const gps = rows.filter((x) => x.u.geo).length;
@@ -1209,7 +1436,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const html = shown.map((x) => `
                 <div class="tr" data-user="${esc(x.u.id)}" style="--cols:${cols}">
                     <div class="td">${this.who(x.u.id, x.u.business && x.u.business !== x.u.name ? x.u.business : '')}</div>
-                    <div class="td" data-label="Type · place">${esc(x.u.type)}<div class="s">${esc(x.u.location || '—')}${x.u.geo ? ' · GPS' : ''}</div></div>
+                    <div class="td" data-label="Type · place">${esc(x.type)}<div class="s">${x.u.isSp ? `for ${esc(this.D.ownerOf.has(x.u.id) ? this.userName(this.D.ownerOf.get(x.u.id)) : '—')}` : esc(x.u.location || '—')}${x.staff ? ` · ${esc(plural(x.staff, 'salesperson', 'salespeople'))}` : ''}${x.u.geo ? ' · GPS' : ''}</div></div>
                     <div class="td" data-label="Status"><span class="pills"><span class="pill ${x.status}">${esc(this.statusLabel[x.status])}</span>${x.u.createdAt && Date.now() - x.u.createdAt <= 7 * DAY ? '<span class="pill new">New</span>' : ''}</span><div class="s">${x.a ? esc(ago(x.a.last)) : 'Never active'}</div></div>
                     <div class="td num" data-label="Activity">${x.s.volume ? naira(x.s.volume) : '—'}<div class="s">${x.s.days.size ? `${plural(x.s.days.size, 'day')} active` : 'Not active'}</div></div>
                     <div class="td num" data-label="Sent / accepted">${x.s.sent || x.s.accepted ? `${num(x.s.sent)} / ${num(x.s.accepted)}` : '—'}</div>
@@ -1231,15 +1458,58 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         exportUsers() {
-            const rows = this.decorateUsers().map((x) => [x.u.name, x.u.business, x.u.phone, x.u.type, x.u.location, x.u.gender, this.statusLabel[x.status],
-                x.u.createdAt ? new Date(x.u.createdAt).toISOString() : '', x.a ? new Date(x.a.last).toISOString() : '', x.s.days.size, x.s.volume, x.s.sent, x.s.accepted, ...this.geoColumns(x.u)]);
-            this.exportCsv('pikashot_users.csv', ['Name', 'Business', 'Phone', 'Type', 'Location', 'Gender', 'Status', 'Joined', 'Last active', `Days active (${this.m.r.short})`, 'Sales (NGN)', 'Transfers sent', 'Transfers accepted', 'GPS area (nearest)', 'GPS fits chosen place', 'Km from chosen place', 'Map link', 'GPS accuracy (m)', 'GPS saved on', 'Latitude', 'Longitude'], rows);
+            const D = this.D, m = this.m, r = m.r;
+            const end = Date.now() + 1, start = this.state.floor || 0;
+            const all = this.statsBetween(start, end), allBy = this.statsBetween(start, end, true); // (since the start date, whatever days are picked)
+            const iso = (ms) => (ms ? new Date(ms).toISOString().slice(0, 10) : '');
+            const round = (v) => Math.round(v || 0);
+            const months = (ms) => (ms ? Math.round(((Date.now() - ms) / (30.44 * DAY)) * 10) / 10 : '');
+            const rows = this.decorateUsers().map((x) => {
+                const u = x.u, s = x.s, A = (u.isSp ? allBy : all).get(u.id) || emptyStats();
+                const p = !u.isSp && m.prev ? m.prev.get(u.id) : null;
+                const growth = p && p.volume ? Math.round(((s.volume - p.volume) / p.volume) * 100) : '';
+                const best = s.dayTotals.size ? Math.max(...s.dayTotals.values()) : 0;
+                const boss = u.isSp ? D.ownerOf.get(u.id) : null;
+                const first = (u.isSp ? this.actBy : this.act).get(u.id);
+                return [
+                    u.name, u.business, u.phone, u.isSp ? 'Salesperson' : 'Store owner', x.type, boss ? this.userName(boss) : '', boss || '',
+                    u.location, u.gender, this.statusLabel[x.status], iso(u.createdAt), months(u.createdAt), first ? iso(first.first) : '', x.a ? iso(x.a.last) : '',
+                    iso(this.lastSaleOf(u.id, u.isSp)), u.isSp ? '' : x.staff,
+                    // the days picked
+                    s.days.size, s.sellDays.size, pct(s.sellDays.size, r.days), s.sales, round(s.volume), s.sales ? round(s.volume / s.sales) : 0, round(s.volume / r.days), round(best), growth,
+                    Math.round(s.units * 2) / 2, pct(s.cartonUnits, s.units), s.costedSales ? round(s.profit) : '', s.costedSales ? pct(s.profit, s.volume) : '', s.costedSales,
+                    round(s.credit), round(s.creditOwed), round(s.discounts), u.isSp ? '' : s.spSales, u.isSp ? '' : round(s.spVolume),
+                    s.sent, round(s.sentValue), s.accepted, round(s.acceptedValue), s.invites, s.scans, s.calls,
+                    // stock (sent by the app)
+                    u.stock ? u.stock.products : '', u.stock ? u.stock.worth : '', u.stock ? u.stock.sellValue : '', u.stock && u.stock.at ? iso(u.stock.at) : '',
+                    // since the start date
+                    A.days.size, A.sellDays.size, A.sales, round(A.volume), A.costedSales ? round(A.profit) : '', round(A.credit), round(A.creditOwed),
+                    ...this.geoColumns(u)
+                ];
+            });
+            const P = `(${r.short})`, S = this.state.floor ? `(since ${fmtDate(this.state.floor)})` : '(all time)';
+            this.exportCsv('pikashot_users.csv', [
+                'Name', 'Business', 'Phone', 'Account', 'Type (by your rules)', 'Works for', 'Works for (phone)',
+                'Location', 'Gender', 'Status', 'Joined', 'Months on PikaShot', 'First activity', 'Last active',
+                'Last sale', 'Salespeople',
+                `Days active ${P}`, `Days with a sale ${P}`, `Share of days with a sale % ${P}`, `Sales ${P}`, `Sales value (NGN) ${P}`, `Average sale (NGN) ${P}`, `Average sales a day (NGN) ${P}`, `Best day (NGN) ${P}`, `Change vs previous period % ${P}`,
+                `Units sold ${P}`, `Packs/cartons share of units % ${P}`, `Profit (NGN) ${P}`, `Profit margin % ${P}`, `Sales with a cost price ${P}`,
+                `Credit sales value (NGN) ${P}`, `Credit still owed at sale (NGN) ${P}`, `Discounts given (NGN) ${P}`, `Sales by salespeople ${P}`, `Sales value by salespeople (NGN) ${P}`,
+                `Transfers sent ${P}`, `Transfer value sent (NGN) ${P}`, `Transfers accepted ${P}`, `Transfer value accepted (NGN) ${P}`, `WhatsApp invites ${P}`, `Scans ${P}`, `Calls ${P}`,
+                'Products in stock', 'Stock worth at cost (NGN)', 'Stock worth at selling price (NGN)', 'Stock updated',
+                `Days active ${S}`, `Days with a sale ${S}`, `Sales ${S}`, `Sales value (NGN) ${S}`, `Profit (NGN) ${S}`, `Credit sales value (NGN) ${S}`, `Credit still owed at sale (NGN) ${S}`,
+                'GPS area (nearest)', 'GPS fits chosen place', 'Km from chosen place', 'Map link', 'GPS accuracy (m)', 'GPS saved on', 'Latitude', 'Longitude'
+            ], rows);
         },
 
         // ================= Rewards =================
+        // Store owners (their salespeople's activity counted in), or each salesperson on their own numbers
         rewardRows() {
             const rules = this.rewardRules();
-            return [...this.m.cur].map(([uid, s]) => {
+            const sales = this.state.rewards.who === 'sales';
+            const isSp = (uid) => this.D.ownerOf.has(uid) || !!(this.D.byId.get(uid) || {}).isSp;
+            const source = sales ? [...this.m.curBy].filter(([uid]) => isSp(uid)) : [...this.m.cur];
+            return source.map(([uid, s]) => {
                 const regular = s.sellDays.size >= rules.days && rules.days > 0;
                 const star = s.sent + s.accepted >= rules.transfers && rules.transfers > 0;
                 return { uid, s, pts: this.points(s), regular, star };
@@ -1257,12 +1527,51 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                     <p class="points-note">Points: 10 for each day a user logged a sale, 5 for each transfer sent or accepted. The limits above are saved for each period.</p>
                 </div>
-                <div class="panel"><div class="chips" id="rw-chips" style="margin-bottom:10px"></div><div id="rw-list"></div></div>`;
+                <div class="panel"><div class="rw-top"><div class="seg seg-sm" id="rw-who"></div><div class="chips" id="rw-chips"></div></div><div id="rw-list"></div></div>
+                <div class="panel">${this.invitesHtml()}</div>`;
             this.renderRewardList();
+        },
+
+        // Who tapped "WhatsApp invite" during a transfer (the number typed was not on PikaShot yet), and whether that customer has joined since
+        invitesHtml() {
+            const list = this.m.invites;
+            const head = `<div class="panel-head"><h3>WhatsApp invites</h3>${list.length ? '<button class="link-btn" type="button" data-invexport>Export CSV</button>' : `<span class="hint">${esc(this.m.r.label)}</span>`}</div>`;
+            if (!list.length) return `${head}<p class="empty">No WhatsApp invites in these days. One is counted when someone taps "WhatsApp invite" during a transfer, from this update on.</p>`;
+            const byUser = new Map();
+            list.forEach((x) => {
+                const e = byUser.get(x.uid) || { n: 0, phones: new Map(), last: 0 };
+                e.n++; e.last = Math.max(e.last, x.t);
+                if (x.phone && !e.phones.has(x.phone)) e.phones.set(x.phone, x);
+                byUser.set(x.uid, e);
+            });
+            const joinedCount = new Set(list.filter((x) => this.joinedPhone(x.phone)).map((x) => x.phone)).size;
+            const cols = 'minmax(0, 2fr) minmax(0, .6fr) minmax(0, 3fr) minmax(0, 1fr)';
+            const rows = [...byUser].sort((a, b) => b[1].n - a[1].n).map(([uid, e]) => `
+                <div class="tr" data-user="${esc(uid)}" style="--cols:${cols}">
+                    <div class="td">${this.who(uid)}</div>
+                    <div class="td num" data-label="Invites"><b>${num(e.n)}</b></div>
+                    <div class="td" data-label="Customer numbers"><div class="name-chips">${[...e.phones.values()].map((x) => `<span class="name-chip">${esc(x.phone)}${x.by ? ` <span class="muted">· ${esc(this.firstName(x.by))}</span>` : ''}${this.joinedPhone(x.phone) ? ' <span class="pill active">Joined</span>' : ''}</span>`).join('')}</div></div>
+                    <div class="td num" data-label="Last">${esc(ago(e.last))}</div>
+                </div>`).join('');
+            return `${head}
+                <p class="lead" style="margin-bottom:8px"><strong>${plural(list.length, 'invite')}</strong> by ${plural(byUser.size, 'store owner')}${joinedCount ? `. ${plural(joinedCount, 'invited customer')} ${joinedCount === 1 ? 'has' : 'have'} joined PikaShot since` : ''}. A name after a number is the salesperson who sent it.</p>
+                ${this.table(cols, ['Store owner', 'Invites', 'Customer numbers', 'Last'].map((l, i) => `<div class="${i === 1 || i === 3 ? 'num' : ''}">${l}</div>`).join(''), rows)}`;
+        },
+
+        joinedPhone(phone) { const u = phone && this.D.byId.get(phone); return !!(u && u.joined); },
+
+        exportInvites() {
+            this.exportCsv('pikashot_whatsapp_invites.csv', ['Store owner', 'Business', 'Store owner phone', 'Sent by (salesperson)', 'Customer number', 'When', 'Customer joined PikaShot'],
+                this.m.invites.slice().sort((a, b) => b.t - a.t).map((x) => {
+                    const u = this.D.byId.get(x.uid) || {};
+                    return [u.name || '', u.business || '', u.phone || x.uid, x.by ? this.userName(x.by) : '', x.phone || '', new Date(x.t).toISOString(), this.joinedPhone(x.phone) ? 'Yes' : 'No'];
+                }));
         },
 
         renderRewardList() {
             const st = this.state.rewards;
+            const sales = st.who === 'sales';
+            $('rw-who').innerHTML = [['owners', 'Store owners'], ['sales', 'Salespeople']].map(([k, l]) => `<button type="button" data-rwho="${k}" class="${st.who === k ? 'active' : ''}">${l}</button>`).join('');
             const all = this.rewardRows();
             const counts = { all: all.filter((x) => x.regular || x.star).length, regular: all.filter((x) => x.regular).length, star: all.filter((x) => x.star).length, both: all.filter((x) => x.regular && x.star).length, any: all.length };
             const chips = [['all', 'Qualifying', counts.all], ['regular', 'Regular sellers', counts.regular], ['star', 'Transfer stars', counts.star], ['both', 'Both', counts.both], ['any', 'Everyone active', counts.any]];
@@ -1271,26 +1580,31 @@ document.addEventListener('DOMContentLoaded', () => {
             const rows = all.filter(pick);
             const shown = rows.slice(0, st.limit);
             const cols = 'minmax(0, 2.4fr) minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, .8fr) minmax(136px, 1.5fr)';
-            const head = ['User', 'Sales', 'Sent / accepted', 'Points', 'Badges'].map((l, i) => `<div class="${i > 0 && i < 4 ? 'num' : ''}">${esc(l)}</div>`).join('');
+            const head = [sales ? 'Salesperson' : 'Store owner', 'Sales', sales ? 'Transfers sent' : 'Sent / accepted', 'Points', 'Badges'].map((l, i) => `<div class="${i > 0 && i < 4 ? 'num' : ''}">${esc(l)}</div>`).join('');
             const html = shown.map((x, i) => `
                 <div class="tr" data-user="${esc(x.uid)}" style="--cols:${cols}">
-                    <div class="td">${this.who(x.uid, undefined, i + 1)}</div>
+                    <div class="td">${this.who(x.uid, sales ? `Salesperson · for ${this.D.ownerOf.has(x.uid) ? this.userName(this.D.ownerOf.get(x.uid)) : '—'}` : undefined, i + 1)}</div>
                     <div class="td num" data-label="Sales">${naira(x.s.volume)}<div class="s">${plural(x.s.sales, 'sale')} · ${plural(x.s.sellDays.size, 'day')}</div></div>
-                    <div class="td num" data-label="Sent / accepted">${num(x.s.sent)} / ${num(x.s.accepted)}</div>
+                    <div class="td num" data-label="${sales ? 'Transfers sent' : 'Sent / accepted'}">${sales ? num(x.s.sent) : `${num(x.s.sent)} / ${num(x.s.accepted)}`}${x.s.invites ? `<div class="s">${plural(x.s.invites, 'WhatsApp invite')}</div>` : ''}</div>
                     <div class="td num" data-label="Points"><b>${num(x.pts)}</b></div>
                     <div class="td" data-label="Badges"><span class="pills">${x.regular ? '<span class="pill active">Regular seller</span>' : ''}${x.star ? '<span class="pill gold">Transfer star</span>' : ''}${!x.regular && !x.star ? '<span class="muted">—</span>' : ''}</span></div>
                 </div>`).join('');
             $('rw-list').innerHTML = `
-                <div class="panel-head"><h3>${plural(rows.length, 'user')}</h3><button class="link-btn" type="button" data-rexport>Export CSV</button></div>
-                ${shown.length ? this.table(cols, head, html) : '<p class="empty">Nobody meets these limits in this period. Lower the limits or pick a longer period.</p>'}
+                <div class="panel-head"><h3>${sales ? plural(rows.length, 'salesperson', 'salespeople') : plural(rows.length, 'store owner')}</h3><button class="link-btn" type="button" data-rexport>Export CSV</button></div>
+                ${sales ? '<p class="points-note" style="margin:0 0 8px">Each salesperson\'s own sales and transfers. The same points and limits as store owners (a salesperson does not accept transfers).</p>' : ''}
+                ${shown.length ? this.table(cols, head, html) : `<p class="empty">${sales ? 'No salesperson meets these limits in this period.' : 'Nobody meets these limits in this period.'} Lower the limits or pick a longer period.</p>`}
                 ${rows.length > shown.length ? `<div class="actions" style="justify-content:center;margin-top:12px"><button class="btn" type="button" data-rmore>Show more (${num(rows.length - shown.length)} left)</button></div>` : ''}`;
         },
 
         exportRewards() {
             const st = this.state.rewards;
             const rows = this.rewardRows().filter((x) => ({ all: x.regular || x.star, regular: x.regular, star: x.star, both: x.regular && x.star, any: true }[st.filter]));
-            this.exportCsv('pikashot_rewards.csv', ['Rank', 'Name', 'Business', 'Phone', 'Days with a sale', 'Sales', 'Volume (NGN)', 'Transfers sent', 'Transfers accepted', 'Points', 'Regular seller', 'Transfer star'],
-                rows.map((x, i) => { const u = this.D.byId.get(x.uid) || {}; return [i + 1, u.name, u.business, u.phone || x.uid, x.s.sellDays.size, x.s.sales, x.s.volume, x.s.sent, x.s.accepted, x.pts, x.regular ? 'Yes' : '', x.star ? 'Yes' : '']; }));
+            const sales = st.who === 'sales';
+            this.exportCsv(sales ? 'pikashot_rewards_salespeople.csv' : 'pikashot_rewards.csv', ['Rank', 'Name', 'Business', 'Phone', 'Account', 'Works for', 'Works for (phone)', 'Days with a sale', 'Sales', 'Volume (NGN)', 'Transfers sent', 'Transfers accepted', 'WhatsApp invites', 'Points', 'Regular seller', 'Transfer star'],
+                rows.map((x, i) => {
+                    const u = this.D.byId.get(x.uid) || {}, boss = sales ? this.D.ownerOf.get(x.uid) : null;
+                    return [i + 1, u.name || this.userName(x.uid), u.business, u.phone || x.uid, sales ? 'Salesperson' : 'Store owner', boss ? this.userName(boss) : '', boss || '', x.s.sellDays.size, x.s.sales, x.s.volume, x.s.sent, x.s.accepted, x.s.invites, x.pts, x.regular ? 'Yes' : '', x.star ? 'Yes' : ''];
+                }));
         },
 
         // ================= Insights =================

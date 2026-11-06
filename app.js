@@ -2765,6 +2765,7 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         async updateDashboard() {
+            if (this.state.user) this._scheduleStockSummary(); // (the dashboard's stock worth: sent a little later, only when it changed)
             if (this.state.user) {
                 this.elements.welcomeName.textContent = `Hi, ${this.state.user.name.split(' ')[0]}.`;
                 if (this.state.user.type === 'Wholesaler' || this.state.user.type === 'Salesperson' || this.state.user.type === 'Retailer') {
@@ -3237,8 +3238,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else {
                     this.elements.productGrid.innerHTML = '<p class="empty-state">No products yet. Tap + and scan a product barcode.</p>';
                 }
+                this._setAddArrow(!this._isSalesperson() && !searchText && filterType === 'all'); // (no products at all: point at +)
                 return;
             }
+            this._setAddArrow(false);
 
 
             products.forEach(product => {
@@ -3454,6 +3457,77 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // What the admin dashboard learns about a sale. An edit is logged again under the same saleId,
         // and the dashboard keeps the latest version of each sale.
+        // No products at all (a store owner): a moving arrow from under the words to the + button, for as long as the list is empty.
+        // It is drawn inside the products page, so it goes with the page; it follows the screen size.
+        _setAddArrow(on) {
+            const view = document.getElementById('products-view');
+            const fab = this.elements.addNewProductBtn;
+            if (!on || !view) {
+                if (this._addArrow) { this._addArrow.remove(); this._addArrow = null; }
+                if (this._addArrowObs) { this._addArrowObs.disconnect(); this._addArrowObs = null; }
+                if (this._placeAddArrowFn) { window.removeEventListener('resize', this._placeAddArrowFn); if (view) view.removeEventListener('scroll', this._placeAddArrowFn); }
+                if (fab) fab.classList.remove('add-hint');
+                return;
+            }
+            if (!this._addArrow) {
+                const arrow = this._addArrow = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                arrow.setAttribute('class', 'add-arrow');
+                arrow.setAttribute('aria-hidden', 'true');
+                arrow.innerHTML = '<path class="add-arrow-line"/><path class="add-arrow-head"/>';
+                view.appendChild(arrow);
+                this._placeAddArrowFn = this._placeAddArrowFn || (() => this._placeAddArrow());
+                window.addEventListener('resize', this._placeAddArrowFn);
+                view.addEventListener('scroll', this._placeAddArrowFn, { passive: true });
+                if (window.ResizeObserver) { this._addArrowObs = new ResizeObserver(this._placeAddArrowFn); this._addArrowObs.observe(view); } // (also fires when the page is shown again)
+            }
+            if (fab) fab.classList.add('add-hint');
+            this._placeAddArrow();
+        },
+
+        _placeAddArrow() {
+            const arrow = this._addArrow, fab = this.elements.addNewProductBtn;
+            const words = this.elements.productGrid.querySelector('.empty-state');
+            if (!arrow || !fab) return;
+            const a = words && words.getBoundingClientRect(), f = fab.getBoundingClientRect(), o = arrow.getBoundingClientRect();
+            const x1 = a ? a.left + a.width / 2 - o.left : 0, y1 = a ? a.bottom + 16 - o.top : 0;
+            const x2 = f.left + f.width / 2 - o.left, y2 = f.top - 14 - o.top;
+            const show = !!(a && a.width && f.width && y2 - y1 > 40);
+            arrow.style.visibility = show ? '' : 'hidden';
+            if (!show) return;
+            // From under the words it heads right, then curves down into the top of the + button
+            arrow.querySelector('.add-arrow-line').setAttribute('d', `M${x1.toFixed(1)} ${y1.toFixed(1)} Q${x2.toFixed(1)} ${y1.toFixed(1)} ${x2.toFixed(1)} ${(y2 - 2).toFixed(1)}`);
+            arrow.querySelector('.add-arrow-head').setAttribute('d', `M${(x2 - 8).toFixed(1)} ${(y2 - 10).toFixed(1)} L${x2.toFixed(1)} ${y2.toFixed(1)} L${(x2 + 8).toFixed(1)} ${(y2 - 10).toFixed(1)}`);
+        },
+
+        // The dashboard's view of the store's stock: how many products and what the stock is worth (at cost price; the selling price
+        // where there is no cost). Kept on the store owner's account. Sent a little after a change, at most every 3 hours, only when it changed.
+        _scheduleStockSummary() {
+            clearTimeout(this._stockSumTimer);
+            this._stockSumTimer = setTimeout(() => this._sendStockSummary(), 20000);
+        },
+
+        async _sendStockSummary() {
+            const owner = this._businessPhone();
+            if (!owner || !this.state.firebaseReady || !navigator.onLine) return;
+            const key = `pika_stocksum_${owner}`;
+            let last = null;
+            try { last = JSON.parse(localStorage.getItem(key)); } catch (e) { /* none yet */ }
+            const products = await DB.getAllProducts();
+            let worth = 0, sellValue = 0;
+            products.forEach(p => {
+                const stock = Math.max(0, Number(p.stock) || 0), price = Number(p.price) || 0;
+                worth += stock * (Number(p.cost) > 0 ? Number(p.cost) : price);
+                sellValue += stock * price;
+            });
+            const sum = { products: products.length, worth: Math.round(worth), sellValue: Math.round(sellValue) };
+            if (last && last.products === sum.products && last.worth === sum.worth && last.sellValue === sum.sellValue) return; // (nothing changed)
+            if (last && Date.now() - last.at < 3 * 3600000) return; // (sent not long ago: a later change sends it)
+            try {
+                await window.fb.setDoc(window.fb.doc(window.fb.db, 'users', owner), { stockSummary: { ...sum, at: window.fb.serverTimestamp() } }, { merge: true });
+                localStorage.setItem(key, JSON.stringify({ ...sum, at: Date.now() }));
+            } catch (e) { /* the next change tries again */ }
+        },
+
         _logSale(sale, product, edited) {
             const value = Math.max(0, (Number(sale.quantity) || 0) * (Number(sale.price) || 0) - (Number(sale.discount) || 0));
             const base = { userId: this._businessPhone() || this.state.user.phone, total: sale.total, timestamp: window.fb.serverTimestamp() };
@@ -3468,6 +3542,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 value,
                 saleType: sale.saleType || 'default'
             };
+            if (Number(sale.cost) > 0) rich.cost = Number(sale.cost); // (the cost price it was sold at: the dashboard works out profit)
+            if (sale.recordedBy) rich.recordedBy = sale.recordedBy; // (a salesperson's sale: it counts for the store, and the dashboard can still tell who)
             if (edited) rich.edited = true;
             this._logToFirestore('sales_logs', null, rich, edited ? null : base);
         },
@@ -5340,6 +5416,18 @@ document.addEventListener('DOMContentLoaded', () => {
             const who = phone.length === 11 ? '234' + phone.slice(1) : ''; // international form, no "+" and no leading 0
             window.open(`https://wa.me/${who}?text=${encodeURIComponent(this.INVITE_TEXT)}`, '_blank', 'noopener');
             this.hideModal();
+            // The dashboard's Rewards page lists who invites customers, and the number they typed (kept with the call records: same reader, same rules)
+            const user = this.state.user;
+            if (user && user.phone && this.state.firebaseReady) {
+                this._logToFirestore('call_logs', null, {
+                    kind: 'wa_invite',
+                    callerId: user.phone,
+                    callerName: user.name || null,
+                    businessId: this._businessPhone() || user.phone,
+                    calleeId: phone || null,
+                    timestamp: window.fb.serverTimestamp()
+                });
+            }
         },
 
         // Backing out of a transfer takes the user back to the receipt it was started from
@@ -6992,7 +7080,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.profileBusiness.textContent = this._shop().name;
                 this.elements.profileLocation.textContent = this._shop().location;
                 this.elements.profilePhone.textContent = this.state.user.phone || this.state.user.phone; // Handle both cases
-                this.elements.profileRole.textContent = this.state.user.type;
+                this.elements.profileRole.textContent = ({ Wholesaler: 'Store owner' })[this.state.user.type] || this.state.user.type; // (the account type "Wholesaler" is called Store owner everywhere people see it)
                 this.elements.profileAccountName.textContent = this.state.user.name;
                 this._setAccountOpen(false); // the account details start folded away every time
 

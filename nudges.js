@@ -100,7 +100,7 @@
         const soldBy30 = new Map();
         const debtors = new Map();
         const settled = [];
-        let month = 0, lastDay = null, lastDate = null, count7 = 0, lastHalfHour = 0;
+        let month = 0, lastDay = null, lastDate = null, count7 = 0, lastHalfHour = 0, cartons7 = 0;
         for (const s of sales) {
             const d = toDate(s.timestamp);
             if (!d || isNaN(d.getTime())) continue;
@@ -113,6 +113,7 @@
             const ago = today - di;
             if (ago >= 0 && ago <= 6) {
                 count7++;
+                if (/carton|^packs?$/i.test(String(s.unit || ''))) cartons7++; // (sold in packs/cartons: the stores whose customers restock from them)
                 if (s.productName) items7.set(s.productName, (items7.get(s.productName) || 0) + 1);
             }
             if (s.productId !== undefined && s.productId !== null) {
@@ -255,6 +256,7 @@
             canRequestTransfer: role === 'Wholesaler' || role === 'Retailer',
             lowReceipts: count7 >= 5 && receipts7 * 4 < count7,
             lowTransfers: canTransfer && count7 >= 5 && transfers7 * 4 < count7,
+            cartonSeller: count7 > 0 && cartons7 / count7 >= 0.3, // (3 in 10 of this week's sales or more were packs/cartons)
             monthTime: dom >= 14 && dom <= 16 || dom >= lastDayOfMonth - 2,
             monthStart: dom <= 2,
             isMonday: now.getDay() === 1,
@@ -285,7 +287,7 @@
         // ---- Free airtime: no promises, no sales-to-reward counts. All of them get the clear beep.
         { id: 'ap-any', chime: true, cat: 'airtime', any: true, when: () => true, text: (c, r) => twin(r, ['Every sale counts toward your airtime benefits. 🎁', 'Every sale wey you record dey count. 🎁']) },
         { id: 'ap-receipts', chime: true, cat: 'airtime', when: c => c.lowReceipts, weight: c => c.tenureDays < 14 ? 2 : 1, text: (c, r) => twin(r, ['Share receipts. They count too. 🧾', 'Share receipt o. E dey count too. 🧾']) },
-        { id: 'ap-transfer', chime: true, cat: 'airtime', when: c => c.lowTransfers, weight: c => c.tenureDays < 14 ? 2 : 1, text: (c, r) => twin(r, ['Transfer items after each sale. It counts. 📦', 'Transfer items after each sale. E dey count. 📦']) },
+        { id: 'ap-transfer', chime: true, cat: 'airtime', when: c => c.lowTransfers, weight: c => c.cartonSeller ? (c.tenureDays < 14 ? 3 : 2) : 0.15,  /* mostly for stores selling packs/cartons */ text: (c, r) => twin(r, ['Transfer items after each sale. It counts. 📦', 'Transfer items after each sale. E dey count. 📦']) },
         { id: 'ap-request', chime: true, cat: 'airtime', roles: ['Wholesaler', 'Retailer'], cooldown: 4 * DAY, when: c => c.canRequestTransfer, weight: c => c.lowCount > 0 ? 2.5 : 0.8, text: (c, r) => twin(r, ['Request item transfer when you restock. 📲', 'You don restock? Request item transfer. 📲']) },
         { id: 'ap-morning', chime: true, cat: 'airtime', when: c => c.tod === 'morning', text: (c, r) => twin(r, ['Good morning! Record every sale today. ☀️', 'Morning o! Make you record every sale today. ☀️']) },
         { id: 'ap-evening', chime: true, cat: 'airtime', when: c => c.tod === 'evening', text: (c, r) => twin(r, ['Record today\'s sales before you close. 🌇', 'Before you lock shop, record all sales. 🌇']) },
@@ -340,7 +342,7 @@
         { id: 'in-slow', cat: 'insight', when: c => c.slowDay && !!c.topItem, text: (c, r) => twin(r, [`Slow day? Offer ${c.topItem} to customers. 💡`, `Market slow? Tell customers about ${c.topItem}. 💡`]) },
         { id: 'in-daily', cat: 'insight', when: c => (c.tod === 'evening' || c.tod === 'night') && c.todaySales >= 3, weight: () => 2, text: (c, r) => twin(r, [`Today: ${c.todaySales} sales, ${naira(c.todayTotal)}. Well done! 🌟`, `Today: ${c.todaySales} sales, ${naira(c.todayTotal)}. You try well! 🌟`]) },
         { id: 'in-receipts5', cat: 'insight', when: c => c.receipts7 >= 5, text: (c, r) => twin(r, [`${c.receipts7} receipts shared this week. Customers trust you. 🙌`, `${c.receipts7} receipts this week. Customers dey trust you. 🙌`]) },
-        { id: 'in-transfer', cat: 'insight', when: c => c.lowTransfers, text: (c, r) => twin(r, ['Transfer items to customers after each sale. 🚚', 'Sale done? Transfer the items to your customer. 🚚']) },
+        { id: 'in-transfer', cat: 'insight', when: c => c.lowTransfers, weight: c => c.cartonSeller ? 1.5 : 0.15,  /* mostly for stores selling packs/cartons */ text: (c, r) => twin(r, ['Transfer items to customers after each sale. 🚚', 'Sale done? Transfer the items to your customer. 🚚']) },
         { id: 'in-streak', cat: 'insight', when: c => c.streak >= 3, text: (c, r) => twin(r, [`${c.streak} days in a row. Keep the streak. 🔥`, `${c.streak} days straight! No break am o. 🔥`]) },
         { id: 'in-streak-goal', cat: 'insight', when: c => [2, 6, 13, 29].indexOf(c.streak) >= 0, weight: () => 2.5, text: (c, r) => twin(r, [`Tomorrow makes ${c.streak + 1} days in a row! 🔥`, `One more day and na ${c.streak + 1} days! 🔥`]) },
         { id: 'in-streak-risk', chime: true, cat: 'insight', when: c => c.streakRisk, weight: () => 2.5, text: (c, r) => twin(r, [`Sell once today to keep your ${c.streakBefore}-day streak. 🔥`, `Abeg sell one today. Keep your ${c.streakBefore}-day streak. 🔥`]) },

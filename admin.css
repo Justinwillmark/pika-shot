@@ -652,3 +652,32 @@ details.fold > .fold-body { padding: 0 16px 16px; }
     .vcard-body { padding: 24px 16px 20px; }
     .vcard-body.has-result .verify-form { display: none; }
 }
+
+/* ---------- Helper text on the overview cards (shown on hover or keyboard focus) ---------- */
+.kpi:hover, .kpi:focus-visible { z-index: 5; } /* (above the cards beside and below it, so its helper text is not covered) */
+.kpi-help {
+    position: absolute; left: 10px; right: 10px; top: calc(100% - 6px); z-index: 30;
+    padding: 10px 12px; border-radius: 10px; background: var(--ink); color: #fff;
+    font-size: var(--fs-sm); font-weight: 400; line-height: 1.45; text-align: left; box-shadow: var(--shadow-lg);
+    opacity: 0; visibility: hidden; transform: translateY(-4px); pointer-events: none;
+    transition: opacity 0.15s ease, transform 0.15s ease, visibility 0s linear 0.15s;
+}
+.kpi-help-go { display: block; margin-top: 6px; color: #b9c2d0; font-size: var(--fs-xs); }
+.kpi:hover .kpi-help, .kpi:focus-visible .kpi-help { opacity: 1; visibility: visible; transform: none; transition: opacity 0.15s ease 0.35s, transform 0.15s ease 0.35s, visibility 0s linear 0.35s; }
+.mini[title] { cursor: help; }
+
+/* ---------- Wholesaler or retailer rules (Users page) ---------- */
+.trules-fold { margin-bottom: 16px; }
+.trules { flex-direction: column; gap: 10px; }
+.trule { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-weight: 500; }
+.trule input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--brand); margin: 0; }
+.trule-num { display: inline-flex; align-items: center; gap: 3px; }
+.trule-num .pre { color: var(--muted); }
+.trule .num-input { width: 120px; }
+.trule:has(input[type="checkbox"]:not(:checked)) > span { color: var(--faint); }
+.select.sm { padding: 3px 26px 3px 8px; font-size: inherit; height: auto; vertical-align: baseline; }
+.pill.type { background: var(--info-soft); color: var(--info); }
+
+/* Rewards: Store owners / Salespeople, beside the badge chips */
+.rw-top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-bottom: 10px; }
+.rw-top .seg { margin: 0; }

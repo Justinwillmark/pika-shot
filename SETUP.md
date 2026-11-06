@@ -3,7 +3,7 @@
 ## Publishing
 - Quick way (as before): publish the project folder as it is.
 - Faster, harder-to-copy way: `npm install` once, then `npm run deploy`. It shrinks and scrambles the scripts into `dist/` and publishes that.
-- Every release: change `CACHE_NAME` in `serviceworker.js` (v89 -> v90 ...) so phones fetch the new files. (`npm run build` / `npm run deploy` stamp a version of their own on the published copy, a short code that changes whenever any file changes, so with those the number can never be forgotten.)
+- Every release: change `CACHE_NAME` in `serviceworker.js` (v91 -> v92 ...) so phones fetch the new files. (`npm run build` / `npm run deploy` stamp a version of their own on the published copy, a short code that changes whenever any file changes, so with those the number can never be forgotten.)
 - How a new version reaches phones by itself: see "New versions reach phones by themselves" below.
 
 ## New versions reach phones by themselves
@@ -286,6 +286,23 @@ clearing browsing data or switching phones the picture comes back from the thumb
 - It is worked out on the dashboard page from a built-in list in `admin.js` (`AREAS`); no coordinates are sent to any outside service.
 - The location is the latest one saved: a person who logs in on another phone, or after logging out, saves a fresh one. Check "GPS saved on" against "Joined" to see if it is from sign-up.
 - Phone location without GPS (cell towers and Wi-Fi) can be a few kilometres out: look at the accuracy column.
+
+## Dashboard: store owners, with their salespeople counted in
+- **Store owners and salespeople only.** Every account that is not a salesperson is a store owner (the account type "Wholesaler" is shown as **Store owner** in the app's Profile too).
+- **A salesperson's activity counts for the store owner they work for**: their sales, scans, calls, WhatsApp invites and transfers (`salesperson_links` says who works for whom; the dashboard reads it). The overview, Rewards, Top performers and Slipping away are about store owners. Salespeople are listed only when picked in the Users page's Type box (**Salespeople** or **Everyone**); then each one shows their own numbers.
+- **Rewards for salespeople too**: the Rewards list has a **Store owners / Salespeople** switch. Salespeople are ranked on their own sales and transfers, with the same points, limits and badges (a salesperson does not accept transfers); each row says who they work for, and Export CSV gives `pikashot_rewards_salespeople.csv` (with "Works for" and WhatsApp invites).
+- **A store owner's sheet** (the panel on the right) shows how many salespeople they have, a table of each one's sales in the days picked, the last sale, the profit and the stock worth. Its recent activity says "by Sola" for what a salesperson did.
+- **Helper text on the overview cards**: hover over a card (or move to it with the keyboard) and a short note says what it shows and how it is worked out. The small numbers under "More numbers" have the same kind of note.
+- **Wholesaler or retailer, by your rules** (Users page, top). A store owner is a Wholesaler when they meet any one (or all, as you choose) of the ticked rules, and a Retailer otherwise: sells at least ₦X a day on average in the days picked at the top; at least X% of units sold are packs/cartons; stock worth at least ₦X; at least X salespeople. The rules are saved online (`admin_settings/dashboard`, `typeRules`) and on the device; the label shows on the Users page, the store owner's sheet, Insights ("Who sells") and the CSV. With no rule ticked everyone is just "Store owner".
+- **New data the app sends** (from this release on; older records simply do not have it):
+  - each sale's cost price (`cost`) and, for a salesperson's sale, who recorded it (`recordedBy`) in `sales_logs`: the dashboard works out **profit** from sales that have a cost price;
+  - a tap on **WhatsApp invite** during a transfer, with the number typed: kept in `call_logs` with `kind: 'wa_invite'` (same rules as calls, so nothing to publish) and shown on the Rewards page (**WhatsApp invites**: who, how many, the numbers, which salesperson sent each, and "Joined" when that number has since signed up; Export CSV);
+  - a stock summary on the store owner's account (`users/{phone}.stockSummary`: products, worth at cost price, worth at selling price, when). The app sends it about 20 seconds after something changes, at most every 3 hours, and only when it changed (`_scheduleStockSummary` in `app.js`), so it costs almost no writes.
+- **The users CSV** (`pikashot_users.csv`) has more to judge a business by (for example credit scoring): account and type by your rules, who a salesperson works for, months on PikaShot, first activity, last active, last sale, number of salespeople; for the days picked: days active, days with a sale and their share, number of sales, sales value, average sale, average a day, best day, change against the period before, units, packs/cartons share, profit and margin, credit sales and what was still owed, discounts, sales by salespeople, transfers sent and accepted (count and value), WhatsApp invites, scans, calls; the stock (products, worth at cost and at selling price, when it was sent); and since the start date: days active, days with a sale, sales, sales value, profit and credit. The GPS columns are at the end as before.
+
+## App: no products yet, and the transfer reminder
+- **No products yet** (a store owner's My products page with nothing on it): a dotted teal arrow moves from under "No products yet…" to the + button, and the button has a soft pulsing ring, for as long as the list is empty (`_setAddArrow` in `app.js`, `.add-arrow` in `style.css`). It goes as soon as there is a product, and with the page. Salespeople do not see it (they do not add products).
+- **"Transfer items after each sale"** (the airtime and insight messages) is now mostly for stores selling packs/cartons: when 3 in 10 or more of the week's sales were packs/cartons it comes up often; otherwise rarely (`cartonSeller` in `nudges.js`).
 
 ## Known limits (be honest with yourself about these)
 - Identity is phone + PIN with an anonymous Firebase sign-in, so Firestore cannot tell two people apart. Anyone who can reach the
