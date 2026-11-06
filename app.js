@@ -5307,6 +5307,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.showModal('receipt-modal');
             const scroller = document.getElementById('receipt-scroll');
             if (scroller) scroller.scrollTop = 0;
+            this._peekScroll('receipt-modal');
         },
 
         // Draws the receipt straight onto a canvas for sharing. Text is measured and drawn with the same font on the
@@ -6345,6 +6346,51 @@ document.addEventListener('DOMContentLoaded', () => {
             this.state.scannedLogData = logData;
             this.renderIncomingTransfer(logData, currentUserRole);
             this.showModal('incoming-transfer-modal');
+            this._peekScroll('incoming-transfer-modal');
+        },
+
+        // A receipt too long for the screen (the total is below): it glides down to the total, rests, glides back up, rests, and again,
+        // until the screen is touched (or a key or the mouse wheel is used), or the box closes. Nothing moves for short receipts,
+        // or when the phone asks for less motion.
+        _peekScroll(modalId) {
+            if (this._stopPeek) this._stopPeek();
+            const modal = document.getElementById(modalId);
+            const scroller = modal && modal.querySelector('.receipt-scroll');
+            if (!scroller || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) return;
+            let stopped = false, raf = 0, timer = 0;
+            const events = ['pointerdown', 'touchstart', 'wheel', 'keydown'];
+            const stop = () => {
+                if (stopped) return;
+                stopped = true;
+                cancelAnimationFrame(raf); clearTimeout(timer);
+                events.forEach(ev => document.removeEventListener(ev, stop, true));
+                if (this._stopPeek === stop) this._stopPeek = null;
+            };
+            this._stopPeek = stop;
+            events.forEach(ev => document.addEventListener(ev, stop, { capture: true, passive: true }));
+            const gone = () => modal.style.display === 'none' || this.elements.modalContainer.style.display === 'none';
+            const ease = (t) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
+            const glide = (to, then) => {
+                const from = scroller.scrollTop, d = to - from;
+                const dur = Math.min(2600, Math.max(900, Math.abs(d) * 4)); // (smooth: slower for a longer way)
+                const t0 = performance.now();
+                const step = (now) => {
+                    if (stopped) return;
+                    if (gone()) { stop(); return; }
+                    const k = Math.min(1, (now - t0) / dur);
+                    scroller.scrollTop = from + d * ease(k);
+                    if (k < 1) raf = requestAnimationFrame(step); else timer = setTimeout(then, 1000);
+                };
+                raf = requestAnimationFrame(step);
+            };
+            const loop = () => {
+                if (stopped) return;
+                if (gone()) { stop(); return; }
+                const max = scroller.scrollHeight - scroller.clientHeight;
+                if (max < 8) { stop(); return; } // (it all fits: the total is in view)
+                glide(max, () => glide(0, () => { timer = setTimeout(loop, 500); }));
+            };
+            timer = setTimeout(loop, 800); // (the top is seen first)
         },
 
         // The accept popup is the sender's receipt: same paper, same lines, plus a small picture per product.
@@ -7896,7 +7942,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 .replace(/₦\s?([\d,]+(?:\.\d+)?)\s?k\b/gi, '$1 thousand naira')
                 .replace(/₦\s?([\d,]+(?:\.\d+)?)/g, '$1 naira')
                 .replace(/\bWeldone\b/gi, 'Well done')
-                .replace(/\bdi madam\b/gi, 'dee madam')
+                // Pidgin words the phone's voice would spell out or say the English way: written as they are said
+                .replace(/\be\b(?=\s+(dey|go|don|no|fit|be|get)\b)/gi, 'eh') // ("E dey count", "E go better": before "dey" is changed below)
+                .replace(/\bna\b/gi, 'nah')
+                .replace(/\bdey\b/gi, 'day')
+                .replace(/\bwey\b/gi, 'way')
+                .replace(/\bam\b/gi, 'ahm')
+                .replace(/\bo\b(?=\s*([.,!?]|$))/gi, 'oh') // ("Well done o.", "Morning o!")
+                .replace(/\boya\b/gi, 'oh yah')
+                .replace(/\bwetin\b/gi, 'weh tin')
+                .replace(/\babeg\b/gi, 'ah beg')
+                .replace(/\bdi\b/gi, 'dee')
                 .replace(/\s+/g, ' ')
                 .trim();
         },
