@@ -6617,7 +6617,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const arrivedAt = this._serverNow(); // (the online clock: "today" is the same day on every phone)
             let itemNo = 0;
             const touched = [];
-            const converted = []; // ("3 Indomie cartons became 150 packets.": said in the confetti box)
 
             const cartonPlan = log.cartonPlan || {};
             for (const [itemIndex, item] of log.items.entries()) {
@@ -6632,11 +6631,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Cartons turned into this product's own unit (the receiver said how many are in 1 carton): 3 cartons x 50 = 150 packets,
                 // and one carton's cost shared out over what is inside it
                 // Cartons for a product kept here in a smaller unit. Its number per carton already known (answered once before):
-                // converted by themselves, nothing to ask (3 cartons x 50 = 150 packets; the confetti box says so)
+                // converted by themselves, nothing to ask (3 cartons x 50 = 150 packets)
                 const intoSmaller = !!existingProduct && this._isCartonUnit(item.unit) && !!existingProduct.unit && !this._isCartonUnit(existingProduct.unit);
                 const knownPer = intoSmaller && Number(existingProduct.perCarton) > 0 ? Math.round(Number(existingProduct.perCarton)) : 0;
                 const perCarton = existingProduct && Number(cartonPlan[itemIndex]) > 0 ? Number(cartonPlan[itemIndex]) : knownPer;
-                if (perCarton && knownPer && !(Number(cartonPlan[itemIndex]) > 0)) converted.push(`${this.formatNumber(item.quantity)} ${existingProduct.name} ${Number(item.quantity) === 1 ? 'carton' : 'cartons'} became ${this.formatNumber(item.quantity * perCarton)} ${this._unitLabel(existingProduct.unit).toLowerCase()}.`);
                 // Not known yet: they wait beside the product ("Count cartons!"), never mixed into its packets (the stock stays true),
                 // until they are counted (Check the items, or its Edit box)
                 const cartonsLater = !perCarton && !isSalesperson && intoSmaller;
@@ -6812,12 +6810,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const airtime = 'Earn airtime points each time you record a sale for these items. T&C apply.';
             this.showCelebration(toCheck.length ? {
                 icon: '📦', title: 'Items added', headline: log.senderStore ? `From ${log.senderStore}` : 'Transfer accepted',
-                messages: [toCheck.length === 1 ? '1 item needs you. It takes a minute.' : `${toCheck.length} items need you. It takes a minute.`, ...converted.slice(0, 2), airtime],
+                messages: ['The items have been added to your products. Add your prices now.', airtime],
                 action: { label: 'Check the items', run: () => this._checkItems(toCheck) },
                 later: 'Later'
             } : {
                 icon: '📦', title: 'Items added', headline: log.senderStore ? `From ${log.senderStore}` : 'Transfer accepted',
-                messages: ['Your new items are in New.', ...converted.slice(0, 2), airtime]
+                messages: ['The items have been added to your products.', airtime]
             });
         },
 
