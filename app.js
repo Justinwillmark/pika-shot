@@ -2119,6 +2119,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 setTimeout(() => this._presentIncomingTransfer(logData, attempt + 1), 2000);
                 return;
             }
+            this._playNudgeChime(true); // (the clear double beep of an important message; not counted against the messages' own limits)
             this.handlePikaLogScanned(logData);
         },
 
@@ -3203,6 +3204,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this._setTabCount('outofstock', 'Out of stock', allProducts.filter(p => p.stock <= 0).length);
             const newOnes = allProducts.filter(p => this._isNewStock(p)).sort((a, b) => this._newSince(b) - this._newSince(a)); // (the latest received first)
             this._setTabCount('new', 'New', newOnes.length);
+            this._paintNewHelp(newOnes, filterType);
             const newTab = document.getElementById('new-tab-btn');
             if (newTab) newTab.style.display = this._isSalesperson() ? 'none' : ''; // (salespeople do not set products up)
             this.elements.lowStockSettingsBtn.style.display = this._isSalesperson() ? 'none' : ''; // only the admin sets it
@@ -3432,32 +3434,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         _isCartonUnit(v) { return /carton/.test(this._unitKey(v)); },
 
-        // Cartons coming in for a product this shop keeps in a smaller unit (packets, bottles...): before the transfer is accepted,
-        // one small card for each such product: "Packets in 1 carton?". The answer is remembered on the product, so the next time
-        // the number is already there and the card is only a confirmation. "Later" keeps the cartons to one side (never mixed into the
-        // packets): the product says "Count cartons!" and the same card comes up when it is opened.
-        // Returns { itemIndex: how many in 1 carton } (-1 = later), or null when the phone's Back closed a card (nothing is accepted then).
-        async _askCartons(log, products) {
-            const plan = {};
-            const byProduct = new Map(); // product id -> the items of this transfer that go into it as cartons
-            (log.items || []).forEach((item, i) => {
-                if (!this._isCartonUnit(item.unit)) return;
-                const p = this._findReceived(products, item);
-                if (!p || !p.unit || this._isCartonUnit(p.unit)) return;
-                if (!byProduct.has(p.id)) byProduct.set(p.id, { p, items: [] });
-                byProduct.get(p.id).items.push([i, item]);
-            });
-            const due = [...byProduct.values()];
-            for (let k = 0; k < due.length; k++) {
-                const { p, items } = due[k];
-                const qty = items.reduce((a, [, item]) => a + (Number(item.quantity) || 0), 0) + (Number(p.cartonsWaiting) || 0); // (cartons left for later before are counted with these)
-                const n = await this._cartonCard(p, qty, due.length > 1 ? `${k + 1} of ${due.length}` : '');
-                if (n === null) return null; // (Back: the whole transfer waits, nothing is accepted)
-                items.forEach(([i]) => { plan[i] = n; });
-            }
-            return plan;
-        },
-
         // The card: [carton] 3 → [packet] 150, "Packets in 1 carton?" with − / +, and one big button "Add 150 packets". Resolves the number, or 0.
         async _cartonCard(product, cartons, step) {
             const unit = this._unitKey(product.unit);
@@ -3469,8 +3445,8 @@ document.addEventListener('DOMContentLoaded', () => {
             // are separate lines (above and below), so it never reads as "how many in 3 cartons".
             const cartonsText = `${this.formatNumber(cartons)} ${cartons === 1 ? 'carton' : 'cartons'}`;
             box.innerHTML = `<div class="ctn">
-                    ${step ? `<span class="ctn-count">${this._esc(step)}</span>` : ''}
-                    <p class="ctn-got">You got <b>${cartonsText}</b></p>
+                    ${this._checkHead(product, step)}
+                    <p class="ctn-got">You accepted <b>${cartonsText}</b></p>
                     <div class="ctn-row">
                         <span class="ctn-unit">${this._unitIcon('cartons')}<b>1</b><small>carton</small></span>
                         <span class="ctn-sign">=</span>
@@ -3518,7 +3494,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const choice = await answer;
             const n = read();
             okBtn.disabled = false;
-            box.innerHTML = ''; box.hidden = true;
+            box.innerHTML = ''; box.hidden = true; this._freePics();
             document.querySelector('#dialog-layer .dialog-card').classList.remove('dialog-wiggle');
             later.classList.remove('btn-later');
             if (choice === 'later') return -1;
@@ -4447,7 +4423,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
             this.navigateTo('products-view');
             await this.renderProducts();
-            this.showToast(!before && this.state.productCount === 1 ? 'Saved. Tap Record sale when you sell it.' : 'Product saved.');
+            if (!before && this.state.productCount === 1 && this._firstTime('win')) { // (one first-time celebration only: whichever comes first)
+                this.showCelebration({ icon: '🎉', title: 'Well done o!', headline: 'Your first product is saved', messages: ['Keep going. Tap Record sale when you sell it.'], speak: 'Well done o. Keep going.' });
+            } else this.showToast(!before && this.state.productCount === 1 ? 'Saved. Tap Record sale when you sell it.' : 'Product saved.');
         },
 
         // Opening a product with cartons waiting ("Count cartons!"): the carton card comes first. Add puts them into the stock
@@ -4929,6 +4907,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (this.state.currentView === 'all-sales-view') await this.renderAllSales();
                     } else {
                         this.navigateTo('home-view');
+                        if ((await DB.getAllSales()).length === 1 && this._firstTime('win')) { // (not when the first product already had one)
+                            this.showCelebration({ icon: '🎉', title: 'Well done o!', headline: 'Your first sale is recorded', messages: ['Keep going.'], speak: 'Well done o. Keep going.' });
+                        }
                     }
                 }
             } catch (error) {
@@ -6103,16 +6084,27 @@ document.addEventListener('DOMContentLoaded', () => {
             const okay = document.createElement('button');
             okay.type = 'button';
             okay.className = 'btn btn-primary';
-            okay.textContent = 'Okay';
-            okay.addEventListener('click', () => {
+            okay.textContent = (opts.action && opts.action.label) || 'Okay';
+            const close = (then) => {
                 overlay.classList.remove('show');
                 setTimeout(() => {
                     overlay.style.display = 'none';
                     overlay.innerHTML = '';
                     this._showNextCelebration();
+                    if (then) then();
                 }, 220);
-            });
+            };
+            okay.addEventListener('click', () => close(opts.action && opts.action.run));
             card.appendChild(okay);
+            if (opts.later) { // (a quiet second choice under the main button)
+                const later = document.createElement('button');
+                later.type = 'button';
+                later.className = 'celebration-later';
+                later.textContent = opts.later;
+                later.addEventListener('click', () => close(opts.onLater));
+                card.appendChild(later);
+            }
+            if (opts.speak) this._sayAloud(opts.speak);
             overlay.appendChild(card);
 
             overlay.style.display = 'flex';
@@ -6518,14 +6510,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const addedBefore = async () => { this.hideModal(); this.state.scannedLogData = null; say('These items are already in your products.', 'Already added'); };
             if (log.id && await DB.getMeta('applied:' + log.id)) { await addedBefore(); return; }
 
-            // Cartons for a product kept here in a smaller unit: "Packets in 1 carton?" first (nothing is accepted yet, so backing out changes nothing)
-            if (!isSalesperson && !log.cartonPlan) {
-                const plan = await this._askCartons(log, await DB.getAllProducts());
-                if (this.state.scannedLogData !== log) return; // (the transfer box was closed meanwhile)
-                if (!plan) { this.showToast('Not accepted yet. Tap Accept when you are ready.'); return; } // (Back on a card: the transfer is still here, untouched)
-                log.cartonPlan = plan;
-            }
-
             // Only the first person to accept gets the products
             this.showLoader();
             let claim;
@@ -6550,6 +6534,7 @@ document.addEventListener('DOMContentLoaded', () => {
             let updatedProductsForFirebase = {};
             const arrivedAt = this._serverNow(); // (the online clock: "today" is the same day on every phone)
             let itemNo = 0;
+            const touched = [];
 
             const cartonPlan = log.cartonPlan || {};
             for (const [itemIndex, item] of log.items.entries()) {
@@ -6564,7 +6549,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Cartons turned into this product's own unit (the receiver said how many are in 1 carton): 3 cartons x 50 = 150 packets,
                 // and one carton's cost shared out over what is inside it
                 const perCarton = existingProduct && Number(cartonPlan[itemIndex]) > 0 ? Number(cartonPlan[itemIndex]) : 0;
-                // Cartons for a product kept here in a smaller unit, not counted now ("Later"): they wait beside the product, never mixed
+                // Cartons for a product kept here in a smaller unit: they wait beside the product ("Count cartons!"), never mixed
                 // into its packets (the stock stays true); "Count cartons!" shows until they are counted in its Edit box
                 const cartonsLater = !perCarton && !isSalesperson && !!existingProduct && this._isCartonUnit(item.unit)
                     && !!existingProduct.unit && !this._isCartonUnit(existingProduct.unit);
@@ -6647,6 +6632,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     };
                     allProducts.push(finalProduct); // so a repeated barcode/name inside the same transfer is merged too
                 }
+                if (!touched.includes(finalProduct.id)) touched.push(finalProduct.id); // (the items "Check items" goes through)
                 if (!isSalesperson) finalProduct.arrivedAt = arrivedAt; // (kept: the "New stock today!" label lasts until midnight)
                 if (!isSalesperson) finalProduct.newSince = arrivedAt - itemNo++; // "New stock!" until the owner saves it (the New tab lists the latest first: the transfer's first item highest)
                 if (existingProduct) {
@@ -6723,16 +6709,209 @@ document.addEventListener('DOMContentLoaded', () => {
             this._nudgeAct('transfer');
             this._receiptNudgeStart(log); // 4 seconds from now a message in the Profile card offers the receipt (a tap downloads it)
             await this.renderProducts();
-            this.navigateTo('products-view');
-            this.showCelebration({
-                icon: '📦',
-                title: 'Items added',
-                headline: log.senderStore ? `From ${log.senderStore}` : 'Transfer accepted',
-                messages: [
-                    'The items have been added to your products. Add your prices now.',
-                    'Earn airtime points each time you record a sale for these items. T&C apply.'
-                ]
+            if (isSalesperson) {
+                this.navigateTo('products-view');
+                this.showCelebration({ icon: '📦', title: 'Items added', headline: log.senderStore ? `From ${log.senderStore}` : 'Transfer accepted',
+                    messages: ['The items have been added to your products.', 'Earn airtime points each time you record a sale for these items. T&C apply.'] });
+                return;
+            }
+            // The owner lands on New. "Check items" walks through the new items that need something (Later leaves them in New);
+            // when none does, the box just says where they are
+            this._showProductsTab('new');
+            const toCheck = [];
+            for (const id of touched) { const p = await DB.getProduct(id); if (p && this._needsCheck(p)) toCheck.push(id); }
+            const airtime = 'Earn airtime points each time you record a sale for these items. T&C apply.';
+            this.showCelebration(toCheck.length ? {
+                icon: '📦', title: 'Items added', headline: log.senderStore ? `From ${log.senderStore}` : 'Transfer accepted',
+                messages: [toCheck.length === 1 ? '1 item needs you. It takes a minute.' : `${toCheck.length} items need you. It takes a minute.`, airtime],
+                action: { label: 'Check items', run: () => this._checkItems(toCheck) },
+                later: 'Later'
+            } : {
+                icon: '📦', title: 'Items added', headline: log.senderStore ? `From ${log.senderStore}` : 'Transfer accepted',
+                messages: ['Your new items are in New.', airtime]
             });
+        },
+
+        // A new item that needs its owner: cartons to count, a unit or cost to choose, or its own selling price.
+        // (Items that need nothing are not in Check items: they wait in New, as before.)
+        _needsCheck(p) {
+            if (!p || p.deleted || !this._isNewStock(p)) return false;
+            return Number(p.cartonsWaiting) > 0
+                || (!!p.unitToConfirm && this._unitKey(p.unitToConfirm) !== this._unitKey(p.unit))
+                || (Number(p.costToConfirm) > 0 && Number(p.costToConfirm) !== Number(p.cost))
+                || this._needsSellingPrice(p) || !(Number(p.price) > 0);
+        },
+
+        // While New has items that need the owner: a red dot on the Products button, and (on the New tab) one button that walks through them
+        _paintNewHelp(newOnes, filterType) {
+            const due = newOnes.filter(p => this._needsCheck(p)); // (items that need nothing just wait in New: no dot, not counted)
+            const nav = document.querySelector('.nav-btn[data-view="products-view"]');
+            if (nav) nav.classList.toggle('has-dot', due.length > 0);
+            let bar = document.getElementById('check-items-bar');
+            if (!bar) {
+                bar = document.createElement('button');
+                bar.type = 'button';
+                bar.id = 'check-items-bar';
+                bar.className = 'check-items-bar';
+                bar.addEventListener('click', async () => this._checkItems((await DB.getAllProducts()).filter(p => this._needsCheck(p)).sort((a, b) => this._newSince(b) - this._newSince(a)).map(p => p.id)));
+                this.elements.productGrid.before(bar);
+            }
+            const show = filterType === 'new' && due.length > 0;
+            bar.hidden = !show;
+            if (show) bar.textContent = due.length === 1 ? 'Check 1 item' : `Check ${due.length} items`;
+        },
+
+        // My products on one of its tabs (New after a transfer), whether or not it is already open
+        _showProductsTab(tab) {
+            if (this.state.currentView === 'products-view') {
+                this.state.productFilter = tab;
+                this.elements.productSearchInput.value = '';
+                this.elements.productFilterTabs.forEach(btn => btn.classList.toggle('active', btn.dataset.filter === tab));
+                this.renderProducts();
+            } else {
+                this.state.openProductsOn = tab;
+                this.navigateTo('products-view');
+            }
+        },
+
+        // ---- Check items: after a transfer, one small card at a time for each new item, with its picture, asking only what is missing:
+        // the cartons to count, which unit, a new cost, the selling price. Most answers are already there, so it is mostly "Next".
+        // Later leaves that item in New (with its label); Back stops (what is left stays in New); an item with everything answered leaves New.
+        async _checkItems(ids) {
+            if (this._isSalesperson() || this._checking) return;
+            this._checking = true;
+            try {
+                const list = [];
+                for (const id of ids || []) { const p = await DB.getProduct(id); if (this._needsCheck(p)) list.push(p); }
+                let left = 0;
+                for (let i = 0; i < list.length; i++) {
+                    const r = await this._checkItem(list[i], list.length > 1 ? `${i + 1} of ${list.length}` : '');
+                    if (r === null) { left += list.length - i; break; }
+                    if (r === 'later') left++;
+                }
+                const stillNew = (await DB.getAllProducts()).filter(p => this._isNewStock(p)).length;
+                this._showProductsTab(stillNew ? 'new' : 'all');
+                if (list.length) this.showToast(left ? `${left} ${left === 1 ? 'item still needs' : 'items still need'} you in New.` : 'All done ✓');
+            } finally { this._checking = false; }
+        },
+
+        // One item: its questions in order. Resolves 'done', 'later' or null (Back). What was answered is saved either way.
+        async _checkItem(item, step) {
+            const product = (await DB.getProduct(item.id)) || item;
+            const only = new Set();
+            const finish = async (result) => {
+                if (result === 'done') { product.newSince = null; only.add('newSince'); } // (reviewed: it leaves New)
+                if (only.size) await DB.saveProduct(product, { only: [...only] });
+                return result;
+            };
+            // 1. cartons waiting: "1 carton = ? packets"
+            if (Number(product.cartonsWaiting) > 0) {
+                const per = await this._cartonCard(product, Number(product.cartonsWaiting), step);
+                if (per === null) return finish(null);
+                if (per < 0) return finish('later');
+                await this._countCartons(product, per); // (saved there; it may leave a new cost to check)
+            }
+            // 2. it came in a different unit: which one is it?
+            if (product.unitToConfirm && this._unitKey(product.unitToConfirm) !== this._unitKey(product.unit)) {
+                const unit = await this._checkChoice(product, step, 'unit');
+                if (unit === null || unit === 'later') return finish(unit === null ? null : 'later');
+                product.unit = unit; product.unitToConfirm = null; only.add('unit'); only.add('unitToConfirm');
+            }
+            // 3. it came at a different cost: which is right now?
+            if (Number(product.costToConfirm) > 0 && Number(product.costToConfirm) !== Number(product.cost)) {
+                const cost = await this._checkChoice(product, step, 'cost');
+                if (cost === null || cost === 'later') return finish(cost === null ? null : 'later');
+                product.cost = cost; product.costToConfirm = null; only.add('cost'); only.add('costToConfirm');
+            }
+            // 4. its selling price (still the sender's, or none)
+            if (this._needsSellingPrice(product) || !(Number(product.price) > 0)) {
+                const price = await this._checkPrice(product, step);
+                if (price === null || price === 'later') return finish(price === null ? null : 'later');
+                product.price = price; product.needsSetup = null; only.add('price'); only.add('needsSetup');
+            }
+            return finish('done');
+        },
+
+        // The top of every card: "1 of 3", then the product's picture (or the app's picture when it has none)
+        _checkHead(product, step) {
+            let src = 'icons/icon-192.png';
+            if (product.image instanceof Blob) { src = URL.createObjectURL(product.image); (this._picUrls = this._picUrls || []).push(src); }
+            else if (this._safeImageUrl(product.thumb)) src = this._safeImageUrl(product.thumb);
+            return `${step ? `<span class="ctn-count">${this._esc(step)}</span>` : ''}<img class="chk-pic" src="${this._esc(src)}" alt="">`;
+        },
+        _freePics() { (this._picUrls || []).forEach(u => URL.revokeObjectURL(u)); this._picUrls = []; },
+
+        // Two big choices (one already picked), then Next: which unit it is counted in, or which cost is right now
+        async _checkChoice(product, step, kind) {
+            const one = (u) => this._unitOne(u).toLowerCase();
+            const choices = kind === 'unit'
+                ? [{ v: product.unit, html: `${this._unitIcon(product.unit)}<b>${this._esc(this._unitLabel(product.unit))}</b>` },
+                   { v: product.unitToConfirm, html: `${this._unitIcon(product.unitToConfirm)}<b>${this._esc(this._unitLabel(product.unitToConfirm))}</b><small>new</small>` }]
+                : [{ v: Number(product.cost), html: `<b>₦${this.formatNumber(product.cost)}</b><small>before</small>` },
+                   { v: Number(product.costToConfirm), html: `<b>₦${this.formatNumber(product.costToConfirm)}</b><small>new</small>` }];
+            let picked = kind === 'unit' ? 0 : 1; // (your own unit; the new cost)
+            const question = kind === 'unit' ? 'How do you count it?' : `What did 1 ${this._esc(one(product.unit))} cost you?`;
+            const box = document.getElementById('dialog-fields');
+            box.innerHTML = `<div class="ctn">${this._checkHead(product, step)}
+                <p class="chk-q">${question}</p>
+                <div class="chk-choices">${choices.map((c, i) => `<button type="button" class="chk-choice${i === picked ? ' on' : ''}" data-i="${i}">${c.html}</button>`).join('')}</div></div>`;
+            box.hidden = false;
+            box.querySelectorAll('.chk-choice').forEach(b => b.addEventListener('click', () => {
+                picked = Number(b.dataset.i);
+                box.querySelectorAll('.chk-choice').forEach(x => x.classList.toggle('on', x === b));
+            }));
+            const answer = await this._checkDialog(product.name, 'Next');
+            box.innerHTML = ''; box.hidden = true; this._freePics();
+            if (answer === 'later') return 'later';
+            return answer === true ? choices[picked].v : null;
+        },
+
+        // The selling price: filled in already (the sender's price); it cannot be below the cost. Shows what is made on each one.
+        async _checkPrice(product, step) {
+            const one = this._unitOne(product.unit).toLowerCase();
+            const cost = Number(product.cost) > 0 ? Number(product.cost) : 0;
+            const box = document.getElementById('dialog-fields');
+            const okBtn = document.getElementById('dialog-ok');
+            box.innerHTML = `<div class="ctn">${this._checkHead(product, step)}
+                <p class="chk-q">Your selling price for 1 ${this._esc(one)}?</p>
+                <div class="form-group chk-field">
+                    <label for="chk-price">Selling price (₦)</label>
+                    <input id="chk-price" type="text" inputmode="numeric" autocomplete="off" value="${Number(product.price) > 0 ? this.formatNumber(product.price) : ''}">
+                </div>
+                <p class="chk-note" id="chk-note"></p></div>`;
+            box.hidden = false;
+            const input = box.querySelector('#chk-price'), note = box.querySelector('#chk-note');
+            const read = () => { const n = parseInt(String(input.value).replace(/\D/g, ''), 10); return n > 0 ? n : 0; };
+            const paint = () => {
+                const n = read(), low = !!n && cost > 0 && n < cost;
+                note.className = `chk-note${low ? ' bad' : n && cost && n > cost ? ' good' : ''}`;
+                note.textContent = !n ? (cost ? `Your cost: ₦${this.formatNumber(cost)}` : '')
+                    : low ? `It must be ₦${this.formatNumber(cost)} or more (your cost).`
+                    : !cost ? '' : n === cost ? `Same as your cost. You make nothing on each ${one}.`
+                    : `You make ₦${this.formatNumber(n - cost)} on each ${one}.`;
+                okBtn.disabled = !n || low;
+            };
+            input.addEventListener('input', () => { const n = read(); input.value = n ? this.formatNumber(n) : ''; paint(); });
+            input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !okBtn.disabled) { e.preventDefault(); okBtn.click(); } });
+            const answering = this._checkDialog(product.name, 'Next');
+            paint();
+            const answer = await answering;
+            const n = read();
+            okBtn.disabled = false;
+            box.innerHTML = ''; box.hidden = true; this._freePics();
+            if (answer === 'later') return 'later';
+            return answer === true && n ? n : null;
+        },
+
+        // The card itself: Next (or the given word), and a grey Later. A tap outside keeps it open; Back resolves null.
+        async _checkDialog(title, ok) {
+            const later = document.getElementById('dialog-cancel');
+            const answer = this._dialog({ title, text: '', ok, cancel: 'Later', keepFields: true, outside: false, cancelValue: 'later' });
+            later.classList.add('btn-later');
+            const result = await answer;
+            later.classList.remove('btn-later');
+            document.querySelector('#dialog-layer .dialog-card').classList.remove('dialog-wiggle');
+            return result === 'later' ? 'later' : result === true ? true : null;
         },
 
         async renderRetailerStocks() {
@@ -7570,6 +7749,25 @@ document.addEventListener('DOMContentLoaded', () => {
         // chosen: English (Nigeria) first, then other West and East African English, then British, then any English. Each message is said
         // once (the last one said is kept per person); the speaker button on the right of "Assistant" turns it off and on, and turning it on says
         // the current message again. Phones only allow sound after a tap: opening the profile is one.
+        // Once only, for this account on this phone: true the first time it is asked about
+        _firstTime(kind) {
+            const key = `pika_first_${kind}_${this.state.user && this.state.user.phone}`;
+            try { if (localStorage.getItem(key)) return false; localStorage.setItem(key, '1'); return true; } catch (e) { return false; }
+        },
+        // A few words said aloud in the phone's own voice (when the voice is on: the speaker on the Assistant card)
+        _sayAloud(text) {
+            if (!('speechSynthesis' in window) || !this._voiceOn()) return;
+            try {
+                const synth = window.speechSynthesis;
+                synth.cancel();
+                const u = new SpeechSynthesisUtterance(this._speechText(text));
+                const voice = this._pickVoice();
+                if (voice) { u.voice = voice; u.lang = voice.lang; } else u.lang = 'en-NG';
+                u.rate = 0.95;
+                setTimeout(() => synth.speak(u), 300); // (with the confetti, not before it)
+            } catch (e) { /* no voice: the confetti still says it */ }
+        },
+
         _voiceOn() {
             try { return localStorage.getItem('pika_voice') !== '0'; } catch (e) { return true; }
         },

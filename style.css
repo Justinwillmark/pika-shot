@@ -2098,3 +2098,27 @@ a.privacy-link-trigger { display: inline-block; padding: 8px 2px; margin: -8px 0
 /* The carton card's "Later": grey, not red (it is the safe choice) */
 .dialog-card .btn.btn-cancel.btn-later { color: var(--text-color); border-color: var(--border-color); }
 .dialog-card .btn.btn-cancel.btn-later:active { background: var(--background-color); }
+
+/* Check items (after a transfer): the item's picture on every card, two big choices, the price box (_checkItems in app.js) */
+.chk-pic { width: 72px; height: 72px; border-radius: 14px; object-fit: cover; background: var(--background-color); border: 1px solid var(--border-color); }
+.dialog-card .chk-q { margin: 0; font-size: 1rem; font-weight: 600; color: var(--text-color); }
+.chk-choices { display: flex; gap: 10px; width: 100%; }
+.chk-choice { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 12px 8px; border: 2px solid var(--border-color); border-radius: 14px; background: #fff; color: var(--text-color); font: inherit; }
+.chk-choice .unit-svg { width: 36px; height: 36px; color: var(--primary-color); }
+.chk-choice b { font-size: 1.15rem; }
+.chk-choice small { font-size: 0.75rem; color: var(--text-light); }
+.chk-choice.on { border-color: var(--primary-color); background: #e6f4f5; box-shadow: 0 0 0 1px var(--primary-color); }
+.dialog-fields .form-group.chk-field { width: 100%; margin: 8px 0 0; }
+.modal-content .form-group.chk-field > label { left: 50%; transform: translateX(-50%); }
+.dialog-fields .chk-field input { height: 54px; text-align: center; font-size: 1.35rem; font-weight: 700; border: 1.5px solid #b4bec7; border-radius: 12px; }
+.dialog-card .chk-note { margin: 0; min-height: 1.3em; font-size: 0.9rem; color: var(--text-light); }
+.dialog-card .chk-note.good { color: var(--success-color); font-weight: 600; }
+.dialog-card .chk-note.bad { color: var(--danger-color); font-weight: 600; }
+/* the confetti box's quiet second choice ("Later" under "Check items") */
+.celebration-later { display: block; margin: 10px auto 0; padding: 8px 16px; background: none; border: none; color: var(--text-light); font: inherit; font-weight: 600; text-decoration: underline; }
+/* New tab: one button that walks through the new items */
+.check-items-bar { display: block; width: calc(100% - 32px); margin: 4px 16px 10px; padding: 12px; border: none; border-radius: 12px; background: var(--primary-color); color: #fff; font: inherit; font-weight: 700; font-size: 1rem; }
+.check-items-bar[hidden] { display: none; }
+/* Products button: a red dot while New has items */
+.nav-btn[data-view="products-view"] { position: relative; }
+.nav-btn.has-dot::after { content: ''; position: absolute; top: 6px; left: calc(50% + 7px); width: 9px; height: 9px; border-radius: 50%; background: var(--danger-color); border: 2px solid #fff; }
