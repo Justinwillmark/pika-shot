@@ -3259,7 +3259,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else if (filterType === 'outofstock') {
                     this.elements.productGrid.innerHTML = '<p class="empty-state">No products currently out of stock</p>';
                 } else if (filterType === 'new') {
-                    this.elements.productGrid.innerHTML = '<p class="empty-state">No new stock. Items you accept from a transfer show here until you save them.</p>';
+                    this.elements.productGrid.innerHTML = '<p class="empty-state">Unresolved items you accept from a transfer show here until you save them.</p>';
                 } else if (filterType !== 'all') {
                     this.elements.productGrid.innerHTML = '<p class="empty-state">No products in this filter.</p>';
                 } else {
