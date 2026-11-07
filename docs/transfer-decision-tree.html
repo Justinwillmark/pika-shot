@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Transfer decision tree</title>
+<style>
+  :root {
+    --bg: #f6f8f9; --card: #ffffff; --ink: #18252b; --muted: #5d6b72; --line: #dbe3e6;
+    --teal: #008c95; --teal-soft: #e3f3f4; --amber: #b86e00; --amber-soft: #fff3df; --red: #c0262d; --red-soft: #fdeceb; --green: #1d7a3e; --green-soft: #e6f5ea;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg: #12181b; --card: #1b2327; --ink: #e8eef0; --muted: #9fb0b7; --line: #2c373c; --teal-soft: #11373a; --amber-soft: #3a2a10; --red-soft: #3c1a1b; --green-soft: #15301f; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { padding: 28px 20px 8px; max-width: 1200px; margin: 0 auto; }
+  h1 { margin: 0 0 6px; font-size: 1.6rem; }
+  header p { margin: 0; color: var(--muted); max-width: 820px; }
+  .bar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .bar a, .bar button { font: inherit; font-size: 0.85rem; padding: 7px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); color: var(--ink); text-decoration: none; cursor: pointer; }
+  .bar button.primary { background: var(--teal); border-color: var(--teal); color: #fff; }
+  main { max-width: 1200px; margin: 0 auto; padding: 8px 16px 40px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px 18px 14px; margin: 18px 0; }
+  section h2 { margin: 0 0 4px; font-size: 1.15rem; }
+  section > p.lead { margin: 0 0 12px; color: var(--muted); }
+  .chart { overflow-x: auto; padding: 6px 0; }
+  .chart svg { max-width: none !important; height: auto; }
+  .tools { display: flex; justify-content: flex-end; gap: 8px; }
+  .tools button { font: inherit; font-size: 0.8rem; padding: 5px 10px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--muted); cursor: pointer; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.88rem; margin-top: 8px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em; }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px 18px; font-size: 0.85rem; color: var(--muted); }
+  .legend span::before { content: ''; display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; background: var(--c); border: 1px solid var(--b); }
+  code { font-size: 0.85em; background: var(--bg); padding: 1px 5px; border-radius: 4px; }
+  @media print { .bar, .tools { display: none; } section { break-inside: avoid; border: none; } body { background: #fff; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>PikaShot transfers: every case, from Send to resolved in Check</h1>
+  <p>How the app works today (v113), step by step: what the sender does, what the receiving store owner sees, what happens to each item depending on its unit and price, and how each job is finished in the Check tab. Diamonds are decisions; rounded boxes are where a path starts or ends.</p>
+  <div class="bar">
+    <button class="primary" type="button" onclick="window.print()">Save the whole page as PDF</button>
+    <a href="#sender">1. Sending</a><a href="#receive">2. Receiving</a><a href="#item">3. Each item</a><a href="#price">4. Price</a><a href="#after">5. After Accept</a><a href="#check">6. Resolving in Check</a><a href="#tables">Tables</a>
+  </div>
+</header>
+<main>
+  <section>
+    <div class="legend">
+      <span style="--c: var(--teal-soft); --b: var(--teal)">Normal step</span>
+      <span style="--c: var(--amber-soft); --b: var(--amber)">Waits for the owner (goes to Check)</span>
+      <span style="--c: var(--red-soft); --b: var(--red)">Stopped / refused</span>
+      <span style="--c: var(--green-soft); --b: var(--green)">Done</span>
+    </div>
+  </section>
+
+  <section id="sender">
+    <div class="tools"><button type="button" data-svg="c1">Download this chart (SVG)</button></div>
+    <h2>1. Sending a transfer (store owner or their salesperson)</h2>
+    <p class="lead">A transfer is always made from sales already recorded. Items are grouped per product; each carries its name, barcode, unit, quantity, the sender's price, any discount, and credit paid/owed.</p>
+    <div class="chart" id="c1"><pre class="mermaid">
+flowchart TD
+  S0(["Sales are picked in Today's sales or All sales"]) --> S1{"Already transferred<br/>and accepted?"}
+  S1 -- Yes --> S1x["Refused: 'Some selected items have<br/>already been transferred and accepted.'"]:::stop
+  S1 -- No --> S2["Receipt and transfer → Transfer items<br/>→ type the customer's number"]
+  S2 --> S3{"The number"}
+  S3 -- "Not a Nigerian mobile" --> S3a["Red line: 'Not a Nigerian mobile number'"]:::stop
+  S3 -- "Your own number or your business" --> S3b["'You can't transfer items to yourself'<br/>or 'to your own business'"]:::stop
+  S3 -- "No working internet" --> S3c["'You're offline. Check your internet.'<br/>Send stays off; clears by itself when back online"]:::stop
+  S3 -- "A salesperson's number" --> S3d["'You can't transfer items to a salesperson.'"]:::stop
+  S3 -- "Not on PikaShot" --> S3e["Invite customer box → WhatsApp invite<br/>(the tap and number are recorded for Rewards)"]:::stop
+  S3 -- "A store on PikaShot" --> S4["Their name shows → Send"]
+  S4 --> S5["Any earlier offer of these sales that nobody accepted<br/>is withdrawn first"]
+  S5 -- "That earlier offer was already accepted" --> S5x["'Some of these sales were already transferred<br/>and accepted. Pick the others and try again.'"]:::stop
+  S5 --> S6["Sales marked 'waiting for this customer' on this phone,<br/>then the transfer goes online (or as soon as internet is back)"]
+  S6 --> S7(["Waiting for the customer to accept"]):::wait
+  C0(["A credit sale to a customer who has a PikaShot store"]) --> C1["A copy is sent to them automatically<br/>(that sale can no longer be edited)"] --> S7
+  classDef stop fill:#fdeceb,stroke:#c0262d,color:#5b1215;
+  classDef wait fill:#fff3df,stroke:#b86e00,color:#4d3000;
+  classDef done fill:#e6f5ea,stroke:#1d7a3e,color:#0f3d20;
+    </pre></div>
+  </section>
+
+  <section id="receive">
+    <div class="tools"><button type="button" data-svg="c2">Download this chart (SVG)</button></div>
+    <h2>2. Receiving and accepting</h2>
+    <p class="lead">Only store owners receive transfers. Salespeople never see them, and there are no transfer QR codes any more. <b>Busy?</b> = a box is open or the scanner is on (it waits, up to 5 minutes, then shows anyway).</p>
+    <div class="chart" id="c2"><pre class="mermaid">
+flowchart TD
+  R0(["Transfer waiting online for this number"]) --> R1{"Who, and<br/>is the app open?"}
+  R1 -- "A salesperson" --> R1a["Never shown on a salesperson's phone"]:::stop
+  R1 -- "Owner, app closed" --> R1b["Shown the next time the app is opened"]
+  R1 -- "Owner, app open" --> R2{"Busy?"}
+  R1b --> R2
+  R2 -- Yes --> R2a["Waits, then shows when free"]
+  R2a --> R3
+  R2 -- No --> R3["Clear double beep + double buzz (Android)<br/>Incoming transfer box = the sender's receipt<br/>(a long one glides to the total until touched)"]
+  R3 -- "Decline" --> R3d["Box closes. Nothing changes.<br/>It shows again next time"]:::stop
+  R3 -- "Accept (button greys out)" --> R4{"Checks"}
+  R4 -- "Not enough room in the product list" --> R4a["'This transfer brings N new items and you have room for M…'"]:::stop
+  R4 -- "Items that cannot be right / not for this store" --> R4b["Refused"]:::stop
+  R4 -- "Already added on this phone" --> R4c["'These items are already in your products.'"]:::stop
+  R4 -- OK --> R5{"Claimed online?"}
+  R5 -- "Someone else accepted it" --> R5a["'Someone else already accepted this transfer.'"]:::stop
+  R5 -- "No internet" --> R5b["'Could not accept this transfer. Check your internet…'<br/>Try again later"]:::stop
+  R5 -- Claimed --> R6[["Every item goes through chart 3"]]
+  R6 --> R7(["Saved on the phone → chart 5"]):::done
+  classDef stop fill:#fdeceb,stroke:#c0262d,color:#5b1215;
+  classDef wait fill:#fff3df,stroke:#b86e00,color:#4d3000;
+  classDef done fill:#e6f5ea,stroke:#1d7a3e,color:#0f3d20;
+    </pre></div>
+  </section>
+
+  <section id="item">
+    <div class="tools"><button type="button" data-svg="c3">Download this chart (SVG)</button></div>
+    <h2>3. What happens to each item (units)</h2>
+    <p class="lead">"Cost" here is what one cost in this transfer: the sender's price, less this line's share of any discount. "Bulk" units are Packs and Cartons; "smaller" units are Sachets, Bottles, Cans, Packets (and older Tins, Pieces).
+    <b>One of your products?</b> = the same barcode, or the carton/pack barcode remembered on it, or the same name when one of them has no barcode.
+    <b>Answered before?</b> = you once kept your own unit when this other unit came. <b>Needs you for anything?</b> = something to count, a unit question, a price to set, or a price at or below the cost.</p>
+    <div class="chart" id="c3"><pre class="mermaid">
+flowchart TD
+  I0(["Item arrives: name, barcode, unit U, quantity Q, cost per item"]) --> I1{"One of your<br/>products?"}
+  I1 -- No --> N1["NEW PRODUCT: unit U, stock Q, cost = item cost,<br/>selling price = the sender's price (marked 'Add price!'),<br/>sender's picture, 'stock visible to supplier' ON"]:::wait
+  N1 --> P0[["Price check, chart 4"]]
+  I1 -- Yes --> I2{"Its unit vs<br/>your unit"}
+  I2 -- "Same unit" --> E1["Stock + Q. Cost = item cost"]
+  I2 -- "It came in packs/cartons;<br/>you keep a smaller unit" --> I3{"Number inside<br/>known?"}
+  I3 -- "Yes (answered before)" --> E2["Converted by itself: stock + Q × number inside.<br/>Cost = item cost ÷ number inside.<br/>Any of the same kind still waiting are counted too"]
+  I3 -- "No (first time)" --> E3["Waits aside: 'Count cartons!' / 'Count packs!'<br/>Stock and cost NOT changed"]:::wait
+  I2 -- "It came in a smaller unit;<br/>you keep packs/cartons" --> E4["Waits aside: 'Count bottles!' (etc.)<br/>Stock and cost NOT changed"]:::wait
+  I2 -- "Another unit, neither one bulk<br/>(bottles for sachets), or packs for cartons" --> I4{"Answered<br/>before?"}
+  I4 -- Yes --> E5["Stock + Q. Cost = item cost"]
+  I4 -- No --> E6["Stock + Q, as it came. Cost NOT changed.<br/>'Packet or Bottle?' waits in its Edit box"]:::wait
+  E1 --> P0
+  E2 --> P0
+  E5 --> P0
+  E3 --> P0
+  E4 --> P0
+  E6 --> P0
+  P0 --> Z{"Needs you for<br/>anything?"}
+  Z -- Yes --> Z1(["Goes to the Check tab"]):::wait
+  Z -- No --> Z2(["Straight to All (not in Check)"]):::done
+  classDef stop fill:#fdeceb,stroke:#c0262d,color:#5b1215;
+  classDef wait fill:#fff3df,stroke:#b86e00,color:#4d3000;
+  classDef done fill:#e6f5ea,stroke:#1d7a3e,color:#0f3d20;
+    </pre></div>
+  </section>
+
+  <section id="price">
+    <div class="tools"><button type="button" data-svg="c4">Download this chart (SVG)</button></div>
+    <h2>4. Price check (every item, after chart 3)</h2>
+    <p class="lead">The selling price is never changed by a transfer. Only the cost moves (and only in the cases marked in chart 3).</p>
+    <div class="chart" id="c4"><pre class="mermaid">
+flowchart TD
+  Q0(["Item after chart 3"]) --> Q1{"Selling price"}
+  Q1 -- "New product (still the sender's price)" --> Q2["Label 'Add price!' → needs you (Check)"]:::wait
+  Q1 -- "An existing product with no price" --> Q2
+  Q1 -- "Price at or below the cost<br/>(the new cost caught up with it)" --> Q3["Label 'Add price!' → needs you (Check).<br/>Message (beeps, Pidgin) when cost is above price"]:::wait
+  Q1 -- "Price above the cost" --> Q4(["Price is fine"]):::done
+  classDef wait fill:#fff3df,stroke:#b86e00,color:#4d3000;
+  classDef done fill:#e6f5ea,stroke:#1d7a3e,color:#0f3d20;
+    </pre></div>
+  </section>
+
+  <section id="after">
+    <div class="tools"><button type="button" data-svg="c5">Download this chart (SVG)</button></div>
+    <h2>5. Straight after Accept</h2>
+    <div class="chart" id="c5"><pre class="mermaid">
+flowchart TD
+  A0(["All items saved on the phone"]) --> A1{"Any item<br/>needs you?"}
+  A1 -- Yes --> A1a["My products opens on the Check tab"]
+  A1 -- No --> A1b["My products opens on All"]
+  A1a --> A2{"Anything<br/>to count?"}
+  A1b --> A2
+  A2 -- Yes --> A3["Items added box (silent confetti):<br/>'The items have been added to your products. Add your prices now.'<br/>small: 'Sell them and get free airtime. T&C apply.'<br/>Buttons: Check the items · Later"]
+  A2 -- No --> A4["Items added box:<br/>'The items have been added to your products.'<br/>+ the airtime line · Okay"]
+  A3 -- "Check the items" --> A5[["Counting cards, chart 6"]]
+  A3 -- Later --> A6(["Items wait in Check"]):::wait
+  A0 --> B1["In the background (never holds the screen):<br/>the supplier sees your new stock, unless 'stock visible' is OFF for it;<br/>the product is taken off an earlier supplier's list"]
+  A0 --> B2["Receipt kept on the phone (7 days) and saved by itself<br/>when you are back on Home with nothing open:<br/>'Receipt saved to your phone ✓'"]
+  A0 --> B3["Sender's phone: the sales show 'Transferred';<br/>'Transfer accepted' box with your store and LGA"]
+  classDef wait fill:#fff3df,stroke:#b86e00,color:#4d3000;
+  classDef done fill:#e6f5ea,stroke:#1d7a3e,color:#0f3d20;
+    </pre></div>
+  </section>
+
+  <section id="check">
+    <div class="tools"><button type="button" data-svg="c6">Download this chart (SVG)</button></div>
+    <h2>6. Resolving each job in Check</h2>
+    <p class="lead">An item stays in Check until nothing is left for it. All always lists every product; Check is only the list of jobs. Each card talks (Pidgin) and has a speaker to mute it.</p>
+    <div class="chart" id="c6"><pre class="mermaid">
+flowchart TD
+  K0(["Item in Check"]) --> K1{"Waiting for"}
+  K1 -- "Packs/cartons to count<br/>(Check the items button, the item itself,<br/>the beeping message, or Count them in a sale)" --> K2["Card: 'You accepted 3 cartons · 1 carton = ? packets'<br/>(number remembered after the first time)"]
+  K2 -- "Accept 150 packets" --> K2a["Stock + 150; cost per packet = carton cost ÷ number;<br/>the number is remembered"]
+  K2 -- "Later / Back" --> K9(["Still waiting"]):::wait
+  K1 -- "Smaller units for a pack/carton product" --> K3["Card: 'You accepted 30 bottles. You keep it in cartons.<br/>1 carton = ? bottles'"]
+  K3 -- "Add 1 carton (whole ones only)" --> K3a["Stock + whole cartons; carton cost = bottle cost × number;<br/>leftover bottles stay aside"]
+  K3 -- "Leave them out" --> K3b["Taken off the list; stock not changed"]
+  K3 -- "Later / Back" --> K9
+  K1 -- "Unit question ('Packet or Bottle?')" --> K4["Open the item (it says: 'Na packet, abi bottle?')"]
+  K4 -- "Your own unit" --> K4a["Kept; remembered, never asked again for that unit"]
+  K4 -- "The new unit" --> K4b["The product switches to the new unit"]
+  K1 -- "A price ('Add price!')" --> K5["Open the item → set a selling price<br/>(it cannot be below the cost) → Save"]
+  K2a --> K6{"Anything<br/>else left?"}
+  K3a --> K6
+  K3b --> K6
+  K4a --> K7["Save"] --> K6
+  K4b --> K7
+  K5 --> K6
+  K6 -- Yes --> K9
+  K6 -- No --> K8(["Leaves Check (stays in All)"]):::done
+  K9 --> K10{"Only a price left,<br/>over 7 days?"}
+  K10 -- Yes --> K11(["Leaves Check; keeps 'Add price!' on its card;<br/>no more messages"]):::done
+  K10 -- No --> K12["Stays: red dot on Products, red line round the Check tab,<br/>a reminder message (beeps only for counting or a cost above the price)"]:::wait
+  classDef wait fill:#fff3df,stroke:#b86e00,color:#4d3000;
+  classDef done fill:#e6f5ea,stroke:#1d7a3e,color:#0f3d20;
+    </pre></div>
+  </section>
+
+  <section id="tables">
+    <h2>Quick tables</h2>
+    <h3 style="margin:14px 0 4px;font-size:1rem">Units (an item for one of your products)</h3>
+    <table>
+      <tr><th>It came in</th><th>You keep it in</th><th>Stock</th><th>Cost</th><th>Check?</th></tr>
+      <tr><td>Same unit</td><td>Same unit</td><td>+ quantity</td><td>New cost</td><td>Only if a price is needed</td></tr>
+      <tr><td>Cartons / Packs</td><td>A smaller unit, number known</td><td>+ quantity × number</td><td>Cost ÷ number</td><td>Only if a price is needed</td></tr>
+      <tr><td>Cartons / Packs</td><td>A smaller unit, first time</td><td>Unchanged (waits)</td><td>Unchanged</td><td>Yes: Count cartons! / packs!</td></tr>
+      <tr><td>A smaller unit</td><td>Cartons / Packs</td><td>Unchanged (waits)</td><td>Unchanged</td><td>Yes: Count bottles! (etc.)</td></tr>
+      <tr><td>Another unit (bottles for sachets, packs for cartons)</td><td>Answered before</td><td>+ quantity</td><td>New cost</td><td>Only if a price is needed</td></tr>
+      <tr><td>Another unit</td><td>Not answered</td><td>+ quantity, as it came</td><td>Unchanged</td><td>Yes: "Packet or Bottle?"</td></tr>
+      <tr><td>Anything</td><td>(not your product)</td><td>New product, quantity</td><td>Item cost</td><td>Yes: Add price!</td></tr>
+    </table>
+    <h3 style="margin:16px 0 4px;font-size:1rem">Labels on a product card (one at a time, most urgent first)</h3>
+    <table>
+      <tr><th>Label</th><th>When</th></tr>
+      <tr><td>Check stock!</td><td>Stock below 0</td></tr>
+      <tr><td>Count cartons! / Count packs! / Count bottles!</td><td>Something waiting to be counted</td></tr>
+      <tr><td>Add price!</td><td>Still the sender's price, or the price is at or below the cost</td></tr>
+      <tr><td>Out of stock!</td><td>0 left</td></tr>
+      <tr><td>Low stock!</td><td>Below your low-stock level</td></tr>
+    </table>
+    <h3 style="margin:16px 0 4px;font-size:1rem">Sounds</h3>
+    <table>
+      <tr><th>Event</th><th>Sound</th></tr>
+      <tr><td>A transfer arrives</td><td>Clear double beep + double buzz</td></tr>
+      <tr><td>Cartons/packs/bottles to count; cost above price</td><td>Message with a beep, in Pidgin</td></tr>
+      <tr><td>Everything else after Accept (confetti, receipt, price/unit messages)</td><td>Silent</td></tr>
+    </table>
+  </section>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script>
+  const dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  mermaid.initialize({ startOnLoad: false, theme: dark ? 'dark' : 'default', flowchart: { htmlLabels: true, curve: 'basis', nodeSpacing: 34, rankSpacing: 44, useMaxWidth: false }, securityLevel: 'strict' });
+  // Drawn at full size (readable); each chart opens centred on where it starts, and scrolls sideways
+  mermaid.run({ querySelector: '.mermaid' }).then(() => {
+    document.querySelectorAll('.chart').forEach((c) => { c.scrollLeft = Math.max(0, (c.scrollWidth - c.clientWidth) / 2); });
+  }).catch((e) => console.error(e));
+  // Each chart can be saved on its own as an SVG picture
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-svg]');
+    if (!b) return;
+    const svg = document.querySelector(`#${b.dataset.svg} svg`);
+    if (!svg) return;
+    const text = new XMLSerializer().serializeToString(svg);
+    const url = URL.createObjectURL(new Blob([text], { type: 'image/svg+xml' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = `pikashot-transfer-${b.dataset.svg}.svg`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
+</script>
+</body>
+</html>
