@@ -2145,7 +2145,7 @@ a.privacy-link-trigger { display: inline-block; padding: 8px 2px; margin: -8px 0
     content: ''; position: absolute; inset: -1.5px; border-radius: inherit; padding: 2px; pointer-events: none;
     background: conic-gradient(from var(--new-spin), rgba(208, 2, 27, 0.15) 0deg, var(--danger-color) 70deg, rgba(208, 2, 27, 0.15) 140deg, rgba(208, 2, 27, 0.15) 360deg);
     -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
-    mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude; /* (the standard name for -webkit-mask-composite: xor) */
     animation: new-spin 1.6s linear infinite;
 }
 @keyframes new-spin { to { --new-spin: 360deg; } }
