@@ -181,15 +181,18 @@
             .filter(p => !p.isSalesperson && (p.needsSetup === 'price' || p.needsSetup === 'barcode-and-price'))
             .sort((a, b) => arrived(b) - arrived(a))
             .map(p => ({ id: p.id, name: p.name }));
-        const cartonsToCount = products // (cartons or packs received but not counted yet)
-            .filter(p => !p.isSalesperson && (Number(p.cartonsWaiting) > 0 || Number(p.packsWaiting) > 0))
+        // (cartons or packs received but not counted yet; or smaller units, bottles, waiting on a product kept in cartons)
+        const looseOf = (p) => { const lw = p.looseWaiting || {}; const u = Object.keys(lw).find(k => lw[k] && Number(lw[k].n) > 0); return u ? { u, n: Number(lw[u].n) } : null; };
+        const cartonsToCount = products
+            .filter(p => !p.isSalesperson && (Number(p.cartonsWaiting) > 0 || Number(p.packsWaiting) > 0 || !!looseOf(p)))
             .map(p => Number(p.cartonsWaiting) > 0 ? { id: p.id, name: p.name, n: Number(p.cartonsWaiting), one: 'carton', many: 'cartons' }
-                : { id: p.id, name: p.name, n: Number(p.packsWaiting), one: 'pack', many: 'packs' });
+                : Number(p.packsWaiting) > 0 ? { id: p.id, name: p.name, n: Number(p.packsWaiting), one: 'pack', many: 'packs' }
+                : (l => ({ id: p.id, name: p.name, n: l.n, one: l.u.replace(/s$/, ''), many: l.u }))(looseOf(p)));
         // New items that need the owner (the same test as Check the items in the app): what each needs, so a message can say it
         const isNewItem = (p) => !p.isSalesperson && (p.newSince !== undefined ? Number(p.newSince) > 0 : Number(p.freshAt) > 0);
         const unitOf = (u) => String(u || '').toLowerCase().replace(/^tubs$/, 'tins');
         const toCheck = products.filter(isNewItem).map(p => {
-            const need = (Number(p.cartonsWaiting) > 0 || Number(p.packsWaiting) > 0) ? 'cartons'
+            const need = (Number(p.cartonsWaiting) > 0 || Number(p.packsWaiting) > 0 || !!looseOf(p)) ? 'cartons'
                 : (p.unitToConfirm && unitOf(p.unitToConfirm) !== unitOf(p.unit)) ? 'unit'
                 : (p.needsSetup === 'price' || p.needsSetup === 'barcode-and-price' || !(Number(p.price) > 0)) ? 'price'
                 : (Number(p.cost) > 0 && Number(p.cost) > Number(p.price)) ? 'over'

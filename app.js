@@ -2120,6 +2120,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             this._playNudgeChime(true); // (the clear double beep of an important message; not counted against the messages' own limits)
+            try { if (navigator.vibrate) navigator.vibrate([90, 70, 90]); } catch (e) { /* no buzz on this phone (iPhones have none for pages) */ } // (and a double buzz)
             this.handlePikaLogScanned(logData);
         },
 
@@ -3270,10 +3271,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 // One label per card: the most urgent job only. Check stock! (below 0) → Count cartons! / Count packs! → Add price!
                 // (still the sender's price, or it sells at or below its cost) → Out of stock! → Low stock!
                 const owner = !this._isSalesperson();
-                const waitingBulk = owner ? this._waitingBulk(product) : [];
+                const waitingBulk = owner ? this._waitingAll(product) : [];
                 let badge = '';
                 if (owner && product.stock < 0) badge = '<div class="out-of-stock-badge">Check stock!</div>'; // (more was sold than the app had: count it)
-                else if (waitingBulk.length) badge = `<div class="setup-badge">Count ${waitingBulk[0].kind}!</div>`; // (kept aside: a tap counts them)
+                else if (waitingBulk.length) badge = `<div class="setup-badge">Count ${waitingBulk[0].loose ? this._unitLabel(waitingBulk[0].unit).toLowerCase() : waitingBulk[0].kind}!</div>`; // (kept aside: a tap counts them)
                 else if (owner && (this._needsSellingPrice(product) || this._noProfit(product))) badge = '<div class="setup-badge">Add price!</div>';
                 else if (product.stock <= 0) badge = '<div class="out-of-stock-badge">Out of stock!</div>';
                 else if (isLow(product)) badge = '<div class="restock-badge">Low stock!</div>';
@@ -3447,6 +3448,118 @@ document.addEventListener('DOMContentLoaded', () => {
         _bulkOf(v) { const k = this._unitKey(v); return k === 'packs' || k === 'pack' ? 'packs' : /carton/.test(k) ? 'cartons' : null; },
         // What is waiting to be counted on a product: [{ kind: 'cartons', n: 3 }, { kind: 'packs', n: 2 }]
         _waitingBulk(p) { return p ? Object.keys(this.BULK).map(kind => ({ kind, n: Number(p[this.BULK[kind].wait]) || 0 })).filter(w => w.n > 0) : []; },
+        // Smaller units waiting on a product kept in packs or cartons: [{ unit: 'bottles', n: 24 }]
+        _waitingLoose(p) {
+            const lw = p && p.looseWaiting;
+            return lw ? Object.keys(lw).map(unit => ({ unit, n: Number(lw[unit] && lw[unit].n) || 0 })).filter(w => w.n > 0) : [];
+        },
+        // Everything waiting on a product, in order: packs/cartons to count, then smaller units to add
+        _waitingAll(p) { return [...this._waitingBulk(p).map(w => ({ ...w, loose: false })), ...this._waitingLoose(p).map(w => ({ ...w, loose: true }))]; },
+        _waitingWords(w) { // ("3 cartons", "24 bottles")
+            return w.loose ? `${this.formatNumber(w.n)} ${w.n === 1 ? this._unitOne(w.unit).toLowerCase() : this._unitLabel(w.unit).toLowerCase()}`
+                : `${this.formatNumber(w.n)} ${w.n === 1 ? this.BULK[w.kind].one : this.BULK[w.kind].many}`;
+        },
+        // One waiting thing: its card, then it is put in. Resolves the product as it now is, 'later', or null (Back).
+        async _resolveWaiting(product, w, step) {
+            if (!w.loose) {
+                const per = await this._cartonCard(product, w.n, step, w.kind);
+                if (per === null) return null;
+                if (per < 0) return 'later';
+                return this._countCartons(product, per, w.kind);
+            }
+            const r = await this._looseCard(product, w.unit, w.n, step);
+            if (r === null || r === 'later') return r;
+            return this._addLoose(product, w.unit, r);
+        },
+
+        // Bottles came for a product kept in cartons: "You accepted 24 bottles. You keep Coke in cartons." with "1 carton = ? bottles".
+        // Only whole cartons are added ("24 bottles = 1 carton"); what is left over stays aside. Leave them out takes them off the list.
+        // Resolves { per }, 'out', 'later' or null (Back).
+        async _looseCard(product, unit, n, step) {
+            const kind = this._bulkOf(product.unit), B = this.BULK[kind] || this.BULK.cartons;
+            const many = this._unitLabel(unit).toLowerCase(), one = this._unitOne(unit).toLowerCase();
+            const known = Number(product[B.per]) > 0 ? Math.round(Number(product[B.per])) : 0;
+            const nText = `${this.formatNumber(n)} ${n === 1 ? one : many}`;
+            const box = document.getElementById('dialog-fields');
+            const okBtn = document.getElementById('dialog-ok');
+            box.innerHTML = `<div class="ctn">
+                    ${this._checkHead(product, step)}
+                    <p class="ctn-got">You accepted <b>${nText}</b>. You keep it in ${B.many}.</p>
+                    <div class="ctn-row">
+                        <span class="ctn-unit">${this._unitIcon(kind)}<b>1</b><small>${B.one}</small></span>
+                        <span class="ctn-sign">=</span>
+                        <span class="ctn-unit">${this._unitIcon(unit)}<b id="ctn-each">?</b><small>${this._esc(many)}</small></span>
+                    </div>
+                    <div class="form-group ctn-field" ${known ? 'hidden' : ''}>
+                        <label for="ctn-n">${this._esc(this._unitLabel(unit))} in 1 ${B.one}</label>
+                        <div class="quantity-stepper">
+                            <button type="button" class="btn btn-secondary" data-ctn="-1" aria-label="Less">-</button>
+                            <input id="ctn-n" type="text" inputmode="numeric" maxlength="4" autocomplete="off" value="${known || ''}">
+                            <button type="button" class="btn btn-secondary" data-ctn="1" aria-label="More">+</button>
+                        </div>
+                    </div>
+                    <p class="ctn-total" id="ctn-total" hidden></p>
+                    ${known ? '<button type="button" class="ctn-change">Change</button>' : ''}
+                    <button type="button" class="ctn-change ctn-out">Leave them out</button>
+                </div>`;
+            box.hidden = false;
+            const input = box.querySelector('#ctn-n'), each = box.querySelector('#ctn-each'), total = box.querySelector('#ctn-total');
+            const read = () => { const v = parseInt(String(input.value).replace(/\D/g, ''), 10); return v > 0 && v <= 10000 ? v : 0; };
+            const paint = () => {
+                const per = read(), whole = per ? Math.floor(n / per) : 0, left = per ? n - whole * per : 0;
+                each.textContent = per ? this.formatNumber(per) : '?';
+                total.hidden = !per;
+                total.textContent = !per ? '' : whole
+                    ? `${nText} = ${whole} ${whole === 1 ? B.one : B.many}${left ? ` + ${left} ${left === 1 ? one : many} (they stay aside)` : ''}`
+                    : `Not enough for 1 ${B.one}.`;
+                okBtn.textContent = whole ? `Add ${whole} ${whole === 1 ? B.one : B.many}` : `Add ${B.many}`;
+                okBtn.disabled = !whole;
+            };
+            const later = document.getElementById('dialog-cancel');
+            const answer = this._dialog({ title: product.name, text: '', ok: 'Add', cancel: 'Later', keepFields: true, outside: false, cancelValue: 'later' });
+            later.classList.add('btn-later');
+            paint();
+            this._talk(known ? `${nText} na ${Math.floor(n / known)} ${Math.floor(n / known) === 1 ? B.one : B.many}. Tap Add.` : `How many ${many} dey inside one ${B.one}?`);
+            input.addEventListener('input', () => { const d = input.value.replace(/\D/g, ''); if (d !== input.value) input.value = d; paint(); });
+            input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !okBtn.disabled) { e.preventDefault(); okBtn.click(); } });
+            box.querySelectorAll('[data-ctn]').forEach(b => b.addEventListener('click', () => { input.value = String(Math.min(10000, Math.max(1, read() + Number(b.dataset.ctn)))); paint(); }));
+            const change = box.querySelector('.ctn-change:not(.ctn-out)');
+            if (change) change.addEventListener('click', () => { box.querySelector('.ctn-field').hidden = false; change.hidden = true; input.focus(); input.select(); });
+            box.querySelector('.ctn-out').addEventListener('click', () => { if (this._closeDialog) this._closeDialog('out'); });
+            if (!known) setTimeout(() => input.focus(), 60);
+            const choice = await answer;
+            if (choice !== true) this._hush();
+            const per = read();
+            okBtn.disabled = false;
+            box.innerHTML = ''; box.hidden = true; this._freePics();
+            document.querySelector('#dialog-layer .dialog-card').classList.remove('dialog-wiggle');
+            later.classList.remove('btn-later');
+            if (choice === 'later' || choice === 'out') return choice;
+            return choice === true && per ? { per } : null;
+        },
+
+        // Whole cartons (or packs) go into the stock; the cost of one becomes what was paid for what is in it; the rest stays aside.
+        // 'out': they are taken off the list (the stock does not change).
+        async _addLoose(product, unit, r) {
+            const kind = this._bulkOf(product.unit), B = this.BULK[kind] || this.BULK.cartons;
+            const lw = { ...(product.looseWaiting || {}) };
+            const w = lw[unit] || { n: 0, cost: 0 };
+            let add = 0;
+            if (r === 'out') delete lw[unit];
+            else {
+                add = Math.floor(w.n / r.per);
+                product[B.per] = r.per;
+                if (Number(w.cost) > 0) { product.cost = Math.round(Number(w.cost) * r.per); product.costToConfirm = null; } // (what one carton cost, this time)
+                const left = w.n - add * r.per;
+                if (left > 0) lw[unit] = { ...w, n: left }; else delete lw[unit];
+            }
+            product.stock = (Number(product.stock) || 0) + add;
+            product.looseWaiting = Object.keys(lw).length ? lw : null;
+            if (product.unitToConfirm && this._unitKey(product.unitToConfirm) === this._unitKey(unit)) product.unitToConfirm = null;
+            await DB.saveProduct(product, { delta: add, only: ['looseWaiting', B.per, 'cost', 'costToConfirm', 'unitToConfirm'] });
+            this.showToast(r === 'out' ? `${this._unitLabel(unit)} left out.` : `${this.formatNumber(add)} ${add === 1 ? B.one : B.many} added.`);
+            return product;
+        },
 
         // The card: [carton] 3 → [packet] 150, "Packets in 1 carton?" with − / +, and one big button "Add 150 packets". Resolves the number, or 0.
         async _cartonCard(product, cartons, step, kind = 'cartons') {
@@ -3925,9 +4038,9 @@ document.addEventListener('DOMContentLoaded', () => {
         async handleAddProductScanResult(result) {
             this._logToFirestore('scan_logs', null, {
                 userId: this.state.user.phone,
-                type: result.type === 'barcode' ? 'add_product' : 'log_scan',
+                type: 'add_product',
                 status: 'success',
-                barcode: result.data.pikaLogVersion ? 'PIKA_LOG' : result.data,
+                barcode: result.data,
                 timestamp: window.fb.serverTimestamp()
             });
 
@@ -3946,16 +4059,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         this.state.editingProduct = null;
                         this._openProductForm({ source: 'barcode' });
                     }
-                    break;
-                case 'qrlog':
-                    this._handleSuccessfulScan();
-                    this._back();
-                    this.handlePikaLogScanned(result.data);
-                    break;
-                case 'qrlog_id':
-                    this._handleSuccessfulScan();
-                    this._back();
-                    this.handlePikaLogIdScanned(result.data);
                     break;
             }
         },
@@ -3996,9 +4099,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (this.state.isScanCanceled) return;
                     this._logToFirestore('scan_logs', null, {
                         userId: this.state.user.phone,
-                        type: result.type === 'barcode' ? 'sell_item' : 'log_scan',
+                        type: 'sell_item',
                         status: 'success',
-                        barcode: result.data.pikaLogVersion ? 'PIKA_LOG' : result.data,
+                        barcode: result.data,
                         timestamp: window.fb.serverTimestamp()
                     });
 
@@ -4011,12 +4114,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         } else {
                             this.handleSellScanNotFound(false, result.data);
                         }
-                    } else if (result.type === 'qrlog') {
-                        this._handleSuccessfulScan();
-                        this.handlePikaLogScanned(result.data);
-                    } else if (result.type === 'qrlog_id') {
-                        this._handleSuccessfulScan();
-                        this.handlePikaLogIdScanned(result.data);
                     }
                 },
                 () => { // onTimeout
@@ -4444,7 +4541,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 productData.thumb = before.thumb;
             }
             if (before && before._seenInCloud) productData._seenInCloud = true;
-            if (before) ['perCarton', 'perPack', 'cartonBarcode', 'cartonsWaiting', 'cartonCost', 'packsWaiting', 'packCost', 'unitSame', 'arrivedAt'].forEach(k => { // (kept: the box does not show them)
+            if (before) ['perCarton', 'perPack', 'cartonBarcode', 'cartonsWaiting', 'cartonCost', 'packsWaiting', 'packCost', 'looseWaiting', 'unitSame', 'arrivedAt'].forEach(k => { // (kept: the box does not show them)
                 if (productData[k] === undefined && before[k] !== undefined && before[k] !== null) productData[k] = before[k];
             });
 
@@ -4480,12 +4577,12 @@ document.addEventListener('DOMContentLoaded', () => {
         // (3 cartons x 50 = 150 packets) and the Edit box opens with the new stock; Later opens the Edit box as it is; Back opens nothing.
         async handleEditProduct(product) {
             if (this._isSalesperson()) { this.showToast('Only your admin can edit products.'); return; }
-            if (product && this._waitingBulk(product).length) {
+            if (product && this._waitingAll(product).length) {
                 let fresh = (await DB.getProduct(product.id)) || product;
-                for (const w of this._waitingBulk(fresh)) {
-                    const per = await this._cartonCard(fresh, w.n, '', w.kind);
-                    if (per === null) return;
-                    if (per > 0) { fresh = await this._countCartons(fresh, per, w.kind); this.renderProducts(this.elements.productSearchInput.value); }
+                for (const w of this._waitingAll(fresh)) {
+                    const r = await this._resolveWaiting(fresh, w, '');
+                    if (r === null) return;
+                    if (r !== 'later') { fresh = r; this.renderProducts(this.elements.productSearchInput.value); }
                 }
                 product = fresh;
             }
@@ -4496,15 +4593,15 @@ document.addEventListener('DOMContentLoaded', () => {
         // new stock, as it was (the quantity, the customer...): one more tap on Confirm records it
         async _countForSale(product) {
             let fresh = (await DB.getProduct(product.id)) || product;
-            for (const w of this._waitingBulk(fresh)) {
-                const per = await this._cartonCard(fresh, w.n, '', w.kind);
-                if (per === null || per < 0) break;
-                fresh = await this._countCartons(fresh, per, w.kind);
+            for (const w of this._waitingAll(fresh)) {
+                const r = await this._resolveWaiting(fresh, w, '');
+                if (r === null || r === 'later') break;
+                fresh = r;
             }
             if (this.state.sellingProduct && this.state.sellingProduct.id === fresh.id) this.state.sellingProduct = fresh;
             this.elements.saleProductStock.textContent = `Stock: ${this.formatNumber(fresh.stock)} ${fresh.unit} left`;
             this.renderProducts(this.elements.productSearchInput.value);
-            if (!this._waitingBulk(fresh).length) this._talk('Oya, tap Confirm.');
+            if (!this._waitingAll(fresh).length) this._talk('Oya, tap Confirm.');
         },
 
         async _countCartons(product, per, kind = 'cartons') {
@@ -4785,11 +4882,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (quantity <= 0) { await this._needs(this.elements.saleQuantityInput, 'Enter how many you are selling.', 'Check your entry'); return false; }
             if (quantity > availableStock) {
                 // Cartons or packs of it are waiting to be counted: count them right here, then the same sale goes on (one more tap on Confirm)
-                const w = this._isSalesperson() ? null : this._waitingBulk(product)[0];
+                const w = this._isSalesperson() ? null : this._waitingAll(product)[0];
                 if (w) {
-                    const B = this.BULK[w.kind];
                     const laterBtn = document.getElementById('dialog-cancel');
-                    const asking = this._dialog({ title: 'Not enough stock', text: `Only ${this.formatNumber(availableStock)} ${product.unit} left. ${this.formatNumber(w.n)} ${w.n === 1 ? B.one : B.many} you accepted ${w.n === 1 ? 'is' : 'are'} waiting. Count them now?`, ok: 'Count them', cancel: 'Not now' });
+                    const asking = this._dialog({ title: 'Not enough stock', text: `Only ${this.formatNumber(availableStock)} ${product.unit} left. ${this._waitingWords(w)} you accepted ${w.n === 1 ? 'is' : 'are'} waiting. Count them now?`, ok: 'Count them', cancel: 'Not now' });
                     laterBtn.classList.add('btn-later'); // (grey: the safe choice)
                     const count = await asking;
                     laterBtn.classList.remove('btn-later');
@@ -6368,62 +6464,12 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         },
 
-        async handlePikaLogIdScanned(logId) {
-            if (!this.state.firebaseReady) {
-                say("You need internet to accept this transfer.", "No internet");
-                return;
-            }
-            try {
-                const logDocRef = window.fb.doc(window.fb.db, 'shared_logs', logId);
-                const logDocSnap = await window.fb.getDoc(logDocRef);
-                if (logDocSnap.exists()) {
-                    const logData = logDocSnap.data();
-
-                    // NEW: Check if claimed
-                    if (logData.claimed) {
-                        say("You already accepted these items.", "Already accepted");
-                        return;
-                    }
-                    if (logData.voided) {
-                        say("This transfer is no longer available.", "Not available");
-                        return;
-                    }
-                    if (logData.targetPhone && logData.targetPhone !== this.state.user.phone && logData.targetPhone !== this._businessPhone()) {
-                        say("This transfer was sent to someone else.", "Not for you");
-                        return;
-                    }
-
-                    logData.id = logId; // Attach ID so we can update it later
-                    this.handlePikaLogScanned(logData);
-                } else {
-                    say("This transfer was not found. It may have been cancelled.", "Not found");
-                }
-            } catch (error) {
-                console.error("Error fetching shared log:", error);
-                say("Could not open this transfer. Check your internet and try again.", "No internet");
-            }
-        },
-
+        // An incoming transfer (it arrives by itself; only owners get them: salespeople never receive transfers)
         async handlePikaLogScanned(logData) {
+            if (this._isSalesperson()) return;
             const senderRole = logData.senderRole;
             const currentUserRole = this.state.user.type;
 
-            if (currentUserRole === 'Salesperson') {
-                const allProducts = await DB.getAllProducts();
-                const existingStock = allProducts.filter(p => p.stock > 0 && p.supplierId);
-                if (existingStock.length > 0) {
-                    const currentSupplierId = existingStock[0].supplierId;
-                    if (currentSupplierId !== logData.senderId) {
-                        this.showToast("Please sell all current stock before accepting items from a new wholesaler.");
-                        return;
-                    }
-                }
-            }
-
-            if (currentUserRole === 'Salesperson' && senderRole === 'Salesperson') {
-                this.showToast("Salespeople cannot accept transfers from other salespeople.");
-                return;
-            }
             if (currentUserRole === 'Wholesaler' && senderRole === 'Salesperson') {
                 this.showToast("Wholesalers cannot accept transfers from salespeople.");
                 return;
@@ -6692,8 +6738,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Not known yet: they wait beside the product ("Count cartons!"), never mixed into its packets (the stock stays true),
                 // until they are counted (Check the items, or its Edit box)
                 const cartonsLater = !perCarton && !isSalesperson && intoSmaller;
+                // The other way round: a smaller unit (bottles) for a product kept in packs or cartons. Never mixed in (the stock and the
+                // cost stay as they are): they wait aside ("Count bottles!") until they are added as whole cartons, or left out
+                const looseLater = !bulk && !isSalesperson && !!existingProduct && !!item.unit && this._isCartonUnit(existingProduct.unit);
                 const costPrice = perCarton ? Math.round(this._receivedCost(item) / perCarton) : this._receivedCost(item);
-                let stockToAdd = cartonsLater ? 0 : perCarton ? item.quantity * perCarton : item.quantity;
+                let stockToAdd = (cartonsLater || looseLater) ? 0 : perCarton ? item.quantity * perCarton : item.quantity;
                 if (perCarton && intoSmaller && Number(existingProduct[B.wait]) > 0) { // (the same kind left for later before: counted now too, once)
                     stockToAdd += Number(existingProduct[B.wait]) * perCarton;
                     existingProduct[B.wait] = null;
@@ -6716,6 +6765,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         existingProduct[B.wait] = (Number(existingProduct[B.wait]) || 0) + (Number(item.quantity) || 0);
                         existingProduct[B.cost] = this._receivedCost(item); // (one carton's or pack's cost: shared out over what is inside when counted)
                         if (barcode && !this._barcodesMatch(existingProduct.barcode, barcode)) existingProduct.cartonBarcode = barcode;
+                    } else if (looseLater) {
+                        const k = this._unitKey(item.unit), lw = { ...(existingProduct.looseWaiting || {}) };
+                        lw[k] = { n: (Number(lw[k] && lw[k].n) || 0) + (Number(item.quantity) || 0), cost: this._receivedCost(item) }; // (one bottle's cost)
+                        existingProduct.looseWaiting = lw;
                     } else if (perCarton) {
                         if (intoSmaller) existingProduct[B.per] = perCarton; // (remembered: next time they are converted by themselves)
                         if (this._isCartonUnit(existingProduct.unitToConfirm)) existingProduct.unitToConfirm = null; // (an earlier "Packet or Carton?" is answered by this)
@@ -6740,12 +6793,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     // in this product's Edit box (the unit is not changed, and nothing is converted, until they answer)
                     // (asked once only: "Packets" kept when sachets came is remembered, so sachets of it are not asked about again)
                     const unitKnown = existingProduct.unitSame && existingProduct.unitSame[this._unitKey(item.unit)];
-                    if (!perCarton && !cartonsLater && !isSalesperson && !unitKnown && item.unit && existingProduct.unit && this._unitKey(item.unit) !== this._unitKey(existingProduct.unit)) {
+                    const otherUnit = !perCarton && !cartonsLater && !looseLater && !isSalesperson && !unitKnown && item.unit && existingProduct.unit && this._unitKey(item.unit) !== this._unitKey(existingProduct.unit);
+                    if (otherUnit) {
                         existingProduct.unitToConfirm = item.unit;
                     }
                     // The cost is what this delivery cost: the latest supplier price is the current one, so it is simply used (nothing to ask).
-                    // (If it is now above the selling price, Check the items asks for a new selling price.)
-                    if (costPrice > 0 && !cartonsLater) { // (cartons not counted yet: their cost is worked out when they are counted)
+                    // (If it is now above the selling price, Check the items asks for a new selling price.) Not when it came in another unit:
+                    // a carton's cost is not a pack's cost, so the cost stays as it is until the unit is answered.
+                    if (costPrice > 0 && !cartonsLater && !looseLater && !otherUnit) { // (cartons not counted yet: their cost is worked out when they are counted)
                         existingProduct.cost = costPrice;
                         existingProduct.costToConfirm = null;
                     }
@@ -6775,7 +6830,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!touched.includes(finalProduct.id)) touched.push(finalProduct.id); // (the items "Check items" goes through)
                 if (!isSalesperson) finalProduct.arrivedAt = arrivedAt; // (kept: the "New stock today!" label lasts until midnight)
                 if (!isSalesperson) { // only real jobs go to Check (the latest first); an item that needs nothing goes straight to All
-                    const needsOwner = this._waitingBulk(finalProduct).length > 0
+                    const needsOwner = this._waitingAll(finalProduct).length > 0
                         || (!!finalProduct.unitToConfirm && this._unitKey(finalProduct.unitToConfirm) !== this._unitKey(finalProduct.unit))
                         || this._needsSellingPrice(finalProduct) || !(Number(finalProduct.price) > 0) || this._noProfit(finalProduct);
                     finalProduct.newSince = needsOwner ? arrivedAt - itemNo++ : null;
@@ -6783,7 +6838,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (existingProduct) {
                     // the stock is added to whatever it is now; the fields that changed are sent, nothing else
                     productUpdates.push(DB.saveProduct(finalProduct, { delta: stockToAdd, thumb: thumbSentHere,
-                        only: ['supplierId', 'barcode', 'needsSetup', 'lockedUntilOOS', 'isSalesperson', 'originalName', 'wholesalerPrice', 'unitToConfirm', 'cost', 'costToConfirm', 'newSince', 'arrivedAt', 'thumb', 'perCarton', 'perPack', 'cartonBarcode', 'cartonsWaiting', 'cartonCost', 'packsWaiting', 'packCost'] }));
+                        only: ['supplierId', 'barcode', 'needsSetup', 'lockedUntilOOS', 'isSalesperson', 'originalName', 'wholesalerPrice', 'unitToConfirm', 'cost', 'costToConfirm', 'newSince', 'arrivedAt', 'thumb', 'perCarton', 'perPack', 'cartonBarcode', 'cartonsWaiting', 'cartonCost', 'packsWaiting', 'packCost', 'looseWaiting'] }));
                 } else {
                     productUpdates.push(DB.saveProduct(finalProduct, { thumb: true }));
                 }
@@ -6882,7 +6937,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Everything else (a price, another unit, a cost above the price) just waits in New.
         _needsCheck(p) {
             if (!p || p.deleted || !this._isNewStock(p)) return false;
-            return this._waitingBulk(p).length > 0;
+            return this._waitingAll(p).length > 0;
         },
         // A New item that needs its owner for something else (it stays in New, with its label or question, until it is saved)
         _needsAttention(p) {
@@ -6966,11 +7021,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 return result;
             };
             // Packs or cartons waiting: "1 carton = ? packets" (each kind waiting, one after the other)
-            for (const w of this._waitingBulk(product)) {
-                const per = await this._cartonCard(product, w.n, step, w.kind);
-                if (per === null) return finish(null);
-                if (per < 0) return finish('later');
-                await this._countCartons(product, per, w.kind); // (saved there)
+            for (const w of this._waitingAll(product)) {
+                const r = await this._resolveWaiting(product, w, step); // (saved there)
+                if (r === null) return finish(null);
+                if (r === 'later') return finish('later');
             }
             // Counted. Anything else it needs (a price, another unit) waits in New: it leaves New only when nothing is left.
             return finish(this._needsAttention(product) ? 'counted' : 'done');

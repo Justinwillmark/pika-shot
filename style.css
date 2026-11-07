@@ -2166,3 +2166,6 @@ a.privacy-link-trigger { display: inline-block; padding: 8px 2px; margin: -8px 0
     #product-filter-tabs .filter-tab-btn { padding-left: 7px; padding-right: 7px; font-size: 0.78rem; }
     #product-filter-tabs .filter-tab-btn[data-filter="all"] { min-width: 42px; }
 }
+
+/* The bottles-for-cartons card: "Leave them out", a quiet link under the rest */
+.ctn-change.ctn-out { color: var(--text-light); font-weight: 500; }

@@ -539,16 +539,7 @@ const Camera = {
         const detectedValue = found.rawValue;
         this.stop(); // Stop scanning immediately on detection
 
-        // Check for the new format
-        if (detectedValue.startsWith('pika-log-id:')) {
-            onResult({ type: 'qrlog_id', data: detectedValue.substring('pika-log-id:'.length) });
-            return;
-        }
-
-        // (Old-style transfer codes, the whole transfer written inside the code, are no longer accepted: nothing online stops
-        // one being used again and again, and anyone can make one. Every transfer now lives online and is opened by its id.)
-
-        // It's a regular barcode
+        // Only product barcodes. (Transfers are never opened by scanning a code: they arrive by themselves, for the store owner.)
         onResult({ type: 'barcode', data: detectedValue });
     },
 
