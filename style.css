@@ -2134,3 +2134,6 @@ a.privacy-link-trigger { display: inline-block; padding: 8px 2px; margin: -8px 0
 .chk-dots i.done { background: var(--primary-color); opacity: 0.45; }
 .chk-dots i.on { width: 22px; border-radius: 4px; background: var(--primary-color); }
 .chk-choice { transition: background-color 0.12s, border-color 0.12s; }
+
+/* The Items added box: the airtime line, small and quiet under the message */
+.celebration-card p.celebration-note { margin: 10px 0 0; font-size: 0.78rem; line-height: 1.4; color: var(--text-light); }

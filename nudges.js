@@ -181,14 +181,15 @@
             .filter(p => !p.isSalesperson && (p.needsSetup === 'price' || p.needsSetup === 'barcode-and-price'))
             .sort((a, b) => arrived(b) - arrived(a))
             .map(p => ({ id: p.id, name: p.name }));
-        const cartonsToCount = products // (cartons received but not counted yet: "Later" on the carton card)
-            .filter(p => !p.isSalesperson && Number(p.cartonsWaiting) > 0)
-            .map(p => ({ id: p.id, name: p.name, n: Number(p.cartonsWaiting) }));
+        const cartonsToCount = products // (cartons or packs received but not counted yet)
+            .filter(p => !p.isSalesperson && (Number(p.cartonsWaiting) > 0 || Number(p.packsWaiting) > 0))
+            .map(p => Number(p.cartonsWaiting) > 0 ? { id: p.id, name: p.name, n: Number(p.cartonsWaiting), one: 'carton', many: 'cartons' }
+                : { id: p.id, name: p.name, n: Number(p.packsWaiting), one: 'pack', many: 'packs' });
         // New items that need the owner (the same test as Check the items in the app): what each needs, so a message can say it
         const isNewItem = (p) => !p.isSalesperson && (p.newSince !== undefined ? Number(p.newSince) > 0 : Number(p.freshAt) > 0);
         const unitOf = (u) => String(u || '').toLowerCase().replace(/^tubs$/, 'tins');
         const toCheck = products.filter(isNewItem).map(p => {
-            const need = Number(p.cartonsWaiting) > 0 ? 'cartons'
+            const need = (Number(p.cartonsWaiting) > 0 || Number(p.packsWaiting) > 0) ? 'cartons'
                 : (p.unitToConfirm && unitOf(p.unitToConfirm) !== unitOf(p.unit)) ? 'unit'
                 : (p.needsSetup === 'price' || p.needsSetup === 'barcode-and-price' || !(Number(p.price) > 0)) ? 'price'
                 : (Number(p.cost) > 0 && Number(p.cost) > Number(p.price)) ? 'over'
@@ -364,19 +365,21 @@
 
         // ---- New items that need the owner (a price, cartons to count, a unit, a cost above the price). Owners only (salespeople do not set prices).
         // A tap opens Check the items on New: for that one item, or for all of them.
-        { id: 'pr-sell-many', chime: true, cat: 'prices', tier: 1, cooldown: DAY, roles: ['Wholesaler', 'Retailer'], go: 'check', when: c => c.toCheck.length >= 2, weight: () => 2.5,
-            text: (c, r) => twin(r, [`${c.toCheck.length} new items need you. Tap to check them. ✅`, `${c.toCheck.length} new items dey wait for you. Tap make we check dem. ✅`]) },
-        subjective({ id: 'pr-check', chime: true, cat: 'prices', tier: 1, cooldown: DAY, reminder: true, roles: ['Wholesaler', 'Retailer'], go: 'check',
+        { id: 'pr-sell-many', chime: true, cat: 'prices', tier: 1, cooldown: DAY, roles: ['Wholesaler', 'Retailer'], go: 'check', when: c => c.cartonsToCount.length >= 2, weight: () => 2.5,
+            text: (c, r) => twin(r, [`${c.cartonsToCount.length} items have cartons or packs to count. Tap to count them. 📦`, `${c.cartonsToCount.length} items get cartons wey you never count. Tap make we count dem. 📦`]) },
+        { id: 'pr-new-many', chime: true, cat: 'prices', tier: 1, cooldown: DAY, roles: ['Wholesaler', 'Retailer'], go: 'products', when: c => c.toCheck.filter(p => p.need !== 'cartons').length >= 2, weight: () => 2,
+            text: (c, r) => { const k = c.toCheck.filter(p => p.need !== 'cartons').length; return twin(r, [`${k} new items need you in New. Tap to see. 🏷️`, `${k} new items dey wait for you for New. Tap make you see. 🏷️`]); } },
+        subjective({ id: 'pr-check', chime: true, cat: 'prices', tier: 1, cooldown: DAY, reminder: true, roles: ['Wholesaler', 'Retailer'], go: 'edit',
             subjects: c => c.toCheck.filter(p => p.need === 'unit' || p.need === 'over').map(p => ({ key: 'chk:' + p.id, arg: { id: p.id }, p })),
             text: (c, r, s) => s.p.need === 'over'
                 ? twin(r, [`${short(s.p.name, 2)} now costs more than your price. Tap to fix it. 🏷️`, `${short(s.p.name, 2)} cost don pass your price o. Tap make you fix am. 🏷️`])
                 : twin(r, [`How do you count ${short(s.p.name, 2)}? Tap to check. 📦`, `How you dey count ${short(s.p.name, 2)}? Tap make we check am. 📦`]) }),
-        subjective({ id: 'pr-sell', chime: true, cat: 'prices', tier: 1, cooldown: DAY, reminder: true, roles: ['Wholesaler', 'Retailer'], go: 'check',
+        subjective({ id: 'pr-sell', chime: true, cat: 'prices', tier: 1, cooldown: DAY, reminder: true, roles: ['Wholesaler', 'Retailer'], go: 'edit',
             subjects: c => c.priceToSet.map(p => ({ key: 'sell:' + p.id, arg: { id: p.id }, p })),
             text: (c, r, s) => twin(r, [`Set your selling price for ${short(s.p.name, 2)}. Tap to check. 🏷️`, `How much you go sell ${short(s.p.name, 2)}? Tap make you put am. 🏷️`]) }),
         subjective({ id: 'pr-cartons', chime: true, cat: 'prices', tier: 1, cooldown: DAY, reminder: true, roles: ['Wholesaler', 'Retailer'], go: 'check',
             subjects: c => c.cartonsToCount.map(p => ({ key: 'ctn:' + p.id, arg: { id: p.id }, p })),
-            text: (c, r, s) => twin(r, [`Count your ${s.p.n} ${short(s.p.name, 2)} ${s.p.n === 1 ? 'carton' : 'cartons'}. Tap to add them. 📦`, `Your ${s.p.n} ${short(s.p.name, 2)} ${s.p.n === 1 ? 'carton dey' : 'cartons dey'} wait. Tap make you count dem. 📦`]) }),
+            text: (c, r, s) => twin(r, [`Count your ${s.p.n} ${short(s.p.name, 2)} ${s.p.n === 1 ? s.p.one : s.p.many}. Tap to add them. 📦`, `Your ${s.p.n} ${short(s.p.name, 2)} ${s.p.n === 1 ? s.p.one : s.p.many} dey wait. Tap make you count dem. 📦`]) }),
         subjective({ id: 'pr-cost', chime: true, cat: 'prices', tier: 1, cooldown: DAY, reminder: true, roles: ['Wholesaler', 'Retailer'], go: 'edit',
             subjects: c => c.costToCheck.map(p => ({ key: 'cost:' + p.id, arg: { id: p.id }, p })),
             text: (c, r, s) => twin(r, [`${short(s.p.name, 2)} came at ${naira(s.p.next)}. Update your cost? 💰`, `${short(s.p.name, 2)} cost don change o. Check am. 💰`]) }),

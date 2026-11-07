@@ -3264,7 +3264,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 // "Add price!" (still at the sender's price), then the stock label (Out of stock! or Low stock!)
                 const badges = [];
                 if (this._isNewStock(product)) badges.push('<div class="setup-badge">New stock!</div>');
-                if (!this._isSalesperson() && Number(product.cartonsWaiting) > 0) badges.push('<div class="setup-badge">Count cartons!</div>'); // (cartons kept aside: a tap counts them)
+                const waitingBulk = this._isSalesperson() ? [] : this._waitingBulk(product);
+                if (waitingBulk.length) badges.push(`<div class="setup-badge">Count ${waitingBulk[0].kind}!</div>`); // (cartons or packs kept aside: a tap counts them)
                 if (this._needsSellingPrice(product)) badges.push('<div class="setup-badge">Add price!</div>');
                 if (product.stock <= 0) {
                     // below 0: more was sold than the app had (usually a sale made with no internet that arrived late). The business is asked to count.
@@ -3432,28 +3433,37 @@ document.addEventListener('DOMContentLoaded', () => {
             return hit || null;
         },
 
-        _isCartonUnit(v) { return /carton/.test(this._unitKey(v)); },
+        _isCartonUnit(v) { return !!this._bulkOf(v); },
+        // Packs and cartons hold the smaller unit inside: each has its own remembered number, waiting count and cost
+        BULK: {
+            cartons: { per: 'perCarton', wait: 'cartonsWaiting', cost: 'cartonCost', one: 'carton', many: 'cartons' },
+            packs: { per: 'perPack', wait: 'packsWaiting', cost: 'packCost', one: 'pack', many: 'packs' }
+        },
+        _bulkOf(v) { const k = this._unitKey(v); return k === 'packs' || k === 'pack' ? 'packs' : /carton/.test(k) ? 'cartons' : null; },
+        // What is waiting to be counted on a product: [{ kind: 'cartons', n: 3 }, { kind: 'packs', n: 2 }]
+        _waitingBulk(p) { return p ? Object.keys(this.BULK).map(kind => ({ kind, n: Number(p[this.BULK[kind].wait]) || 0 })).filter(w => w.n > 0) : []; },
 
         // The card: [carton] 3 → [packet] 150, "Packets in 1 carton?" with − / +, and one big button "Add 150 packets". Resolves the number, or 0.
-        async _cartonCard(product, cartons, step) {
+        async _cartonCard(product, cartons, step, kind = 'cartons') {
+            const B = this.BULK[kind] || this.BULK.cartons;
             const unit = this._unitKey(product.unit);
             const many = this._unitLabel(unit).toLowerCase(), one = this._unitOne(unit).toLowerCase();
-            const known = Number(product.perCarton) > 0 ? Math.round(Number(product.perCarton)) : 0;
+            const known = Number(product[B.per]) > 0 ? Math.round(Number(product[B.per])) : 0;
             const box = document.getElementById('dialog-fields');
             const okBtn = document.getElementById('dialog-ok');
             // The question is about ONE carton: "1 carton = ? packets", with the box below it. What was received, and the total,
             // are separate lines (above and below), so it never reads as "how many in 3 cartons".
-            const cartonsText = `${this.formatNumber(cartons)} ${cartons === 1 ? 'carton' : 'cartons'}`;
+            const cartonsText = `${this.formatNumber(cartons)} ${cartons === 1 ? B.one : B.many}`;
             box.innerHTML = `<div class="ctn">
                     ${this._checkHead(product, step)}
                     <p class="ctn-got">You accepted <b>${cartonsText}</b></p>
                     <div class="ctn-row">
-                        <span class="ctn-unit">${this._unitIcon('cartons')}<b>1</b><small>carton</small></span>
+                        <span class="ctn-unit">${this._unitIcon(kind)}<b>1</b><small>${B.one}</small></span>
                         <span class="ctn-sign">=</span>
                         <span class="ctn-unit">${this._unitIcon(unit)}<b id="ctn-each">?</b><small>${this._esc(many)}</small></span>
                     </div>
                     <div class="form-group ctn-field" ${known ? 'hidden' : ''}>
-                        <label for="ctn-n">${this._esc(this._unitLabel(unit))} in 1 carton</label>
+                        <label for="ctn-n">${this._esc(this._unitLabel(unit))} in 1 ${B.one}</label>
                         <div class="quantity-stepper">
                             <button type="button" class="btn btn-secondary" data-ctn="-1" aria-label="Less">-</button>
                             <input id="ctn-n" type="text" inputmode="numeric" maxlength="4" autocomplete="off" value="${known || ''}">
@@ -3478,7 +3488,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const answer = this._dialog({ title: product.name, text: '', ok: 'Accept', cancel: 'Later', keepFields: true, outside: false, cancelValue: 'later' });
             later.classList.add('btn-later'); // (grey: Later is safe, not a danger)
             paint();
-            this._talk(known ? `${cartonsText}, na ${this.formatNumber(known * cartons)} ${many} be dat. Tap Accept.` : `How many ${many} dey inside one carton?`);
+            this._talk(known ? `${cartonsText}, na ${this.formatNumber(known * cartons)} ${many} be dat. Tap Accept.` : `How many ${many} dey inside one ${B.one}?`);
             input.addEventListener('input', () => { const digits = input.value.replace(/\D/g, ''); if (digits !== input.value) input.value = digits; paint(); });
             input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && read()) { e.preventDefault(); okBtn.click(); } });
             box.querySelectorAll('[data-ctn]').forEach(b => b.addEventListener('click', () => {
@@ -4081,8 +4091,8 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         // --- Units: a list with a small picture beside each one. The hidden <select> stays the real field (its value is what is saved). ---
-        UNIT_LABELS: { sachets: 'Sachets', bottles: 'Bottles', cans: 'Cans', tins: 'Tins', pieces: 'Pieces', packets: 'Packets', cartons: 'Cartons' },
-        UNIT_ONE: { sachets: 'Sachet', bottles: 'Bottle', cans: 'Can', tins: 'Tin', pieces: 'Piece', packets: 'Packet', cartons: 'Carton' },
+        UNIT_LABELS: { sachets: 'Sachets', bottles: 'Bottles', cans: 'Cans', tins: 'Tins', pieces: 'Pieces', packets: 'Packets', packs: 'Packs', cartons: 'Cartons' },
+        UNIT_ONE: { sachets: 'Sachet', bottles: 'Bottle', cans: 'Can', tins: 'Tin', pieces: 'Piece', packets: 'Packet', packs: 'Pack', cartons: 'Carton' },
         // ("pieces" is no longer a choice, but a product already saved in pieces still shows as Pieces, with its picture)
         // Drawn on a 24 x 24 grid, one colour, lightly filled: a pouch with sealed ends, a bottle, a can, a short wide tin with a lid, a flat pack, a box
         UNIT_ICONS: {
@@ -4092,6 +4102,7 @@ document.addEventListener('DOMContentLoaded', () => {
             tins: '<path d="M3.5 10v7c0 1.7 3.8 3 8.5 3s8.5-1.3 8.5-3v-7" fill="currentColor" fill-opacity=".14"/><ellipse cx="12" cy="10" rx="8.5" ry="3" fill="#fff"/><ellipse cx="12" cy="10" rx="5.4" ry="1.6"/><path d="M3.5 14.2c0 1.7 3.8 3 8.5 3s8.5-1.3 8.5-3"/>',
             pieces: '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" fill="currentColor" fill-opacity=".14"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/>',
             packets: '<rect x="3" y="7" width="18" height="10" rx="2" fill="currentColor" fill-opacity=".14"/><path d="M6.5 7v10M17.5 7v10"/><path d="M10 12h4"/>',
+            packs: '<rect x="3.5" y="8" width="17" height="11.5" rx="2.5" fill="currentColor" fill-opacity=".14"/><path d="M8 8V5.5M12 8V4.5M16 8V5.5"/><path d="M8.5 12v4M12 12v4M15.5 12v4"/>',
             cartons: '<path d="M3.5 8.5h17V20h-17z" fill="currentColor" fill-opacity=".14"/><path d="M3.5 8.5L6 4h12l2.5 4.5"/><path d="M10 12.5h4"/>'
         },
         _unitName(v) { return /^tubs$/i.test(v) ? 'tins' : /^tub$/i.test(v) ? 'tin' : v; }, // (products saved before "Tubs" became "Tins" still say tubs: they are shown, and saved from now on, as tins)
@@ -4170,7 +4181,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const { productUnitInput: select, unitBtn: btn, unitMenu: menu, unitAsk: ask } = this.elements;
             if (btn.disabled) return;
             menu.innerHTML = Array.from(select.options).filter(o => o.style.display !== 'none' && (!o.dataset.extra || o.value === select.value)).map(o => {
-                const name = o.value === 'cartons' ? 'Packs / Cartons' : this._unitLabel(o.value);
+                const name = this._unitLabel(o.value);
                 return `<li role="option" tabindex="-1" data-value="${this._esc(o.value)}" aria-selected="${o.value === select.value}"><span class="unit-ico">${this._unitIcon(o.value)}</span><span class="unit-opt-name">${this._esc(name)}</span></li>`;
             }).join('');
             this._askWasOpen = !ask.hidden;
@@ -4268,12 +4279,9 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.stockVisibilityRow.style.display = 'none';
             this.state.capturedBlob = null;
 
-            const cartonOption = this.elements.productUnitInput.querySelector('.wholesaler-only');
-            if (this.state.user && this.state.user.type === 'Wholesaler') {
-                cartonOption.style.display = 'block';
-            } else {
-                cartonOption.style.display = 'none';
-            }
+            // Packs and Cartons: store owners only (as packs/cartons always was)
+            const bulkOptions = this.elements.productUnitInput.querySelectorAll('.wholesaler-only');
+            bulkOptions.forEach(o => { o.style.display = this.state.user && this.state.user.type === 'Wholesaler' ? 'block' : 'none'; });
 
             if (options.source === 'barcode' && this.state.capturedBarcode) {
                 this.elements.productBarcodeDisplay.textContent = this.state.capturedBarcode;
@@ -4431,7 +4439,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 productData.thumb = before.thumb;
             }
             if (before && before._seenInCloud) productData._seenInCloud = true;
-            if (before) ['perCarton', 'cartonBarcode', 'cartonsWaiting', 'cartonCost', 'unitSame', 'arrivedAt'].forEach(k => { // (kept: the box does not show them)
+            if (before) ['perCarton', 'perPack', 'cartonBarcode', 'cartonsWaiting', 'cartonCost', 'packsWaiting', 'packCost', 'unitSame', 'arrivedAt'].forEach(k => { // (kept: the box does not show them)
                 if (productData[k] === undefined && before[k] !== undefined && before[k] !== null) productData[k] = before[k];
             });
 
@@ -4467,31 +4475,32 @@ document.addEventListener('DOMContentLoaded', () => {
         // (3 cartons x 50 = 150 packets) and the Edit box opens with the new stock; Later opens the Edit box as it is; Back opens nothing.
         async handleEditProduct(product) {
             if (this._isSalesperson()) { this.showToast('Only your admin can edit products.'); return; }
-            if (product && Number(product.cartonsWaiting) > 0) {
-                const fresh = (await DB.getProduct(product.id)) || product;
-                if (Number(fresh.cartonsWaiting) > 0) {
-                    const per = await this._cartonCard(fresh, Number(fresh.cartonsWaiting), '');
+            if (product && this._waitingBulk(product).length) {
+                let fresh = (await DB.getProduct(product.id)) || product;
+                for (const w of this._waitingBulk(fresh)) {
+                    const per = await this._cartonCard(fresh, w.n, '', w.kind);
                     if (per === null) return;
-                    product = per > 0 ? await this._countCartons(fresh, per) : fresh;
-                    if (per > 0) this.renderProducts(this.elements.productSearchInput.value);
-                } else product = fresh;
+                    if (per > 0) { fresh = await this._countCartons(fresh, per, w.kind); this.renderProducts(this.elements.productSearchInput.value); }
+                }
+                product = fresh;
             }
             this._openEditProduct(product);
         },
 
-        async _countCartons(product, per) {
-            const add = Number(product.cartonsWaiting) * per;
+        async _countCartons(product, per, kind = 'cartons') {
+            const B = this.BULK[kind] || this.BULK.cartons;
+            const add = Number(product[B.wait]) * per;
             product.stock = (Number(product.stock) || 0) + add;
-            product.perCarton = per;
-            const unitCost = Number(product.cartonCost) > 0 ? Math.round(Number(product.cartonCost) / per) : 0;
+            product[B.per] = per;
+            const unitCost = Number(product[B.cost]) > 0 ? Math.round(Number(product[B.cost]) / per) : 0;
             if (unitCost > 0) {
                 product.cost = unitCost; // (what one cost in this delivery: the current cost)
                 product.costToConfirm = null;
             }
             if (this._isCartonUnit(product.unitToConfirm)) product.unitToConfirm = null;
-            product.cartonsWaiting = null;
-            product.cartonCost = null;
-            await DB.saveProduct(product, { delta: add, only: ['perCarton', 'cartonsWaiting', 'cartonCost', 'cost', 'costToConfirm', 'unitToConfirm'] });
+            product[B.wait] = null;
+            product[B.cost] = null;
+            await DB.saveProduct(product, { delta: add, only: [B.per, B.wait, B.cost, 'cost', 'costToConfirm', 'unitToConfirm'] });
             this.showToast(`${this.formatNumber(add)} ${this._unitLabel(product.unit).toLowerCase()} added.`);
             return product;
         },
@@ -4538,12 +4547,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
 
-            const cartonOption = this.elements.productUnitInput.querySelector('.wholesaler-only');
-            if (this.state.user && this.state.user.type === 'Wholesaler') {
-                cartonOption.style.display = 'block';
-            } else {
-                cartonOption.style.display = 'none';
-            }
+            // Packs and Cartons: store owners only (as packs/cartons always was)
+            const bulkOptions = this.elements.productUnitInput.querySelectorAll('.wholesaler-only');
+            bulkOptions.forEach(o => { o.style.display = this.state.user && this.state.user.type === 'Wholesaler' ? 'block' : 'none'; });
 
             // Received products are edited like any other; the owner decides whether the last supplier sees the stock
             const canShowVisibility = !!product.supplierId && !isSalesperson && !product.isSalesperson;
@@ -4758,8 +4764,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!product) { say('This product is no longer available.', 'Not available'); return false; }
             if (quantity <= 0) { await this._needs(this.elements.saleQuantityInput, 'Enter how many you are selling.', 'Check your entry'); return false; }
             if (quantity > availableStock) {
-                const waiting = Number(product.cartonsWaiting) > 0 && !this._isSalesperson()
-                    ? ` ${this.formatNumber(product.cartonsWaiting)} ${Number(product.cartonsWaiting) === 1 ? 'carton is' : 'cartons are'} waiting. Count them in My products first.` : '';
+                const w = this._isSalesperson() ? null : this._waitingBulk(product)[0];
+                const waiting = w ? ` ${this.formatNumber(w.n)} ${w.n === 1 ? `${this.BULK[w.kind].one} is` : `${this.BULK[w.kind].many} are`} waiting. Count them in My products first.` : '';
                 await this._needs(this.elements.saleQuantityInput, `Only ${this.formatNumber(availableStock)} ${product.unit} left in stock.${waiting}`, 'Not enough stock');
                 return false;
             }
@@ -6118,6 +6124,7 @@ document.addEventListener('DOMContentLoaded', () => {
             add('div', 'celebration-name', opts.headline);
             add('div', 'celebration-sub', opts.sub);
             (opts.messages || []).forEach(m => add('p', 'celebration-msg', m));
+            add('p', 'celebration-note', opts.note); // (small and quiet: the airtime line)
             const okay = document.createElement('button');
             okay.type = 'button';
             okay.className = 'btn btn-primary';
@@ -6632,18 +6639,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 // and one carton's cost shared out over what is inside it
                 // Cartons for a product kept here in a smaller unit. Its number per carton already known (answered once before):
                 // converted by themselves, nothing to ask (3 cartons x 50 = 150 packets)
-                const intoSmaller = !!existingProduct && this._isCartonUnit(item.unit) && !!existingProduct.unit && !this._isCartonUnit(existingProduct.unit);
-                const knownPer = intoSmaller && Number(existingProduct.perCarton) > 0 ? Math.round(Number(existingProduct.perCarton)) : 0;
+                const bulk = this._bulkOf(item.unit), B = this.BULK[bulk] || this.BULK.cartons; // (packs or cartons)
+                const intoSmaller = !!existingProduct && !!bulk && !!existingProduct.unit && !this._isCartonUnit(existingProduct.unit);
+                const knownPer = intoSmaller && Number(existingProduct[B.per]) > 0 ? Math.round(Number(existingProduct[B.per])) : 0;
                 const perCarton = existingProduct && Number(cartonPlan[itemIndex]) > 0 ? Number(cartonPlan[itemIndex]) : knownPer;
                 // Not known yet: they wait beside the product ("Count cartons!"), never mixed into its packets (the stock stays true),
                 // until they are counted (Check the items, or its Edit box)
                 const cartonsLater = !perCarton && !isSalesperson && intoSmaller;
                 const costPrice = perCarton ? Math.round(this._receivedCost(item) / perCarton) : this._receivedCost(item);
                 let stockToAdd = cartonsLater ? 0 : perCarton ? item.quantity * perCarton : item.quantity;
-                if (perCarton && Number(existingProduct.cartonsWaiting) > 0) { // (cartons left for later before: counted now too, once)
-                    stockToAdd += Number(existingProduct.cartonsWaiting) * perCarton;
-                    existingProduct.cartonsWaiting = null;
-                    existingProduct.cartonCost = null;
+                if (perCarton && intoSmaller && Number(existingProduct[B.wait]) > 0) { // (the same kind left for later before: counted now too, once)
+                    stockToAdd += Number(existingProduct[B.wait]) * perCarton;
+                    existingProduct[B.wait] = null;
+                    existingProduct[B.cost] = null;
                 }
                 const wholesalerPrice = perCarton ? Math.round((Number(item.price) || 0) / perCarton) : item.price;
 
@@ -6659,11 +6667,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     existingProduct.stock += stockToAdd;
                     existingProduct.supplierId = supplierId;
                     if (cartonsLater) {
-                        existingProduct.cartonsWaiting = (Number(existingProduct.cartonsWaiting) || 0) + (Number(item.quantity) || 0);
-                        existingProduct.cartonCost = this._receivedCost(item); // (one carton's cost: shared out over what is inside when counted)
+                        existingProduct[B.wait] = (Number(existingProduct[B.wait]) || 0) + (Number(item.quantity) || 0);
+                        existingProduct[B.cost] = this._receivedCost(item); // (one carton's or pack's cost: shared out over what is inside when counted)
                         if (barcode && !this._barcodesMatch(existingProduct.barcode, barcode)) existingProduct.cartonBarcode = barcode;
                     } else if (perCarton) {
-                        existingProduct.perCarton = perCarton; // (remembered: next time the card only confirms it)
+                        if (intoSmaller) existingProduct[B.per] = perCarton; // (remembered: next time they are converted by themselves)
                         if (this._isCartonUnit(existingProduct.unitToConfirm)) existingProduct.unitToConfirm = null; // (an earlier "Packet or Carton?" is answered by this)
                         if (barcode && !this._barcodesMatch(existingProduct.barcode, barcode)) existingProduct.cartonBarcode = barcode; // (the carton's own barcode finds this product next time)
                     } else if (!existingProduct.barcode && barcode) {
@@ -6724,7 +6732,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (existingProduct) {
                     // the stock is added to whatever it is now; the fields that changed are sent, nothing else
                     productUpdates.push(DB.saveProduct(finalProduct, { delta: stockToAdd, thumb: thumbSentHere,
-                        only: ['supplierId', 'barcode', 'needsSetup', 'lockedUntilOOS', 'isSalesperson', 'originalName', 'wholesalerPrice', 'unitToConfirm', 'cost', 'costToConfirm', 'newSince', 'arrivedAt', 'thumb', 'perCarton', 'cartonBarcode', 'cartonsWaiting', 'cartonCost'] }));
+                        only: ['supplierId', 'barcode', 'needsSetup', 'lockedUntilOOS', 'isSalesperson', 'originalName', 'wholesalerPrice', 'unitToConfirm', 'cost', 'costToConfirm', 'newSince', 'arrivedAt', 'thumb', 'perCarton', 'perPack', 'cartonBarcode', 'cartonsWaiting', 'cartonCost', 'packsWaiting', 'packCost'] }));
                 } else {
                     productUpdates.push(DB.saveProduct(finalProduct, { thumb: true }));
                 }
@@ -6798,7 +6806,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (isSalesperson) {
                 this.navigateTo('products-view');
                 this.showCelebration({ icon: '📦', title: 'Items added', headline: log.senderStore ? `From ${log.senderStore}` : 'Transfer accepted',
-                    messages: ['The items have been added to your products.', 'Earn airtime points each time you record a sale for these items. T&C apply.'] });
+                    messages: ['The items have been added to your products.'], note: 'Sell them and get free airtime. T&C apply.' });
                 return;
             }
             try { if ('speechSynthesis' in window) window.speechSynthesis.getVoices(); } catch (e) { /* fine */ } // (the voice is ready before the first card)
@@ -6807,23 +6815,28 @@ document.addEventListener('DOMContentLoaded', () => {
             this._showProductsTab('new');
             const toCheck = [];
             for (const id of touched) { const p = await DB.getProduct(id); if (p && this._needsCheck(p)) toCheck.push(id); }
-            const airtime = 'Earn airtime points each time you record a sale for these items. T&C apply.';
+            const airtime = 'Sell them and get free airtime. T&C apply.';
             this.showCelebration(toCheck.length ? {
                 icon: '📦', title: 'Items added', headline: log.senderStore ? `From ${log.senderStore}` : 'Transfer accepted',
-                messages: ['The items have been added to your products. Add your prices now.', airtime],
+                messages: ['The items have been added to your products. Add your prices now.'], note: airtime,
                 action: { label: 'Check the items', run: () => this._checkItems(toCheck) },
                 later: 'Later'
             } : {
                 icon: '📦', title: 'Items added', headline: log.senderStore ? `From ${log.senderStore}` : 'Transfer accepted',
-                messages: ['The items have been added to your products.', airtime]
+                messages: ['The items have been added to your products.'], note: airtime
             });
         },
 
-        // A new item that needs its owner: cartons to count, a unit or cost to choose, or its own selling price.
-        // (Items that need nothing are not in Check items: they wait in New, as before.)
+        // Check the items is only for packs or cartons to count, for an item kept here in a smaller unit.
+        // Everything else (a price, another unit, a cost above the price) just waits in New.
         _needsCheck(p) {
             if (!p || p.deleted || !this._isNewStock(p)) return false;
-            return Number(p.cartonsWaiting) > 0
+            return this._waitingBulk(p).length > 0;
+        },
+        // A New item that needs its owner for something else (it stays in New, with its label or question, until it is saved)
+        _needsAttention(p) {
+            if (!p || p.deleted || !this._isNewStock(p)) return false;
+            return this._needsCheck(p)
                 || (!!p.unitToConfirm && this._unitKey(p.unitToConfirm) !== this._unitKey(p.unit))
                 || (Number(p.costToConfirm) > 0 && Number(p.costToConfirm) !== Number(p.cost))
                 || this._needsSellingPrice(p) || !(Number(p.price) > 0)
@@ -6832,9 +6845,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // While New has items that need the owner: a red dot on the Products button, and (on the New tab) one button that walks through them
         _paintNewHelp(newOnes, filterType) {
-            const due = newOnes.filter(p => this._needsCheck(p)); // (items that need nothing just wait in New: no dot, not counted)
+            const due = newOnes.filter(p => this._needsCheck(p)); // (packs/cartons to count: the Check button)
             const nav = document.querySelector('.nav-btn[data-view="products-view"]');
-            if (nav) nav.classList.toggle('has-dot', due.length > 0);
+            if (nav) nav.classList.toggle('has-dot', newOnes.some(p => this._needsAttention(p))); // (any New item that needs its owner)
             let bar = document.getElementById('check-items-bar');
             if (!bar) {
                 bar = document.createElement('button');
@@ -6877,9 +6890,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (r === null) { left += list.length - i; break; }
                     if (r === 'later') left++;
                 }
+                const waitingInNew = (await DB.getAllProducts()).filter(p => this._needsAttention(p)).length;
                 const stillNew = (await DB.getAllProducts()).filter(p => this._isNewStock(p)).length;
                 this._showProductsTab(stillNew ? 'new' : 'all');
-                if (list.length) this.showToast(left ? `${left} ${left === 1 ? 'item still needs' : 'items still need'} you in New.` : 'All done ✓');
+                if (list.length) this.showToast(left ? `${left} ${left === 1 ? 'item still needs' : 'items still need'} counting in New.` : waitingInNew ? 'Counted ✓ Other things wait in New.' : 'All done ✓');
                 if (list.length && !left) this._talk('E don finish. Well done o!'); else this._hush();
             } finally { this._checking = false; }
         },
@@ -6893,36 +6907,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (only.size) await DB.saveProduct(product, { only: [...only] });
                 return result;
             };
-            // 1. cartons waiting: "1 carton = ? packets"
-            if (Number(product.cartonsWaiting) > 0) {
-                const per = await this._cartonCard(product, Number(product.cartonsWaiting), step);
+            // Packs or cartons waiting: "1 carton = ? packets" (each kind waiting, one after the other)
+            for (const w of this._waitingBulk(product)) {
+                const per = await this._cartonCard(product, w.n, step, w.kind);
                 if (per === null) return finish(null);
                 if (per < 0) return finish('later');
-                await this._countCartons(product, per); // (saved there; it may leave a new cost to check)
+                await this._countCartons(product, per, w.kind); // (saved there)
             }
-            // 2. it came in a different unit: which one is it?
-            if (product.unitToConfirm && this._unitKey(product.unitToConfirm) !== this._unitKey(product.unit)) {
-                const unit = await this._checkChoice(product, step, 'unit');
-                if (unit === null || unit === 'later') return finish(unit === null ? null : 'later');
-                if (this._unitKey(unit) === this._unitKey(product.unit)) { // (kept its own unit: that other unit is the same thing here, not asked again)
-                    product.unitSame = { ...(product.unitSame || {}), [this._unitKey(product.unitToConfirm)]: true };
-                    only.add('unitSame');
-                }
-                product.unit = unit; product.unitToConfirm = null; only.add('unit'); only.add('unitToConfirm');
-            }
-            // 3. it came at a different cost: which is right now?
-            if (Number(product.costToConfirm) > 0 && Number(product.costToConfirm) !== Number(product.cost)) {
-                const cost = await this._checkChoice(product, step, 'cost');
-                if (cost === null || cost === 'later') return finish(cost === null ? null : 'later');
-                product.cost = cost; product.costToConfirm = null; only.add('cost'); only.add('costToConfirm');
-            }
-            // 4. its selling price (still the sender's, none, or now below the cost)
-            if (this._needsSellingPrice(product) || !(Number(product.price) > 0) || (Number(product.cost) > 0 && Number(product.cost) > Number(product.price))) {
-                const price = await this._checkPrice(product, step);
-                if (price === null || price === 'later') return finish(price === null ? null : 'later');
-                product.price = price; product.needsSetup = null; only.add('price'); only.add('needsSetup');
-            }
-            return finish('done');
+            // Counted. Anything else it needs (a price, another unit) waits in New: it leaves New only when nothing is left.
+            return finish(this._needsAttention(product) ? 'counted' : 'done');
         },
 
         // The top of every card: "1 of 3", then the product's picture (or the app's picture when it has none)
