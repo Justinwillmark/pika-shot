@@ -2816,6 +2816,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (todaysSales.length === 0) {
                 this.elements.recentSalesList.innerHTML = `<p class="empty-state">No sales recorded today.</p>`;
+                this._syncSelection(); // (nothing listed: nothing can stay picked)
             } else {
                 await this.renderSalesList(todaysSales, this.elements.recentSalesList, 6);
             }
@@ -2899,6 +2900,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (salesToRender.length === 0) {
                 targetElement.innerHTML = `<p class="empty-state">Record some sales to see them here.</p>`;
+                this._syncSelection();
                 return;
             }
 
@@ -2932,6 +2934,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.addSaleItemEventListeners(saleEl, sale);
                 this._appendSaleEl(targetElement, saleEl, sale);
             });
+            this._syncSelection();
         },
 
         async renderAllSales() {
@@ -2951,6 +2954,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.salesFiguresBar.hidden = sortedSales.length === 0; // (no totals, no eye)
             if (sortedSales.length === 0) {
                 this.elements.allSalesList.innerHTML = `<p class="empty-state">Record some sales to see them here.</p>`;
+                this._syncSelection();
                 return;
             }
 
@@ -3035,6 +3039,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 this.elements.allSalesList.appendChild(groupContainer);
             }
+            this._syncSelection();
         },
 
         // Profit of a group of sales: what came in, less what the items cost. The cost is the one each sale was made at (older sales,
@@ -3357,10 +3362,14 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         // "Low stock" / "Out of stock" tabs show how many products are in them (nothing when there are none)
+        TAB_SHORT: { restock: 'Low', outofstock: 'Out' }, // (on phones: All, Low, Out, Check fit with their counts)
         _setTabCount(filter, label, count) {
             const btn = document.querySelector(`#product-filter-tabs [data-filter="${filter}"]`);
             if (!btn) return;
-            btn.textContent = count > 0 ? `${label} ` : label;
+            const short = this.TAB_SHORT[filter];
+            btn.innerHTML = short ? `<span class="tab-full">${label}</span><span class="tab-short">${short}</span>` : this._esc(label);
+            btn.setAttribute('aria-label', count > 0 ? `${label}, ${count}` : label);
+            if (count > 0) btn.appendChild(document.createTextNode(' '));
             if (!(count > 0)) return;
             const badge = document.createElement('span');
             badge.className = 'tab-count';
@@ -5148,8 +5157,24 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.selectionModeHint.textContent = 'Tap to select more items';
             this.toggleSaleSelection(element, sale);
         },
+        // The sale bar (Receipt and transfer, Edit, Cancel) shows only while picked sales are on the screen. A list drawn again (a sync, a new
+        // sale) gets its picked look back; when none of the picked sales is shown any more, the bar goes and nothing stays picked.
+        _syncSelection() {
+            const bar = this.elements.receiptActions;
+            if (!this.state.isSelectionMode) { if (bar) bar.classList.remove('visible'); return; }
+            const picked = new Set([...this.state.selectedSales].map(String));
+            let shown = false;
+            document.querySelectorAll('.sale-item[data-sale-id]').forEach(el => {
+                el.classList.add('selectable');
+                const on = picked.has(String(el.dataset.saleId));
+                el.classList.toggle('selected', on);
+                if (on && el.offsetParent !== null) shown = true;
+            });
+            if (!shown) this.exitSelectionMode();
+            else this.updateEditButton();
+        },
         exitSelectionMode() {
-            if (!this.state.isSelectionMode) return;
+            if (!this.state.isSelectionMode) { this.elements.receiptActions.classList.remove('visible'); return; } // (never up with nothing picked)
             this.state.isSelectionMode = false;
             this.state.selectedSales.clear();
             this.state.selectedSaleData.clear();

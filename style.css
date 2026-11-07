@@ -2153,3 +2153,16 @@ a.privacy-link-trigger { display: inline-block; padding: 8px 2px; margin: -8px 0
 
 /* "Not now" / "Later" (the grey choice in a pop-up): always on one line */
 .dialog-card .btn.btn-cancel.btn-later { white-space: nowrap; padding-left: 10px; padding-right: 10px; }
+
+/* My products tabs: full words where there is room, "Low" and "Out" on phones, so All, Low, Out and Check (with their counts) always fit */
+#product-filter-tabs .tab-short { display: none; }
+@media (max-width: 440px) {
+    #product-filter-tabs .tab-full { display: none; }
+    #product-filter-tabs .tab-short { display: inline; }
+    #product-filter-tabs .filter-tab-btn { min-width: 0; }
+}
+@media (max-width: 330px) {
+    #product-filter-tabs { gap: 5px; padding-left: 8px; padding-right: 8px; }
+    #product-filter-tabs .filter-tab-btn { padding-left: 7px; padding-right: 7px; font-size: 0.78rem; }
+    #product-filter-tabs .filter-tab-btn[data-filter="all"] { min-width: 42px; }
+}
