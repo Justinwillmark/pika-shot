@@ -6846,8 +6846,12 @@ document.addEventListener('DOMContentLoaded', () => {
         // While New has items that need the owner: a red dot on the Products button, and (on the New tab) one button that walks through them
         _paintNewHelp(newOnes, filterType) {
             const due = newOnes.filter(p => this._needsCheck(p)); // (packs/cartons to count: the Check button)
+            const waiting = newOnes.some(p => this._needsAttention(p)); // (any New item that needs its owner)
             const nav = document.querySelector('.nav-btn[data-view="products-view"]');
-            if (nav) nav.classList.toggle('has-dot', newOnes.some(p => this._needsAttention(p))); // (any New item that needs its owner)
+            if (nav) nav.classList.toggle('has-dot', waiting);
+            // ...and on My products, a red line runs round the New tab (until New is open, or nothing is waiting)
+            const newTabBtn = document.getElementById('new-tab-btn');
+            if (newTabBtn) newTabBtn.classList.toggle('attention', waiting && filterType !== 'new');
             let bar = document.getElementById('check-items-bar');
             if (!bar) {
                 bar = document.createElement('button');
