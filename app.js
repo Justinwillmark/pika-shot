@@ -3299,7 +3299,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <img src="${imageUrl}" alt="${this._esc(product.name)}">
                     </div>
                     <div class="product-card-info">
-                        <h4>${this._esc(displayName)}</h4>
+                        <h4 title="${this._esc(displayName)}">${this._esc(displayName)}</h4>
                         <p class="product-price">&#8358;${this.formatNumber(product.price)}</p>
                         <p class="product-stock">${product.stock > 0 ? `${this.formatNumber(product.stock)} ${this._esc(product.unit)} left` : ''}</p>
                     </div>${this._productEditMarkHtml(product)}`;
