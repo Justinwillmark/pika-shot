@@ -2573,6 +2573,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             this.showView(viewId);
             this.elements.navButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.view === viewId));
+            if (viewId === 'home-view' && this.state.user && this._receiptsDue().length) setTimeout(() => { if (this._receiptsQuiet()) this._saveDueReceipts(); }, 350); // (receipts of accepted transfers)
 
             if (viewId === 'home-view') {
                 this.elements.menuBtn.style.display = 'block';
@@ -3260,27 +3261,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 card.dataset.productId = product.id;
                 const imageUrl = product.image ? URL.createObjectURL(product.image) : (this._safeImageUrl(product.thumb) || 'icons/icon-192.png');
 
-                // Labels in the top corner, one under the other, as many as apply: "New stock!" (a received item not saved since),
-                // "Add price!" (still at the sender's price), then the stock label (Out of stock! or Low stock!)
-                const badges = [];
-                if (this._isNewStock(product)) badges.push('<div class="setup-badge">New stock!</div>');
-                const waitingBulk = this._isSalesperson() ? [] : this._waitingBulk(product);
-                if (waitingBulk.length) badges.push(`<div class="setup-badge">Count ${waitingBulk[0].kind}!</div>`); // (cartons or packs kept aside: a tap counts them)
-                if (this._needsSellingPrice(product)) badges.push('<div class="setup-badge">Add price!</div>');
-                if (product.stock <= 0) {
-                    // below 0: more was sold than the app had (usually a sale made with no internet that arrived late). The business is asked to count.
-                    badges.push(product.stock < 0 && !this._isSalesperson() ? '<div class="out-of-stock-badge">Check stock!</div>' : '<div class="out-of-stock-badge">Out of stock!</div>');
-                } else if (this._isSalesperson()) {
-                    if (isLow(product)) badges.push('<div class="restock-badge">Low stock!</div>');
-                } else if (product.isSalesperson) {
-                    // a salesperson's only setup step is the picture, which usually arrives with the transfer now
-                    if (!product.image && (product.needsSetup === 'price' || product.needsSetup === 'barcode-and-price')) {
-                        badges.push('<div class="setup-badge">Add image!</div>');
-                    }
-                } else if (isLow(product)) {
-                    badges.push('<div class="restock-badge">Low stock!</div>');
-                }
-                const badgeHtml = badges.length ? `<div class="card-badges">${badges.join('')}</div>` : '';
+                // One label per card: the most urgent job only. Check stock! (below 0) → Count cartons! / Count packs! → Add price!
+                // (still the sender's price, or it sells at or below its cost) → Out of stock! → Low stock!
+                const owner = !this._isSalesperson();
+                const waitingBulk = owner ? this._waitingBulk(product) : [];
+                let badge = '';
+                if (owner && product.stock < 0) badge = '<div class="out-of-stock-badge">Check stock!</div>'; // (more was sold than the app had: count it)
+                else if (waitingBulk.length) badge = `<div class="setup-badge">Count ${waitingBulk[0].kind}!</div>`; // (kept aside: a tap counts them)
+                else if (owner && (this._needsSellingPrice(product) || this._noProfit(product))) badge = '<div class="setup-badge">Add price!</div>';
+                else if (product.stock <= 0) badge = '<div class="out-of-stock-badge">Out of stock!</div>';
+                else if (isLow(product)) badge = '<div class="restock-badge">Low stock!</div>';
+                const badgeHtml = badge ? `<div class="card-badges">${badge}</div>` : '';
 
                 const displayName = product.name; // (the whole name, two lines at most: see .product-card-info h4; "Coca Cola 50cl" and "35cl" stay apart)
 
@@ -3328,6 +3319,10 @@ document.addEventListener('DOMContentLoaded', () => {
             return Number(product.freshAt) || 0;
         },
         _isNewStock(product) { return !this._isSalesperson() && this._newSince(product) > 0; },
+        // Sells at or below what it cost (the cost went up to the selling price, or past it): it makes nothing, or loses
+        _noProfit(product) {
+            return !!product && !product.isSalesperson && Number(product.cost) > 0 && Number(product.price) > 0 && Number(product.price) <= Number(product.cost);
+        },
         // A received item still selling at the sender's price: the owner has not set their own selling price yet
         _needsSellingPrice(product) {
             return !!product && !this._isSalesperson() && !product.isSalesperson && (product.needsSetup === 'price' || product.needsSetup === 'barcode-and-price');
@@ -6153,8 +6148,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             overlay.style.display = 'flex';
             requestAnimationFrame(() => overlay.classList.add('show'));
-            this._playTransferChime();
-            this.launchConfetti(overlay);
+            this.launchConfetti(overlay); // (silent: only things that can cost the business beep)
             okay.focus({ preventScroll: true });
         },
 
@@ -6801,7 +6795,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.state.scannedLogData = null;
             syncOnline().catch((error) => console.error('Could not update the supplier online:', error));
             this._nudgeAct('transfer');
-            this._receiptNudgeStart(log); // 4 seconds from now a message in the Profile card offers the receipt (a tap downloads it)
+            this._queueReceipt(log); // (saved to the phone by itself once they are back on Home with nothing open)
             await this.renderProducts();
             if (isSalesperson) {
                 this.navigateTo('products-view');
@@ -6840,7 +6834,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 || (!!p.unitToConfirm && this._unitKey(p.unitToConfirm) !== this._unitKey(p.unit))
                 || (Number(p.costToConfirm) > 0 && Number(p.costToConfirm) !== Number(p.cost))
                 || this._needsSellingPrice(p) || !(Number(p.price) > 0)
-                || (Number(p.cost) > 0 && Number(p.cost) > Number(p.price)); // (the new cost is above the selling price: a new price is needed)
+                || this._noProfit(p); // (it sells at or below its cost: a new price is needed)
         },
 
         // While New has items that need the owner: a red dot on the Products button, and (on the New tab) one button that walks through them
@@ -7629,6 +7623,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // and the clear one for every 4th of the others that comes up in Pidgin ('pidgin'; the 3 in between get the quiet one)
         _nudgeAlert(kind) {
             this._nudgeShake();
+            // Only messages about something that can cost the business (stock below 0, out of stock, a debt due, a cost above the price,
+            // cartons or packs to count) beep; all the others arrive silently, with the dot on the menu
+            if (kind !== true && kind !== 'loud') return;
             if (kind === 'pidgin') {
                 const rec = this._chimeLoad();
                 if (rec.pg !== undefined && rec.pg < 3) { rec.pg++; this._chimeSave(rec); kind = 'quiet'; } // (counted when it arrives, scanner or not; 0 again once a Pidgin beep plays)
@@ -7710,14 +7707,66 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         },
 
-        // Watches for the times the receipt message is due (while the app is open, once a minute; and whenever the app is opened or comes back)
+        // Receipts of accepted transfers: saved to the phone by themselves, a little later, once the person is back on Home with nothing open
+        // (never in the middle of something). Kept on the phone until saved (up to 7 days), so closing the app at once loses nothing.
+        // A phone only lets a page save a file right after a tap, so it is saved on the tap that brings them Home, or their next tap on Home.
+        // (This replaces the "Tap to download receipt" message.) Opening the app, or coming back to it, gets it ready again.
         _nudgeReceipts() {
-            if (!this.state.user || !window.PikaNudges) return;
-            let pending = false;
-            try { pending = !!this._nudgeLoad().receipt; } catch (e) { /* none */ }
-            if (!pending) return;
-            if (!this._receiptTimer) this._receiptTimer = setInterval(() => this._nudgeReceiptCheck(), 60000);
-            this._nudgeReceiptCheck();
+            if (!this.state.user) return;
+            // a receipt message from before this: its receipt goes the new way, the message stops
+            try {
+                const old = JSON.parse(localStorage.getItem(this._receiptKey()));
+                if (old && Array.isArray(old.items) && old.items.length) this._addDueReceipt({ ...old, id: old.id || `old_${old.timestamp || Date.now()}` });
+                localStorage.removeItem(this._receiptKey());
+            } catch (e) { /* nothing kept */ }
+            if (window.PikaNudges) this._nudgeRun(async () => { const state = this._nudgeLoad(); if (state.receipt || state.id === 'tx-receipt') { PikaNudges.receiptDone(state); this._nudgeSave(state); } });
+            this._armReceipts();
+        },
+        _receiptsKey() { return `pika_receipts_due_${this.state.user.phone}`; },
+        _receiptsDue() {
+            try { const list = JSON.parse(localStorage.getItem(this._receiptsKey())); return Array.isArray(list) ? list.filter(r => r && Date.now() - (Number(r.at) || 0) < 7 * 86400000) : []; }
+            catch (e) { return []; }
+        },
+        _setReceiptsDue(list) {
+            try { if (list.length) localStorage.setItem(this._receiptsKey(), JSON.stringify(list)); else localStorage.removeItem(this._receiptsKey()); } catch (e) { /* only for now */ }
+        },
+        _addDueReceipt(r) { this._setReceiptsDue([...this._receiptsDue().filter(x => x.id !== r.id), { ...r, at: r.at || Date.now() }]); },
+        _queueReceipt(log) {
+            if (!this.state.user) return;
+            this._addDueReceipt({
+                id: log.id || `x_${Date.now()}`,
+                senderStore: log.senderStore || '', senderId: log.senderId || '', senderLocation: log.senderLocation || '',
+                timestamp: DB._normalizeTimestamp(log.timestamp).getTime(),
+                items: (Array.isArray(log.items) ? log.items : []).map(i => ({ name: i.name, price: i.price, quantity: i.quantity, unit: i.unit, discount: i.discount, creditPaid: i.creditPaid, creditBalance: i.creditBalance }))
+            });
+            this._armReceipts();
+        },
+        _receiptsQuiet() {
+            return this.state.currentView === 'home-view' && !this._closeDialog && !this._celebrationOpen && !this._checking
+                && this.elements.modalContainer.style.display !== 'flex';
+        },
+        _armReceipts() {
+            if (this._receiptsArmed || !this.state.user || !this._receiptsDue().length) return;
+            this._receiptsArmed = true;
+            this._receiptsOnTap = () => { if (this._receiptsQuiet()) this._saveDueReceipts(); };
+            document.addEventListener('pointerup', this._receiptsOnTap, true);
+        },
+        async _saveDueReceipts() {
+            if (this._savingReceipts || !this.state.user) return;
+            this._savingReceipts = true;
+            try {
+                const list = this._receiptsDue();
+                let saved = 0;
+                for (const r of list) {
+                    if (!(await this._downloadTransferReceipt(r))) break;
+                    saved++;
+                    if (saved < list.length) await new Promise(res => setTimeout(res, 700)); // (one after the other)
+                }
+                const left = list.slice(saved);
+                this._setReceiptsDue(left);
+                if (saved) this.showToast(saved === 1 ? 'Receipt saved to your phone ✓' : `${saved} receipts saved to your phone ✓`);
+                if (!left.length && this._receiptsOnTap) { document.removeEventListener('pointerup', this._receiptsOnTap, true); this._receiptsArmed = false; this._receiptsOnTap = null; }
+            } finally { this._savingReceipts = false; }
         },
 
         _nudgeReceiptCheck() {
@@ -7941,7 +7990,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const line = askUnit ? `Na ${one}, abi ${this._unitOne(product.unitToConfirm).toLowerCase()}? Tap the one wey correct.`
                 : askCost ? `How much be your cost price for one ${one} again? Tap the one wey correct.`
                 : this._needsSellingPrice(product) ? `Put your own selling price for one ${one}, then save am.`
-                : 'Check am well well, then save am.';
+                : 'If e dey okay, save am.';
             this._modalTalk = true;
             this._talk(line);
         },

@@ -298,20 +298,20 @@
     const said = (out, m) => typeof out === 'string' ? { t: out, pidgin: m.pidgin !== undefined ? !!m.pidgin : m.cat === 'motivation' } : out;
     const subjective = (m) => { m.when = (c) => m.subjects(c).length > 0; return m; };
 
-    const CATALOG = [
+    const CATALOG_LIST = [
         // ---- Free airtime: no promises, no sales-to-reward counts. All of them get the clear beep.
-        { id: 'ap-any', chime: true, cat: 'airtime', any: true, when: () => true, text: (c, r) => twin(r, ['Every sale counts toward your airtime benefits. 🎁', 'Every sale wey you record, e dey count. 🎁']) },
-        { id: 'ap-receipts', chime: true, cat: 'airtime', when: c => c.lowReceipts, weight: c => c.tenureDays < 14 ? 2 : 1, text: (c, r) => twin(r, ['Share receipts. They count too. 🧾', 'Share receipt o. E sef dey count. 🧾']) },
-        { id: 'ap-transfer', chime: true, cat: 'airtime', when: c => c.lowTransfers, weight: c => c.cartonSeller ? (c.tenureDays < 14 ? 3 : 2) : 0.15,  /* mostly for stores selling packs/cartons */ text: (c, r) => twin(r, ['Transfer items after each sale. It counts. 📦', 'After every sale, transfer the items. E dey count. 📦']) },
-        { id: 'ap-request', chime: true, cat: 'airtime', roles: ['Wholesaler', 'Retailer'], cooldown: 4 * DAY, when: c => c.canRequestTransfer, weight: c => c.lowCount > 0 ? 2.5 : 0.8, text: (c, r) => twin(r, ['Request item transfer when you restock. 📲', 'You don buy new stock? Request transfer. 📲']) },
-        { id: 'ap-morning', chime: true, cat: 'airtime', when: c => c.tod === 'morning', text: (c, r) => twin(r, ['Good morning! Record every sale today. ☀️', 'Good morning o! Record every sale today. ☀️']) },
-        { id: 'ap-evening', chime: true, cat: 'airtime', when: c => c.tod === 'evening', text: (c, r) => twin(r, ['Record today\'s sales before you close. 🌇', 'Before you lock shop, record all your sales. 🌇']) },
-        { id: 'ap-night', chime: true, cat: 'airtime', when: c => c.tod === 'night', text: (c, r) => twin(r, ['Still selling late? Every sale counts. 🌙', 'You still dey sell for night? Every sale count. 🌙']) },
-        { id: 'ap-inact1', chime: true, cat: 'airtime', open: true, when: c => c.inactiveDays >= 1 && c.inactiveDays <= 2, text: (c, r) => twin(r, ['Record one sale today. It all counts. ✨', 'Just one sale today. Everything dey count. ✨']) },
-        { id: 'ap-inact3', chime: true, cat: 'airtime', open: true, when: c => c.inactiveDays >= 3, text: (c, r) => twin(r, ['Welcome back. Your benefits are still here. 👋', 'You don come back o! Your benefits still dey. 👋']) },
+        { id: 'ap-any', cat: 'airtime', any: true, when: () => true, text: (c, r) => twin(r, ['Every sale counts toward your airtime benefits. 🎁', 'Every sale wey you record, e dey count. 🎁']) },
+        { id: 'ap-receipts', cat: 'airtime', when: c => c.lowReceipts, weight: c => c.tenureDays < 14 ? 2 : 1, text: (c, r) => twin(r, ['Share receipts. They count too. 🧾', 'Share receipt o. E sef dey count. 🧾']) },
+        { id: 'ap-transfer', cat: 'airtime', when: c => c.lowTransfers, weight: c => c.cartonSeller ? (c.tenureDays < 14 ? 3 : 2) : 0.15,  /* mostly for stores selling packs/cartons */ text: (c, r) => twin(r, ['Transfer items after each sale. It counts. 📦', 'After every sale, transfer the items. E dey count. 📦']) },
+        { id: 'ap-request', cat: 'airtime', roles: ['Wholesaler', 'Retailer'], cooldown: 4 * DAY, when: c => c.canRequestTransfer, weight: c => c.lowCount > 0 ? 2.5 : 0.8, text: (c, r) => twin(r, ['Request item transfer when you restock. 📲', 'You don buy new stock? Request transfer. 📲']) },
+        { id: 'ap-morning', cat: 'airtime', when: c => c.tod === 'morning', text: (c, r) => twin(r, ['Good morning! Record every sale today. ☀️', 'Good morning o! Record every sale today. ☀️']) },
+        { id: 'ap-evening', cat: 'airtime', when: c => c.tod === 'evening', text: (c, r) => twin(r, ['Record today\'s sales before you close. 🌇', 'Before you lock shop, record all your sales. 🌇']) },
+        { id: 'ap-night', cat: 'airtime', when: c => c.tod === 'night', text: (c, r) => twin(r, ['Still selling late? Every sale counts. 🌙', 'You still dey sell for night? Every sale count. 🌙']) },
+        { id: 'ap-inact1', cat: 'airtime', open: true, when: c => c.inactiveDays >= 1 && c.inactiveDays <= 2, text: (c, r) => twin(r, ['Record one sale today. It all counts. ✨', 'Just one sale today. Everything dey count. ✨']) },
+        { id: 'ap-inact3', cat: 'airtime', open: true, when: c => c.inactiveDays >= 3, text: (c, r) => twin(r, ['Welcome back. Your benefits are still here. 👋', 'You don come back o! Your benefits still dey. 👋']) },
 
         // ---- Business insights: facts from the person's own records
-        { id: 'in-funding', chime: true, cat: 'insight', tier: 2, cooldown: 3 * DAY, go: 'funding', when: c => c.needFunding, text: (c, r) => twin(r, ['Need money for stock? Get help 💰', 'You need money for stock? We fit help you. 💰']) },
+        { id: 'in-funding', cat: 'insight', tier: 2, cooldown: 3 * DAY, go: 'funding', when: c => c.needFunding, text: (c, r) => twin(r, ['Need money for stock? Get help 💰', 'You need money for stock? We fit help you. 💰']) },
         // A customer owes: a reminder every 3 days until it is paid (each customer has their own 3 days). Never late at night.
         subjective({ id: 'in-owe', chime: true, cat: 'insight', tier: 2, cooldown: REMIND_AFTER * DAY, reminder: true, go: 'customers',
             ok: c => c.tod !== 'night',
@@ -328,13 +328,13 @@
             text: (c, r, s) => twin(r, [`${short(s.p.name, 2)} went below 0. Check your stock. ⚠️`, `${short(s.p.name, 2)} stock don go below zero. Check am. ⚠️`]) }),
         { id: 'in-owe-all', cat: 'insight', cooldown: REMIND_AFTER * DAY, go: 'customers', when: c => c.debtorCount >= 2 && c.tod !== 'night', weight: () => 1.5, text: (c, r) => twin(r, [`Customers owe you ${naira(c.debtTotal)}. Tap to see. 👀`, `Customers dey owe you ${naira(c.debtTotal)}. Tap make you see. 👀`]) },
         // Stock: yours, and (for wholesalers and their salespeople) your customers'. Mornings are the time to act on it.
-        subjective({ id: 'in-lowstock', chime: true, cat: 'insight', tier: 1, cooldown: 2 * DAY, go: 'product', weight: c => c.tod === 'morning' ? 1.5 : 1,
+        subjective({ id: 'in-lowstock', cat: 'insight', tier: 1, cooldown: 2 * DAY, go: 'product', weight: c => c.tod === 'morning' ? 1.5 : 1,
             subjects: c => c.lowProducts.map(p => ({ key: 'low:' + p.id, arg: { id: p.id, tab: 'restock' }, p })),
             text: (c, r, s) => twin(r, [`You're running low on ${short(s.p.name, 2)}. 📦`, `${short(s.p.name, 2)} don dey finish o. Buy more. 📦`]) }),
         subjective({ id: 'in-outstock', chime: true, cat: 'insight', tier: 1, cooldown: 2 * DAY, go: 'product', weight: c => c.tod === 'morning' ? 1.5 : 1,
             subjects: c => c.outProducts.map(p => ({ key: 'out:' + p.id, arg: { id: p.id, tab: 'outofstock' }, p })),
             text: (c, r, s) => twin(r, [`${short(s.p.name, 2)} is out of stock. Restock soon. 📦`, `${short(s.p.name, 2)} don finish finish. Restock quick quick. 📦`]) }),
-        subjective({ id: 'in-cust-low', chime: true, cat: 'insight', tier: 1, roles: ['Wholesaler', 'Salesperson'], cooldown: 3 * DAY, go: 'customers', weight: c => c.tod === 'morning' ? 1.5 : 1,
+        subjective({ id: 'in-cust-low', cat: 'insight', tier: 1, roles: ['Wholesaler', 'Salesperson'], cooldown: 3 * DAY, go: 'customers', weight: c => c.tod === 'morning' ? 1.5 : 1,
             subjects: c => c.custLow.map(x => ({ key: 'cl:' + x.id, arg: { customer: x.id, name: x.name }, x })),
             text: (c, r, s) => {
                 const who = short(s.x.name, 2), item = short(s.x.product, 2);
@@ -342,45 +342,46 @@
                     ? twin(r, [`${who} is out of ${item}. 🛒`, `${item} don finish for ${who} side. 🛒`])
                     : twin(r, [`${who} is low on ${item}. 🛒`, `${who} go soon need ${item}. 🛒`]);
             } }),
-        { id: 'in-cust-many', chime: true, cat: 'insight', roles: ['Wholesaler', 'Salesperson'], cooldown: 2 * DAY, go: 'customers', when: c => c.custLow.length >= 3, weight: () => 2.5, text: (c, r) => twin(r, [`${c.custLow.length} customers need stock. Tap to see. 🛒`, `${c.custLow.length} customers dey need stock. Go check dem. 🛒`]) },
+        { id: 'in-cust-many', cat: 'insight', roles: ['Wholesaler', 'Salesperson'], cooldown: 2 * DAY, go: 'customers', when: c => c.custLow.length >= 3, weight: () => 2.5, text: (c, r) => twin(r, [`${c.custLow.length} customers need stock. Tap to see. 🛒`, `${c.custLow.length} customers dey need stock. Go check dem. 🛒`]) },
 
         { id: 'in-milestone', cat: 'insight', when: c => c.toMilestone && c.toMilestone.n >= 1 && c.toMilestone.n <= 20, weight: c => c.toMilestone.n <= 5 ? 2.5 : 1.2,
             text: (c, r) => {
                 const n = c.toMilestone.n, sales = n === 1 ? 'sale' : 'sales';
                 return twin(r, [`${n} ${sales} away from ${c.toMilestone.to}. 🎯`, `Only ${n} more ${sales}, you go reach ${c.toMilestone.to}! 🎯`]);
             } },
-        { id: 'in-100k', chime: true, cat: 'insight', when: c => c.first100k, weight: () => 3, text: (c, r) => twin(r, ['Your first ₦100k day this week! 👏', 'You don hit ₦100k today! First time this week. 👏']) },
-        { id: 'in-paid', chime: true, cat: 'insight', when: c => !!c.paid, weight: () => 3, text: (c, r) => twin(r, [`${short(c.paid.name || 'A customer', 2)} paid back ${naira(c.paid.amt)}. 🎉`, `${short(c.paid.name || 'A customer', 2)} don pay ${naira(c.paid.amt)} back. Money don land! 🎉`]) },
+        { id: 'in-100k', cat: 'insight', when: c => c.first100k, weight: () => 3, text: (c, r) => twin(r, ['Your first ₦100k day this week! 👏', 'You don hit ₦100k today! First time this week. 👏']) },
+        { id: 'in-paid', cat: 'insight', when: c => !!c.paid, weight: () => 3, text: (c, r) => twin(r, [`${short(c.paid.name || 'A customer', 2)} paid back ${naira(c.paid.amt)}. 🎉`, `${short(c.paid.name || 'A customer', 2)} don pay ${naira(c.paid.amt)} back. Money don land! 🎉`]) },
         { id: 'in-best-item', cat: 'insight', when: c => !!c.topItem, text: (c, r) => twin(r, [`${c.topItem} is your best seller this week. ⭐`, `${c.topItem} dey sell pass everything this week. ⭐`]) },
         { id: 'in-up', cat: 'insight', when: c => c.prev7 > 0 && c.last7 > c.prev7, text: (c, r) => twin(r, [`You sold ${naira(c.last7 - c.prev7)} more than last week. 📈`, `You don sell ${naira(c.last7 - c.prev7)} pass last week. Well done! 📈`]) },
-        { id: 'in-best-day', chime: true, cat: 'insight', when: c => c.bestDay, weight: () => 2.5, text: (c, r) => twin(r, ['Your best day this week so far! 🌟', 'Today na your best day this week o! 🌟']) },
+        { id: 'in-best-day', cat: 'insight', when: c => c.bestDay, weight: () => 2.5, text: (c, r) => twin(r, ['Your best day this week so far! 🌟', 'Today na your best day this week o! 🌟']) },
         { id: 'in-slow', cat: 'insight', when: c => c.slowDay && !!c.topItem, text: (c, r) => twin(r, [`Slow day? Offer ${c.topItem} to customers. 💡`, `Market slow today? Show customers your ${c.topItem}. 💡`]) },
         { id: 'in-daily', cat: 'insight', when: c => (c.tod === 'evening' || c.tod === 'night') && c.todaySales >= 3, weight: () => 2, text: (c, r) => twin(r, [`Today: ${c.todaySales} sales, ${naira(c.todayTotal)}. Well done! 🌟`, `Today: ${c.todaySales} sales, ${naira(c.todayTotal)}. You try well well! 🌟`]) },
         { id: 'in-receipts5', cat: 'insight', when: c => c.receipts7 >= 5, text: (c, r) => twin(r, [`${c.receipts7} receipts shared this week. Customers trust you. 🙌`, `${c.receipts7} receipts this week. Your customers trust you well well. 🙌`]) },
         { id: 'in-transfer', cat: 'insight', when: c => c.lowTransfers, weight: c => c.cartonSeller ? 1.5 : 0.15,  /* mostly for stores selling packs/cartons */ text: (c, r) => twin(r, ['Transfer items to customers after each sale. 🚚', 'You don sell? Transfer the items give your customer. 🚚']) },
         { id: 'in-streak', cat: 'insight', when: c => c.streak >= 3, text: (c, r) => twin(r, [`${c.streak} days in a row. Keep the streak. 🔥`, `${c.streak} days back to back! No break am o. 🔥`]) },
         { id: 'in-streak-goal', cat: 'insight', when: c => [2, 6, 13, 29].indexOf(c.streak) >= 0, weight: () => 2.5, text: (c, r) => twin(r, [`Tomorrow makes ${c.streak + 1} days in a row! 🔥`, `One more day, e go be ${c.streak + 1} days! 🔥`]) },
-        { id: 'in-streak-risk', chime: true, cat: 'insight', when: c => c.streakRisk, weight: () => 2.5, text: (c, r) => twin(r, [`Sell once today to keep your ${c.streakBefore}-day streak. 🔥`, `Abeg sell one today. No let your ${c.streakBefore}-day streak break. 🔥`]) },
+        { id: 'in-streak-risk', cat: 'insight', when: c => c.streakRisk, weight: () => 2.5, text: (c, r) => twin(r, [`Sell once today to keep your ${c.streakBefore}-day streak. 🔥`, `Abeg sell one today. No let your ${c.streakBefore}-day streak break. 🔥`]) },
         { id: 'in-month', cat: 'insight', when: c => c.monthTime && c.month > 0, text: (c, r) => twin(r, [`${naira(c.month)} recorded this month. 📅`, `This month, you don record ${naira(c.month)}. 📅`]) },
 
         // ---- New items that need the owner (a price, cartons to count, a unit, a cost above the price). Owners only (salespeople do not set prices).
         // A tap opens Check the items on New: for that one item, or for all of them.
         { id: 'pr-sell-many', chime: true, cat: 'prices', tier: 1, cooldown: DAY, roles: ['Wholesaler', 'Retailer'], go: 'check', when: c => c.cartonsToCount.length >= 2, weight: () => 2.5,
             text: (c, r) => twin(r, [`${c.cartonsToCount.length} items have cartons or packs to count. Tap to count them. 📦`, `${c.cartonsToCount.length} items get cartons wey you never count. Tap make we count dem. 📦`]) },
-        { id: 'pr-new-many', chime: true, cat: 'prices', tier: 1, cooldown: DAY, roles: ['Wholesaler', 'Retailer'], go: 'products', when: c => c.toCheck.filter(p => p.need !== 'cartons').length >= 2, weight: () => 2,
+        { id: 'pr-new-many', cat: 'prices', tier: 1, cooldown: DAY, roles: ['Wholesaler', 'Retailer'], go: 'products', when: c => c.toCheck.filter(p => p.need !== 'cartons').length >= 2, weight: () => 2,
             text: (c, r) => { const k = c.toCheck.filter(p => p.need !== 'cartons').length; return twin(r, [`${k} new items need you in New. Tap to see. 🏷️`, `${k} new items dey wait for you for New. Tap make you see. 🏷️`]); } },
-        subjective({ id: 'pr-check', chime: true, cat: 'prices', tier: 1, cooldown: DAY, reminder: true, roles: ['Wholesaler', 'Retailer'], go: 'edit',
-            subjects: c => c.toCheck.filter(p => p.need === 'unit' || p.need === 'over').map(p => ({ key: 'chk:' + p.id, arg: { id: p.id }, p })),
-            text: (c, r, s) => s.p.need === 'over'
-                ? twin(r, [`${short(s.p.name, 2)} now costs more than your price. Tap to fix it. 🏷️`, `${short(s.p.name, 2)} cost don pass your price o. Tap make you fix am. 🏷️`])
-                : twin(r, [`How do you count ${short(s.p.name, 2)}? Tap to check. 📦`, `How you dey count ${short(s.p.name, 2)}? Tap make we check am. 📦`]) }),
-        subjective({ id: 'pr-sell', chime: true, cat: 'prices', tier: 1, cooldown: DAY, reminder: true, roles: ['Wholesaler', 'Retailer'], go: 'edit',
+        subjective({ id: 'pr-over', chime: true, cat: 'prices', tier: 1, cooldown: DAY, reminder: true, roles: ['Wholesaler', 'Retailer'], go: 'edit',
+            subjects: c => c.toCheck.filter(p => p.need === 'over').map(p => ({ key: 'chk:' + p.id, arg: { id: p.id }, p })),
+            text: (c, r, s) => twin(r, [`${short(s.p.name, 2)} now costs more than your price. Tap to fix it. 🏷️`, `${short(s.p.name, 2)} cost don pass your price o. Tap make you fix am. 🏷️`]) }),
+        subjective({ id: 'pr-check', cat: 'prices', tier: 1, cooldown: DAY, reminder: true, roles: ['Wholesaler', 'Retailer'], go: 'edit',
+            subjects: c => c.toCheck.filter(p => p.need === 'unit').map(p => ({ key: 'unit:' + p.id, arg: { id: p.id }, p })),
+            text: (c, r, s) => twin(r, [`How do you count ${short(s.p.name, 2)}? Tap to check. 📦`, `How you dey count ${short(s.p.name, 2)}? Tap make we check am. 📦`]) }),
+        subjective({ id: 'pr-sell', cat: 'prices', tier: 1, cooldown: DAY, reminder: true, roles: ['Wholesaler', 'Retailer'], go: 'edit',
             subjects: c => c.priceToSet.map(p => ({ key: 'sell:' + p.id, arg: { id: p.id }, p })),
             text: (c, r, s) => twin(r, [`Set your selling price for ${short(s.p.name, 2)}. Tap to check. 🏷️`, `How much you go sell ${short(s.p.name, 2)}? Tap make you put am. 🏷️`]) }),
         subjective({ id: 'pr-cartons', chime: true, cat: 'prices', tier: 1, cooldown: DAY, reminder: true, roles: ['Wholesaler', 'Retailer'], go: 'check',
             subjects: c => c.cartonsToCount.map(p => ({ key: 'ctn:' + p.id, arg: { id: p.id }, p })),
             text: (c, r, s) => twin(r, [`Count your ${s.p.n} ${short(s.p.name, 2)} ${s.p.n === 1 ? s.p.one : s.p.many}. Tap to add them. 📦`, `Your ${s.p.n} ${short(s.p.name, 2)} ${s.p.n === 1 ? s.p.one : s.p.many} dey wait. Tap make you count dem. 📦`]) }),
-        subjective({ id: 'pr-cost', chime: true, cat: 'prices', tier: 1, cooldown: DAY, reminder: true, roles: ['Wholesaler', 'Retailer'], go: 'edit',
+        subjective({ id: 'pr-cost', cat: 'prices', tier: 1, cooldown: DAY, reminder: true, roles: ['Wholesaler', 'Retailer'], go: 'edit',
             subjects: c => c.costToCheck.map(p => ({ key: 'cost:' + p.id, arg: { id: p.id }, p })),
             text: (c, r, s) => twin(r, [`${short(s.p.name, 2)} came at ${naira(s.p.next)}. Update your cost? 💰`, `${short(s.p.name, 2)} cost don change o. Check am. 💰`]) }),
 
@@ -407,7 +408,7 @@
         { id: 'mo-hand', cat: 'motivation', when: c => c.todaySales >= 20, weight: () => 1.5, text: () => 'Your hand no rest today! Well done o. 🙌' },
         { id: 'mo-streak', cat: 'motivation', when: c => c.streak >= 3, text: () => 'You too much o! No break the streak. 🔥' },
         { id: 'mo-champion', cat: 'motivation', when: c => c.streak >= 7, weight: () => 1.5, text: () => 'One week straight? You be champion! 🏆' },
-        { id: 'mo-record-break', chime: true, cat: 'motivation', when: c => c.newHigh, weight: () => 2.5, text: () => 'You don break your own record! 🏆' },
+        { id: 'mo-record-break', cat: 'motivation', when: c => c.newHigh, weight: () => 2.5, text: () => 'You don break your own record! 🏆' },
         { id: 'mo-paid', cat: 'motivation', when: c => !!c.paid, weight: () => 2, text: () => 'Money don land! Enjoy am. 💸' },
         { id: 'mo-slow', cat: 'motivation', when: c => c.slowDay, weight: () => 2, text: () => 'Slow day no be forever. Customers go come. 🙏' },
         { id: 'mo-monday', cat: 'motivation', when: c => c.isMonday && c.tod !== 'night', weight: () => 2, text: () => 'New week don start o! Make we sell well. 🚀' },
@@ -422,13 +423,13 @@
         { id: 'mo-oga-market', cat: 'motivation', who: 'Male', any: true, when: () => true, text: () => 'Oga, na you dey run this market! 👑' },
         { id: 'mo-oga-try', cat: 'motivation', who: 'Male', when: c => c.todaySales >= 10, text: () => 'Oga, you dey try! 💪' },
         { id: 'mo-oga-hand', cat: 'motivation', who: 'Male', when: c => c.todaySales >= 5, text: () => 'Oga, your hand sweet for sales! 🕺' },
-        { id: 'mo-oga-show', chime: true, cat: 'motivation', who: 'Male', when: c => c.newHigh, weight: () => 2.5, text: () => 'Oga don show. Well done! 🏆' },
+        { id: 'mo-oga-show', cat: 'motivation', who: 'Male', when: c => c.newHigh, weight: () => 2.5, text: () => 'Oga don show. Well done! 🏆' },
         { id: 'mo-madam-any', cat: 'motivation', who: 'Female', any: true, when: () => true, text: () => 'Madam di madam! 👑' },
         { id: 'mo-madam-shine', cat: 'motivation', who: 'Female', any: true, when: () => true, text: () => 'Madam, your shop dey shine! 🌟' },
         { id: 'mo-madam-market', cat: 'motivation', who: 'Female', any: true, when: () => true, text: () => 'Madam, na you dey run this market! 👑' },
         { id: 'mo-madam-try', cat: 'motivation', who: 'Female', when: c => c.todaySales >= 10, text: () => 'Madam, you dey try o! 💪' },
         { id: 'mo-madam-hand', cat: 'motivation', who: 'Female', when: c => c.todaySales >= 5, text: () => 'Madam, your hand sweet for sales! 💃' },
-        { id: 'mo-madam-show', chime: true, cat: 'motivation', who: 'Female', when: c => c.newHigh, weight: () => 2.5, text: () => 'Madam don show. Well done! 🏆' },
+        { id: 'mo-madam-show', cat: 'motivation', who: 'Female', when: c => c.newHigh, weight: () => 2.5, text: () => 'Madam don show. Well done! 🏆' },
         { id: 'mo-morning', cat: 'motivation', pidgin: false, when: c => c.tod === 'morning', text: () => 'Good morning. Make today a good one. ☀️' },
         { id: 'mo-morning-pcm', cat: 'motivation', when: c => c.tod === 'morning', text: () => 'Good morning o! Make we start well. ☀️' },
         { id: 'mo-morning-sweet', cat: 'motivation', when: c => c.tod === 'morning', text: () => 'Today go sweet. Oya make we start! 🌅' },
@@ -450,11 +451,13 @@
         { id: 'ia-morning', cat: 'inactivity', open: true, when: c => c.inactiveDays >= 1 && c.tod === 'morning', text: (c, r) => twin(r, ['Good morning. Record your first sale. ☀️', 'Good morning o! Oya, record your first sale. ☀️']) },
 
         // ---- The welcome after a first sale
-        { id: 'welcome', chime: true, cat: 'welcome', special: true, when: () => false, text: (c, r) => r ? twin(r, ['First sale recorded. Welcome aboard! 🎉', 'Your first sale don enter! Welcome o! 🎉']) : 'First sale recorded. Welcome aboard! 🎉' },
+        { id: 'welcome', cat: 'welcome', special: true, when: () => false, text: (c, r) => r ? twin(r, ['First sale recorded. Welcome aboard! 🎉', 'Your first sale don enter! Welcome o! 🎉']) : 'First sale recorded. Welcome aboard! 🎉' },
 
         // ---- The receipt of a transfer that was just accepted: a primary nudge (it comes up by itself, with the loud beep). A tap downloads the receipt.
-        { id: 'tx-receipt', chime: true, cat: 'receipt', special: true, go: 'receipt', when: () => false, text: (c, r, s) => receiptText(s) }
+        { id: 'tx-receipt', cat: 'receipt', special: true, go: 'receipt', when: () => false, text: (c, r, s) => receiptText(s) }
     ];
+    // The messages that beep (the ones that can cost the business) always come in Pidgin, so the voice says them the Pidgin way
+    const CATALOG = CATALOG_LIST.map(m => (m.chime && typeof m.text === 'function') ? Object.assign({}, m, { text: (c, r, s) => m.text(c, () => 0.9999, s) }) : m);
     const BY_ID = {};
     CATALOG.forEach(m => { BY_ID[m.id] = m; });
 
