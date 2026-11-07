@@ -2150,3 +2150,6 @@ a.privacy-link-trigger { display: inline-block; padding: 8px 2px; margin: -8px 0
 }
 @keyframes new-spin { to { --new-spin: 360deg; } }
 @media (prefers-reduced-motion: reduce) { .filter-tab-btn.attention::before { animation: none; background: var(--danger-color); } }
+
+/* "Not now" / "Later" (the grey choice in a pop-up): always on one line */
+.dialog-card .btn.btn-cancel.btn-later { white-space: nowrap; padding-left: 10px; padding-right: 10px; }

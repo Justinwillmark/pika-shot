@@ -3203,8 +3203,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const isLow = (p) => p.stock > 0 && p.stock < lowLevel;
             this._setTabCount('restock', 'Low stock', allProducts.filter(isLow).length);
             this._setTabCount('outofstock', 'Out of stock', allProducts.filter(p => p.stock <= 0).length);
-            const newOnes = allProducts.filter(p => this._isNewStock(p)).sort((a, b) => this._newSince(b) - this._newSince(a)); // (the latest received first)
-            this._setTabCount('new', 'New', newOnes.length);
+            // The Check tab: only received items that need their owner (cartons to count, a price, another unit); the latest first
+            const newOnes = allProducts.filter(p => this._needsAttention(p)).sort((a, b) => this._newSince(b) - this._newSince(a));
+            this._setTabCount('new', 'Check', newOnes.length);
             this._paintNewHelp(newOnes, filterType);
             const newTab = document.getElementById('new-tab-btn');
             if (newTab) newTab.style.display = this._isSalesperson() ? 'none' : ''; // (salespeople do not set products up)
@@ -4482,6 +4483,21 @@ document.addEventListener('DOMContentLoaded', () => {
             this._openEditProduct(product);
         },
 
+        // From the sale box: the cartons or packs waiting on this product are counted (the carton card), and the sale box comes back with the
+        // new stock, as it was (the quantity, the customer...): one more tap on Confirm records it
+        async _countForSale(product) {
+            let fresh = (await DB.getProduct(product.id)) || product;
+            for (const w of this._waitingBulk(fresh)) {
+                const per = await this._cartonCard(fresh, w.n, '', w.kind);
+                if (per === null || per < 0) break;
+                fresh = await this._countCartons(fresh, per, w.kind);
+            }
+            if (this.state.sellingProduct && this.state.sellingProduct.id === fresh.id) this.state.sellingProduct = fresh;
+            this.elements.saleProductStock.textContent = `Stock: ${this.formatNumber(fresh.stock)} ${fresh.unit} left`;
+            this.renderProducts(this.elements.productSearchInput.value);
+            if (!this._waitingBulk(fresh).length) this._talk('Oya, tap Confirm.');
+        },
+
         async _countCartons(product, per, kind = 'cartons') {
             const B = this.BULK[kind] || this.BULK.cartons;
             const add = Number(product[B.wait]) * per;
@@ -4759,9 +4775,20 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!product) { say('This product is no longer available.', 'Not available'); return false; }
             if (quantity <= 0) { await this._needs(this.elements.saleQuantityInput, 'Enter how many you are selling.', 'Check your entry'); return false; }
             if (quantity > availableStock) {
+                // Cartons or packs of it are waiting to be counted: count them right here, then the same sale goes on (one more tap on Confirm)
                 const w = this._isSalesperson() ? null : this._waitingBulk(product)[0];
-                const waiting = w ? ` ${this.formatNumber(w.n)} ${w.n === 1 ? `${this.BULK[w.kind].one} is` : `${this.BULK[w.kind].many} are`} waiting. Count them in My products first.` : '';
-                await this._needs(this.elements.saleQuantityInput, `Only ${this.formatNumber(availableStock)} ${product.unit} left in stock.${waiting}`, 'Not enough stock');
+                if (w) {
+                    const B = this.BULK[w.kind];
+                    const laterBtn = document.getElementById('dialog-cancel');
+                    const asking = this._dialog({ title: 'Not enough stock', text: `Only ${this.formatNumber(availableStock)} ${product.unit} left. ${this.formatNumber(w.n)} ${w.n === 1 ? B.one : B.many} you accepted ${w.n === 1 ? 'is' : 'are'} waiting. Count them now?`, ok: 'Count them', cancel: 'Not now' });
+                    laterBtn.classList.add('btn-later'); // (grey: the safe choice)
+                    const count = await asking;
+                    laterBtn.classList.remove('btn-later');
+                    if (count === true) await this._countForSale(product);
+                    else this._shake(this.elements.saleQuantityInput);
+                    return false;
+                }
+                await this._needs(this.elements.saleQuantityInput, `Only ${this.formatNumber(availableStock)} ${product.unit} left in stock.`, 'Not enough stock');
                 return false;
             }
             // A sale is only what it says it is: the price must be there, a discount sale needs a discount, a credit sale needs something still owing
@@ -6722,7 +6749,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 if (!touched.includes(finalProduct.id)) touched.push(finalProduct.id); // (the items "Check items" goes through)
                 if (!isSalesperson) finalProduct.arrivedAt = arrivedAt; // (kept: the "New stock today!" label lasts until midnight)
-                if (!isSalesperson) finalProduct.newSince = arrivedAt - itemNo++; // "New stock!" until the owner saves it (the New tab lists the latest first: the transfer's first item highest)
+                if (!isSalesperson) { // only real jobs go to Check (the latest first); an item that needs nothing goes straight to All
+                    const needsOwner = this._waitingBulk(finalProduct).length > 0
+                        || (!!finalProduct.unitToConfirm && this._unitKey(finalProduct.unitToConfirm) !== this._unitKey(finalProduct.unit))
+                        || this._needsSellingPrice(finalProduct) || !(Number(finalProduct.price) > 0) || this._noProfit(finalProduct);
+                    finalProduct.newSince = needsOwner ? arrivedAt - itemNo++ : null;
+                }
                 if (existingProduct) {
                     // the stock is added to whatever it is now; the fields that changed are sent, nothing else
                     productUpdates.push(DB.saveProduct(finalProduct, { delta: stockToAdd, thumb: thumbSentHere,
@@ -6804,11 +6836,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             try { if ('speechSynthesis' in window) window.speechSynthesis.getVoices(); } catch (e) { /* fine */ } // (the voice is ready before the first card)
-            // The owner lands on New. "Check items" walks through the new items that need something (Later leaves them in New);
-            // when none does, the box just says where they are
-            this._showProductsTab('new');
+            // The owner lands on Check when something needs them there (otherwise on All). "Check the items" counts the cartons or packs.
             const toCheck = [];
-            for (const id of touched) { const p = await DB.getProduct(id); if (p && this._needsCheck(p)) toCheck.push(id); }
+            let anyJob = false;
+            for (const id of touched) { const p = await DB.getProduct(id); if (p && this._needsCheck(p)) toCheck.push(id); if (p && this._needsAttention(p)) anyJob = true; }
+            this._showProductsTab(anyJob ? 'new' : 'all');
             const airtime = 'Sell them and get free airtime. T&C apply.';
             this.showCelebration(toCheck.length ? {
                 icon: '📦', title: 'Items added', headline: log.senderStore ? `From ${log.senderStore}` : 'Transfer accepted',
@@ -6830,11 +6862,14 @@ document.addEventListener('DOMContentLoaded', () => {
         // A New item that needs its owner for something else (it stays in New, with its label or question, until it is saved)
         _needsAttention(p) {
             if (!p || p.deleted || !this._isNewStock(p)) return false;
-            return this._needsCheck(p)
-                || (!!p.unitToConfirm && this._unitKey(p.unitToConfirm) !== this._unitKey(p.unit))
-                || (Number(p.costToConfirm) > 0 && Number(p.costToConfirm) !== Number(p.cost))
-                || this._needsSellingPrice(p) || !(Number(p.price) > 0)
-                || this._noProfit(p); // (it sells at or below its cost: a new price is needed)
+            if (this._needsCheck(p)) return true;
+            if (!!p.unitToConfirm && this._unitKey(p.unitToConfirm) !== this._unitKey(p.unit)) return true;
+            if (Number(p.costToConfirm) > 0 && Number(p.costToConfirm) !== Number(p.cost)) return true;
+            if (this._needsSellingPrice(p) || !(Number(p.price) > 0) || this._noProfit(p)) {
+                // only a price left to set: in Check for 7 days, then it leaves (its "Add price!" label stays on the card)
+                return Date.now() - this._newSince(p) <= 7 * 86400000;
+            }
+            return false;
         },
 
         // While New has items that need the owner: a red dot on the Products button, and (on the New tab) one button that walks through them
@@ -6891,7 +6926,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const waitingInNew = (await DB.getAllProducts()).filter(p => this._needsAttention(p)).length;
                 const stillNew = (await DB.getAllProducts()).filter(p => this._isNewStock(p)).length;
                 this._showProductsTab(stillNew ? 'new' : 'all');
-                if (list.length) this.showToast(left ? `${left} ${left === 1 ? 'item still needs' : 'items still need'} counting in New.` : waitingInNew ? 'Counted ✓ Other things wait in New.' : 'All done ✓');
+                if (list.length) this.showToast(left ? `${left} ${left === 1 ? 'item still needs' : 'items still need'} counting in Check.` : waitingInNew ? 'Counted ✓ Other things wait in Check.' : 'All done ✓');
                 if (list.length && !left) this._talk('E don finish. Well done o!'); else this._hush();
             } finally { this._checking = false; }
         },

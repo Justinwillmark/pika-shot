@@ -194,6 +194,7 @@
                 : (p.needsSetup === 'price' || p.needsSetup === 'barcode-and-price' || !(Number(p.price) > 0)) ? 'price'
                 : (Number(p.cost) > 0 && Number(p.cost) > Number(p.price)) ? 'over'
                 : (Number(p.costToConfirm) > 0 && Number(p.costToConfirm) !== Number(p.cost)) ? 'cost' : null;
+            if ((need === 'price' || need === 'over') && nowMs - arrived(p) > 7 * DAY) return null; // (only a price left, for over 7 days: out of Check, no messages)
             return need ? { id: p.id, name: p.name, need, at: arrived(p) } : null;
         }).filter(Boolean).sort((a, b) => b.at - a.at);
         const costToCheck = products
@@ -368,7 +369,7 @@
         { id: 'pr-sell-many', chime: true, cat: 'prices', tier: 1, cooldown: DAY, roles: ['Wholesaler', 'Retailer'], go: 'check', when: c => c.cartonsToCount.length >= 2, weight: () => 2.5,
             text: (c, r) => twin(r, [`${c.cartonsToCount.length} items have cartons or packs to count. Tap to count them. 📦`, `${c.cartonsToCount.length} items get cartons wey you never count. Tap make we count dem. 📦`]) },
         { id: 'pr-new-many', cat: 'prices', tier: 1, cooldown: DAY, roles: ['Wholesaler', 'Retailer'], go: 'products', when: c => c.toCheck.filter(p => p.need !== 'cartons').length >= 2, weight: () => 2,
-            text: (c, r) => { const k = c.toCheck.filter(p => p.need !== 'cartons').length; return twin(r, [`${k} new items need you in New. Tap to see. 🏷️`, `${k} new items dey wait for you for New. Tap make you see. 🏷️`]); } },
+            text: (c, r) => { const k = c.toCheck.filter(p => p.need !== 'cartons').length; return twin(r, [`${k} items need you in Check. Tap to see. 🏷️`, `${k} items dey wait for you for Check. Tap make you see. 🏷️`]); } },
         subjective({ id: 'pr-over', chime: true, cat: 'prices', tier: 1, cooldown: DAY, reminder: true, roles: ['Wholesaler', 'Retailer'], go: 'edit',
             subjects: c => c.toCheck.filter(p => p.need === 'over').map(p => ({ key: 'chk:' + p.id, arg: { id: p.id }, p })),
             text: (c, r, s) => twin(r, [`${short(s.p.name, 2)} now costs more than your price. Tap to fix it. 🏷️`, `${short(s.p.name, 2)} cost don pass your price o. Tap make you fix am. 🏷️`]) }),
