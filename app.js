@@ -705,6 +705,15 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.refreshStocksBtn.addEventListener('click', () => { this.state.retailersAt = 0; this.renderRetailerStocks(); }); // (a salesperson's list is read again, not reused)
             this.elements.logoutBtn.addEventListener('click', this.handleLogout.bind(this));
             this.elements.cancelProfileBtn.addEventListener('click', () => this.hideModal());
+            // A tap outside the PikaShot box (Assistant and Profile), on the dark background, closes it like Cancel does.
+            // (Only a tap that starts and ends on the background: a drag that began inside the box does not close it.)
+            let downOnBackdrop = false;
+            this.elements.modalContainer.addEventListener('pointerdown', (e) => { downOnBackdrop = e.target === this.elements.modalContainer; });
+            this.elements.modalContainer.addEventListener('click', (e) => {
+                if (e.target !== this.elements.modalContainer || !downOnBackdrop) return;
+                if (this.elements.profileModal.style.display === 'none') return;
+                this.elements.cancelProfileBtn.click();
+            });
             this.elements.profileAccountToggle.addEventListener('click', () => this._setAccountOpen(!this.elements.profileAccount.classList.contains('open')));
             this.elements.scanReward.addEventListener('click', () => this._nudgeTap());
 
